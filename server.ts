@@ -1,7 +1,7 @@
 // ... imports ...
 import "dotenv/config";
 import express from "express";
-import { createServer as createViteServer } from "vite";
+// import { createServer as createViteServer } from "vite"; // Removed static import
 import axios from "axios";
 import * as cheerio from "cheerio";
 import cookieParser from "cookie-parser";
@@ -369,6 +369,7 @@ async function startServer() {
 
   // --- Vite Middleware ---
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
