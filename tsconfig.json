@@ -22,5 +22,13 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "server.ts",
+    "list_tables.ts",
+    "list_users.ts",
+    "read_projects.ts"
+  ]
 }
