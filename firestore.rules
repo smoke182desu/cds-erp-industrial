@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "jeanskate@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidProject(data) {
+      return data.keys().hasAll(['name', 'data', 'userId', 'updated_at']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.updated_at is number;
+    }
+
+    match /usuarios_configs/{userId} {
+      allow read, write: if true;
+    }
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+    match /projects/{projectId} {
+      allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin())) || resource.data.isPublic == true;
+      allow create: if isAuthenticated() && isValidProject(request.resource.data);
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidProject(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+    match /clients/{clientId} {
+      allow read, write: if true;
+    }
+    match /proposals/{proposalId} {
+      allow read, write: if true;
+    }
+  }
+}
