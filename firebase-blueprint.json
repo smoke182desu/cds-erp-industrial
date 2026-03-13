@@ -1,62 +1,87 @@
 {
   "entities": {
-    "Conta": {
-      "title": "Conta",
-      "description": "Uma conta bancária ou caixa físico.",
+    "Product": {
+      "title": "Product",
+      "description": "A product in the Gravia catalog.",
       "type": "object",
       "properties": {
-        "nome": { "type": "string", "description": "Nome da conta (ex: Nubank, Cofre)" },
-        "saldoInicial": { "type": "number", "description": "Saldo inicial da conta" },
-        "tipo": { "type": "string", "enum": ["digital", "fisico"] }
+        "name": { "type": "string", "description": "The name of the product." },
+        "category": { "type": "string", "description": "The category of the product." },
+        "description": { "type": "string", "description": "A detailed description of the product." },
+        "specifications": { "type": "string", "description": "Technical specifications." },
+        "imageUrl": { "type": "string", "description": "URL of the product image." }
       },
-      "required": ["nome", "saldoInicial", "tipo"]
+      "required": ["name", "category"]
     },
-    "Transacao": {
-      "title": "Transacao",
-      "description": "Um lançamento financeiro.",
+    "User": {
+      "title": "User",
+      "description": "A user of the application.",
       "type": "object",
       "properties": {
-        "contaId": { "type": "string" },
-        "valor": { "type": "number" },
-        "tipo": { "type": "string", "enum": ["entrada", "saida"] },
-        "data": { "type": "string", "format": "date" },
-        "descricao": { "type": "string" }
+        "role": { "type": "string", "description": "The role of the user (e.g., admin, user)." }
       },
-      "required": ["contaId", "valor", "tipo", "data"]
+      "required": ["role"]
     },
-    "Ativo": {
-      "title": "Ativo",
-      "description": "Bem patrimonial da empresa.",
+    "Project": {
+      "title": "Project",
+      "description": "A design project.",
       "type": "object",
       "properties": {
-        "nome": { "type": "string" },
-        "dataCompra": { "type": "string", "format": "date" },
-        "valorAquisicao": { "type": "number" },
-        "tipo": { "type": "string", "enum": ["veiculo", "ti", "maquina", "imovel", "terreno"] },
-        "fotoUrl": { "type": "string" }
+        "name": { "type": "string", "description": "The name of the project." },
+        "data": { "type": "object", "description": "The project data." },
+        "userId": { "type": "string", "description": "The ID of the user who owns the project." },
+        "updated_at": { "type": "number", "description": "The timestamp of the last update." }
       },
-      "required": ["nome", "dataCompra", "valorAquisicao", "tipo"]
+      "required": ["name", "userId", "updated_at"]
     },
-    "ProdutoEstoque": {
-      "title": "ProdutoEstoque",
-      "description": "Item no estoque.",
+    "Client": {
+      "title": "Client",
+      "description": "A customer.",
       "type": "object",
       "properties": {
-        "nome": { "type": "string" },
-        "quantidade": { "type": "number" },
-        "estoqueSeguranca": { "type": "number" },
-        "tempoEntrega": { "type": "number" },
-        "corredor": { "type": "string" },
-        "estante": { "type": "string" },
-        "prateleira": { "type": "string" }
+        "name": { "type": "string", "description": "Client name." },
+        "email": { "type": "string", "description": "Client email." },
+        "phone": { "type": "string", "description": "Client phone." },
+        "document": { "type": "string", "description": "CPF/CNPJ." },
+        "address": { "type": "string", "description": "Address." }
       },
-      "required": ["nome", "quantidade", "estoqueSeguranca", "tempoEntrega"]
+      "required": ["name", "email"]
+    },
+    "Proposal": {
+      "title": "Proposal",
+      "description": "A commercial proposal.",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string", "description": "Reference to Client." },
+        "projectId": { "type": "string", "description": "Reference to Project." },
+        "totalValue": { "type": "number", "description": "Total value." },
+        "status": { "type": "string", "description": "Proposal status (draft, sent, signed)." },
+        "signatureData": { "type": "string", "description": "Base64 signature image." },
+        "createdAt": { "type": "number", "description": "Timestamp." }
+      },
+      "required": ["clientId", "projectId", "totalValue", "status"]
     }
   },
   "firestore": {
-    "contas": { "schema": { "$ref": "Conta" }, "description": "Contas financeiras" },
-    "transacoes": { "schema": { "$ref": "Transacao" }, "description": "Transações financeiras" },
-    "ativos": { "schema": { "$ref": "Ativo" }, "description": "Ativos patrimoniais" },
-    "produtos_estoque": { "schema": { "$ref": "ProdutoEstoque" }, "description": "Produtos em estoque" }
+    "/products/{productId}": {
+      "schema": { "$ref": "Product" },
+      "description": "Collection of Gravia products."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "Collection of users."
+    },
+    "/projects/{projectId}": {
+      "schema": { "$ref": "Project" },
+      "description": "Collection of user projects."
+    },
+    "/clients/{clientId}": {
+      "schema": { "$ref": "Client" },
+      "description": "Collection of clients."
+    },
+    "/proposals/{proposalId}": {
+      "schema": { "$ref": "Proposal" },
+      "description": "Collection of proposals."
+    }
   }
 }
