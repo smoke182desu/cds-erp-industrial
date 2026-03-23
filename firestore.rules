@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Como o sistema usa um AuthContext customizado (mock) e não o Firebase Auth,
+    // request.auth será sempre nulo. Para o protótipo funcionar, permitimos acesso.
+    
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

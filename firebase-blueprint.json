@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "Conta": {
+      "title": "Conta",
+      "description": "Uma conta bancária ou caixa físico.",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string", "description": "Nome da conta (ex: Nubank, Cofre)" },
+        "saldoInicial": { "type": "number", "description": "Saldo inicial da conta" },
+        "tipo": { "type": "string", "enum": ["digital", "fisico"] }
+      },
+      "required": ["nome", "saldoInicial", "tipo"]
+    },
+    "Transacao": {
+      "title": "Transacao",
+      "description": "Um lançamento financeiro.",
+      "type": "object",
+      "properties": {
+        "contaId": { "type": "string" },
+        "valor": { "type": "number" },
+        "tipo": { "type": "string", "enum": ["entrada", "saida"] },
+        "data": { "type": "string", "format": "date" },
+        "descricao": { "type": "string" }
+      },
+      "required": ["contaId", "valor", "tipo", "data"]
+    },
+    "Ativo": {
+      "title": "Ativo",
+      "description": "Bem patrimonial da empresa.",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string" },
+        "dataCompra": { "type": "string", "format": "date" },
+        "valorAquisicao": { "type": "number" },
+        "tipo": { "type": "string", "enum": ["veiculo", "ti", "maquina", "imovel", "terreno"] },
+        "fotoUrl": { "type": "string" }
+      },
+      "required": ["nome", "dataCompra", "valorAquisicao", "tipo"]
+    },
+    "ProdutoEstoque": {
+      "title": "ProdutoEstoque",
+      "description": "Item no estoque.",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string" },
+        "quantidade": { "type": "number" },
+        "estoqueSeguranca": { "type": "number" },
+        "tempoEntrega": { "type": "number" },
+        "corredor": { "type": "string" },
+        "estante": { "type": "string" },
+        "prateleira": { "type": "string" }
+      },
+      "required": ["nome", "quantidade", "estoqueSeguranca", "tempoEntrega"]
+    }
+  },
+  "firestore": {
+    "contas": { "schema": { "$ref": "Conta" }, "description": "Contas financeiras" },
+    "transacoes": { "schema": { "$ref": "Transacao" }, "description": "Transações financeiras" },
+    "ativos": { "schema": { "$ref": "Ativo" }, "description": "Ativos patrimoniais" },
+    "produtos_estoque": { "schema": { "$ref": "ProdutoEstoque" }, "description": "Produtos em estoque" }
+  }
+}

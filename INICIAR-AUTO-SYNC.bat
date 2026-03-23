@@ -1,0 +1,3 @@
+@echo off
+echo Iniciando Auto-Sync GitHub em segundo plano...
+powershell -ExecutionPolicy Bypass -WindowStyle Normal -File "%~dp0auto-sync.ps1"

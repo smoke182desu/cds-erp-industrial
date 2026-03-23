@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://apis.google.com https://www.googletagmanager.com https://cdn.jsdelivr.net; connect-src 'self' wss: https://*.googleapis.com https://*.firebaseio.com https://www.gstatic.com https://apis.google.com https://www.googletagmanager.com;">
+    <title>My Google AI Studio App</title>
+    <script>
+      // Global error suppression for MetaMask/Web3 injected by extensions or test runners
+      (function() {
+        const mockEthereum = {
+          isMetaMask: true,
+          isConnected: () => true,
+          request: async () => { return []; },
+          on: () => {},
+          removeListener: () => {},
+          enable: async () => { return []; },
+          send: () => {},
+          sendAsync: () => {},
+          autoRefreshOnNetworkChange: false,
+          networkVersion: '1',
+          chainId: '0x1',
+          selectedAddress: null
+        };
+
+        try {
+          Object.defineProperty(window, 'ethereum', {
+            value: mockEthereum,
+            writable: false,
+            configurable: true
+          });
+          window.web3 = { currentProvider: mockEthereum };
+        } catch (e) {}
+
+        const suppressMetaMask = (original) => (...args) => {
+          try {
+            const message = args.map(arg => {
+              if (arg instanceof Error) return arg.message + ' ' + arg.stack;
+              if (typeof arg === 'object' && arg !== null) {
+                try { return JSON.stringify(arg); } catch (e) { return String(arg); }
+              }
+              return String(arg);
+            }).join(' ');
+            
+            if (message.includes('MetaMask') || message.includes('ethereum') || message.includes('metamask')) {
+              return;
+            }
+          } catch (e) {}
+          if (original) original.apply(console, args);
+        };
+
+        ['error', 'warn', 'log', 'info', 'debug'].forEach(method => {
+          if (console[method]) {
+            console[method] = suppressMetaMask(console[method]);
+          }
+        });
+
+        const handleGlobalError = (event) => {
+          try {
+            let message = '';
+            if (event.type === 'error') {
+              message = event.message || '';
+              if (event.error instanceof Error) message += ' ' + event.error.stack;
+            } else if (event.type === 'unhandledrejection') {
+              if (event.reason instanceof Error) message = event.reason.message + ' ' + event.reason.stack;
+              else message = String(event.reason);
+            }
+            
+            if (message.includes('MetaMask') || message.includes('ethereum') || message.includes('metamask')) {
+              event.preventDefault();
+              event.stopImmediatePropagation();
+              return true;
+            }
+          } catch (e) {}
+        };
+
+        window.addEventListener('error', handleGlobalError, true);
+        window.addEventListener('unhandledrejection', handleGlobalError, true);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="src/main.tsx"></script>
+  </body>
+</html>
+

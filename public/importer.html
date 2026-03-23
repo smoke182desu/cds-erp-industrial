@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Importador de Móveis Metálicos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #canvas-container { width: 100%; height: 100vh; position: absolute; top: 0; left: 0; z-index: 0; }
+        #ui-container { position: absolute; top: 0; left: 0; width: 350px; height: 100vh; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); z-index: 10; padding: 20px; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 15px; }
+        .input-group { display: flex; flex-direction: column; gap: 5px; }
+        .input-group label { font-size: 0.8rem; font-weight: 600; color: #4b5563; }
+        .input-group input, .input-group select { padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.9rem; }
+        .btn { padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: center; }
+        .btn-primary { background: #2563eb; color: white; border: none; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-secondary { background: #f3f4f6; color: #1f2937; border: 1px solid #e5e7eb; }
+        .btn-secondary:hover { background: #e5e7eb; }
+        .loading { opacity: 0.5; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-container">
+        <h1 class="text-xl font-bold text-gray-800 mb-2">Importador de Móveis</h1>
+        
+        <!-- URL Import -->
+        <div class="input-group">
+            <label>URL do Produto</label>
+            <div class="flex gap-2">
+                <input type="text" id="url-input" placeholder="Cole o link aqui..." class="flex-1">
+                <button id="btn-import" class="btn btn-primary px-4">Importar</button>
+            </div>
+            <p id="status-msg" class="text-xs text-gray-500 mt-1"></p>
+        </div>
+
+        <hr class="border-gray-200">
+
+        <!-- Extracted Info -->
+        <div id="product-info" class="hidden">
+            <h2 id="product-title" class="text-sm font-bold text-gray-700 line-clamp-2"></h2>
+            <div id="product-images" class="flex gap-2 overflow-x-auto py-2 h-20"></div>
+        </div>
+
+        <!-- Parameters -->
+        <div class="space-y-4">
+            <h3 class="font-bold text-gray-700 text-sm uppercase tracking-wider">Parâmetros (mm)</h3>
+            
+            <div class="grid grid-cols-3 gap-2">
+                <div class="input-group">
+                    <label>Largura (W)</label>
+                    <input type="number" id="param-w" value="1000">
+                </div>
+                <div class="input-group">
+                    <label>Profund. (D)</label>
+                    <input type="number" id="param-d" value="400">
+                </div>
+                <div class="input-group">
+                    <label>Altura (H)</label>
+                    <input type="number" id="param-h" value="800">
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label>Prateleiras (Qtd)</label>
+                <input type="number" id="param-shelves" value="1" min="0" max="10">
+            </div>
+
+            <div class="input-group">
+                <label>Fechamentos</label>
+                <select id="param-enclosure">
+                    <option value="none">Nenhum (Aberto)</option>
+                    <option value="back">Apenas Fundo</option>
+                    <option value="sides">Laterais</option>
+                    <option value="full">Completo (Fundo + Laterais)</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label>Material Fechamento</label>
+                <select id="param-material">
+                    <option value="plate">Chapa #15 (Dobrada)</option>
+                    <option value="mesh">Tela Expandida</option>
+                    <option value="wood">Madeira/MDF</option>
+                </select>
+            </div>
+            
+            <div class="flex items-center gap-2 mt-2">
+                <input type="checkbox" id="param-wheels" class="w-4 h-4">
+                <label for="param-wheels" class="mb-0">Incluir Rodízios</label>
+            </div>
+        </div>
+
+        <div class="mt-auto space-y-2">
+            <button id="btn-update" class="btn btn-secondary w-full">Atualizar Modelo</button>
+            <div class="grid grid-cols-2 gap-2">
+                <button id="btn-cutlist" class="btn btn-primary text-sm">Ver Lista de Corte</button>
+                <button id="btn-export" class="btn btn-secondary text-sm">Exportar JSON</button>
+            </div>
+            <button id="btn-share" class="btn btn-secondary w-full text-xs">Copiar Link</button>
+        </div>
+    </div>
+
+    <!-- Cut List Modal -->
+    <div id="cutlist-modal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Lista de Corte</h2>
+                <button id="btn-close-modal" class="p-2 hover:bg-gray-100 rounded">✕</button>
+            </div>
+            <div id="cutlist-content" class="space-y-4 text-sm font-mono"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- State ---
+        const state = {
+            url: '',
+            params: {
+                w: 1000, d: 400, h: 800,
+                shelves: 1,
+                enclosure: 'none', // none, back, sides, full
+                material: 'plate', // plate, mesh, wood
+                wheels: false
+            },
+            extracted: null
+        };
+
+        // --- Three.js Setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf0f0f0);
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
+        camera.position.set(2000, 2000, 2000);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // Grid & Axes
+        const gridHelper = new THREE.GridHelper(5000, 50);
+        scene.add(gridHelper);
+        const axesHelper = new THREE.AxesHelper(500);
+        scene.add(axesHelper);
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(1000, 2000, 1000);
+        scene.add(dirLight);
+
+        let currentModelGroup = new THREE.Group();
+        scene.add(currentModelGroup);
+
+        // --- Logic ---
+
+        function buildModel() {
+            scene.remove(currentModelGroup);
+            currentModelGroup = new THREE.Group();
+
+            const { w, d, h, shelves, enclosure, material, wheels } = state.params;
+            const metalonSize = 20; // 20x20mm
+
+            // Materials
+            const metalonMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.7, metalness: 0.5 });
+            const plateMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+            const meshMat = new THREE.MeshBasicMaterial({ color: 0x555555, wireframe: true, side: THREE.DoubleSide });
+            const woodMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c, roughness: 0.8 });
+
+            const panelMat = material === 'mesh' ? meshMat : (material === 'wood' ? woodMat : plateMat);
+
+            // Helper to create metalon bar
+            function createBar(len, axis, x, y, z) {
+                let geo;
+                if (axis === 'x') geo = new THREE.BoxGeometry(len, metalonSize, metalonSize);
+                else if (axis === 'y') geo = new THREE.BoxGeometry(metalonSize, len, metalonSize);
+                else geo = new THREE.BoxGeometry(metalonSize, metalonSize, len);
+                
+                const mesh = new THREE.Mesh(geo, metalonMat);
+                mesh.position.set(x, y, z);
+                
+                // Add wireframe for better visibility
+                const edges = new THREE.EdgesGeometry(geo);
+                const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000 }));
+                mesh.add(line);
+                
+                return mesh;
+            }
+
+            // 1. Structure (Frame)
+            // Vertical posts (4 corners)
+            const postH = wheels ? h - 100 : h; // Subtract wheel height if needed
+            const yPos = postH / 2 + (wheels ? 100 : 0);
+            
+            currentModelGroup.add(createBar(postH, 'y', -w/2 + 10, yPos, -d/2 + 10)); // Back Left
+            currentModelGroup.add(createBar(postH, 'y', w/2 - 10, yPos, -d/2 + 10));  // Back Right
+            currentModelGroup.add(createBar(postH, 'y', -w/2 + 10, yPos, d/2 - 10));  // Front Left
+            currentModelGroup.add(createBar(postH, 'y', w/2 - 10, yPos, d/2 - 10));   // Front Right
+
+            // Horizontal beams (Top & Bottom)
+            // Width beams
+            const beamW = w - 40; // Subtract 2 posts
+            const beamX = 0;
+            
+            // Bottom
+            const botY = wheels ? 100 + 10 : 10;
+            currentModelGroup.add(createBar(beamW, 'x', beamX, botY, -d/2 + 10)); // Back
+            currentModelGroup.add(createBar(beamW, 'x', beamX, botY, d/2 - 10));  // Front
+            
+            // Top
+            const topY = h - 10;
+            currentModelGroup.add(createBar(beamW, 'x', beamX, topY, -d/2 + 10)); // Back
+            currentModelGroup.add(createBar(beamW, 'x', beamX, topY, d/2 - 10));  // Front
+
+            // Depth beams
+            const beamD = d - 40; // Subtract 2 posts
+            const beamZ = 0;
+
+            // Bottom
+            currentModelGroup.add(createBar(beamD, 'z', -w/2 + 10, botY, beamZ)); // Left
+            currentModelGroup.add(createBar(beamD, 'z', w/2 - 10, botY, beamZ));  // Right
+
+            // Top
+            currentModelGroup.add(createBar(beamD, 'z', -w/2 + 10, topY, beamZ)); // Left
+            currentModelGroup.add(createBar(beamD, 'z', w/2 - 10, topY, beamZ));  // Right
+
+            // 2. Shelves
+            if (shelves > 0) {
+                const spacing = (postH - 40) / (shelves + 1);
+                for (let i = 1; i <= shelves; i++) {
+                    const shelfY = botY + spacing * i;
+                    
+                    // Shelf supports
+                    currentModelGroup.add(createBar(beamD, 'z', -w/2 + 10, shelfY, beamZ)); // Left
+                    currentModelGroup.add(createBar(beamD, 'z', w/2 - 10, shelfY, beamZ));  // Right
+                    currentModelGroup.add(createBar(beamW, 'x', beamX, shelfY, -d/2 + 10)); // Back
+                    currentModelGroup.add(createBar(beamW, 'x', beamX, shelfY, d/2 - 10));  // Front
+
+                    // Shelf Panel
+                    const panelGeo = new THREE.BoxGeometry(w - 4, 2, d - 4); // Slightly smaller
+                    const panel = new THREE.Mesh(panelGeo, panelMat);
+                    panel.position.set(0, shelfY + 11, 0); // Sit on top of 20mm bar (center at 10) -> 10 + 1 = 11
+                    currentModelGroup.add(panel);
+                }
+            }
+
+            // 3. Enclosures
+            if (enclosure === 'back' || enclosure === 'full') {
+                // Back Panel
+                const backGeo = new THREE.BoxGeometry(w - 4, h - 4, 2);
+                const backPanel = new THREE.Mesh(backGeo, panelMat);
+                backPanel.position.set(0, h/2, -d/2 + 2); // Inside frame
+                currentModelGroup.add(backPanel);
+            }
+
+            if (enclosure === 'sides' || enclosure === 'full') {
+                // Side Panels
+                const sideGeo = new THREE.BoxGeometry(2, h - 4, d - 4);
+                
+                const leftPanel = new THREE.Mesh(sideGeo, panelMat);
+                leftPanel.position.set(-w/2 + 2, h/2, 0);
+                currentModelGroup.add(leftPanel);
+
+                const rightPanel = new THREE.Mesh(sideGeo, panelMat);
+                rightPanel.position.set(w/2 - 2, h/2, 0);
+                currentModelGroup.add(rightPanel);
+            }
+
+            // 4. Wheels
+            if (wheels) {
+                const wheelGeo = new THREE.CylinderGeometry(30, 30, 20, 16);
+                wheelGeo.rotateZ(Math.PI / 2);
+                const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+                
+                const positions = [
+                    [-w/2 + 10, 30, -d/2 + 10],
+                    [w/2 - 10, 30, -d/2 + 10],
+                    [-w/2 + 10, 30, d/2 - 10],
+                    [w/2 - 10, 30, d/2 - 10]
+                ];
+
+                positions.forEach(pos => {
+                    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                    wheel.position.set(...pos);
+                    currentModelGroup.add(wheel);
+                    
+                    // Stem
+                    const stem = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 70), new THREE.MeshStandardMaterial({color: 0x999999}));
+                    stem.position.set(pos[0], 65, pos[2]);
+                    currentModelGroup.add(stem);
+                });
+            }
+
+            scene.add(currentModelGroup);
+        }
+
+        function calcCutList() {
+            const { w, d, h, shelves, enclosure, material, wheels } = state.params;
+            const metalon = [];
+            const panels = [];
+
+            // Frame
+            const postH = wheels ? h - 100 : h;
+            metalon.push({ desc: 'Colunas Verticais', qtd: 4, length: postH });
+            
+            const beamW = w - 40;
+            metalon.push({ desc: 'Travessas Largura (Topo/Base)', qtd: 4, length: beamW });
+
+            const beamD = d - 40;
+            metalon.push({ desc: 'Travessas Profundidade (Topo/Base)', qtd: 4, length: beamD });
+
+            // Shelves
+            if (shelves > 0) {
+                metalon.push({ desc: 'Travessas Prateleira (Largura)', qtd: shelves * 2, length: beamW });
+                metalon.push({ desc: 'Travessas Prateleira (Profundidade)', qtd: shelves * 2, length: beamD });
+                
+                panels.push({ desc: 'Painel Prateleira', qtd: shelves, w: w - 5, h: d - 5, material });
+            }
+
+            // Enclosures
+            if (enclosure === 'back' || enclosure === 'full') {
+                panels.push({ desc: 'Fundo', qtd: 1, w: w - 5, h: h - 5, material });
+            }
+            if (enclosure === 'sides' || enclosure === 'full') {
+                panels.push({ desc: 'Lateral', qtd: 2, w: d - 5, h: h - 5, material });
+            }
+
+            return { metalon, panels };
+        }
+
+        // --- UI Handling ---
+
+        function updateUI() {
+            document.getElementById('param-w').value = state.params.w;
+            document.getElementById('param-d').value = state.params.d;
+            document.getElementById('param-h').value = state.params.h;
+            document.getElementById('param-shelves').value = state.params.shelves;
+            document.getElementById('param-enclosure').value = state.params.enclosure;
+            document.getElementById('param-material').value = state.params.material;
+            document.getElementById('param-wheels').checked = state.params.wheels;
+        }
+
+        function readUI() {
+            state.params.w = parseInt(document.getElementById('param-w').value) || 1000;
+            state.params.d = parseInt(document.getElementById('param-d').value) || 400;
+            state.params.h = parseInt(document.getElementById('param-h').value) || 800;
+            state.params.shelves = parseInt(document.getElementById('param-shelves').value) || 0;
+            state.params.enclosure = document.getElementById('param-enclosure').value;
+            state.params.material = document.getElementById('param-material').value;
+            state.params.wheels = document.getElementById('param-wheels').checked;
+            buildModel();
+        }
+
+        // Import
+        document.getElementById('btn-import').addEventListener('click', async () => {
+            const url = document.getElementById('url-input').value;
+            if (!url) return;
+
+            const btn = document.getElementById('btn-import');
+            const status = document.getElementById('status-msg');
+            
+            btn.textContent = 'Carregando...';
+            btn.classList.add('loading');
+            status.textContent = 'Extraindo dados...';
+
+            try {
+                const res = await fetch(`/extract?url=${encodeURIComponent(url)}`);
+                const data = await res.json();
+
+                if (data.error) throw new Error(data.error);
+
+                state.extracted = data;
+                
+                // Update UI with extracted data
+                document.getElementById('product-info').classList.remove('hidden');
+                document.getElementById('product-title').textContent = data.title;
+                
+                const imgContainer = document.getElementById('product-images');
+                imgContainer.innerHTML = '';
+                data.images.forEach(src => {
+                    const img = document.createElement('img');
+                    img.src = src;
+                    img.className = 'h-full rounded border border-gray-200';
+                    imgContainer.appendChild(img);
+                });
+
+                // Apply extracted dimensions if found
+                const dims = data.extracted_data.dimensions;
+                if (dims.width) state.params.w = dims.width;
+                if (dims.height) state.params.h = dims.height;
+                if (dims.depth) state.params.d = dims.depth;
+
+                // Apply classification
+                const cls = data.extracted_data.classification;
+                if (cls.features.hasShelves) state.params.shelves = 2; // Default guess
+                if (cls.features.hasMesh) state.params.material = 'mesh';
+                if (cls.features.hasWheels) state.params.wheels = true;
+
+                updateUI();
+                buildModel();
+                status.textContent = 'Importado com sucesso!';
+                status.className = 'text-xs text-green-600 mt-1';
+
+            } catch (e) {
+                console.error(e);
+                status.textContent = 'Erro: ' + e.message;
+                status.className = 'text-xs text-red-600 mt-1';
+            } finally {
+                btn.textContent = 'Importar';
+                btn.classList.remove('loading');
+            }
+        });
+
+        // Event Listeners
+        ['param-w', 'param-d', 'param-h', 'param-shelves', 'param-enclosure', 'param-material', 'param-wheels'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', readUI);
+        });
+
+        document.getElementById('btn-update').addEventListener('click', readUI);
+
+        // Cut List
+        document.getElementById('btn-cutlist').addEventListener('click', () => {
+            const list = calcCutList();
+            const container = document.getElementById('cutlist-content');
+            
+            let html = '<h3 class="font-bold border-b pb-1 mb-2">Metalon 20x20</h3><ul class="list-disc pl-4 mb-4">';
+            list.metalon.forEach(item => {
+                html += `<li>${item.qtd}x ${item.desc} - <b>${item.length}mm</b></li>`;
+            });
+            html += '</ul>';
+
+            html += '<h3 class="font-bold border-b pb-1 mb-2">Painéis / Chapas</h3><ul class="list-disc pl-4">';
+            if (list.panels.length === 0) html += '<li class="text-gray-500">Nenhum painel</li>';
+            list.panels.forEach(item => {
+                html += `<li>${item.qtd}x ${item.desc} (${item.material}) - <b>${item.w} x ${item.h}mm</b></li>`;
+            });
+            html += '</ul>';
+
+            container.innerHTML = html;
+            document.getElementById('cutlist-modal').classList.remove('hidden');
+        });
+
+        document.getElementById('btn-close-modal').addEventListener('click', () => {
+            document.getElementById('cutlist-modal').classList.add('hidden');
+        });
+
+        // Export
+        document.getElementById('btn-export').addEventListener('click', () => {
+            const data = {
+                params: state.params,
+                cutList: calcCutList(),
+                source: state.extracted
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'projeto_movel.json';
+            a.click();
+        });
+
+        // Copy Link
+        document.getElementById('btn-share').addEventListener('click', () => {
+            const url = new URL(window.location.href);
+            url.searchParams.set('params', JSON.stringify(state.params));
+            navigator.clipboard.writeText(url.toString());
+            alert('Link copiado!');
+        });
+
+        // Load Params from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('params')) {
+            try {
+                const p = JSON.parse(urlParams.get('params'));
+                state.params = { ...state.params, ...p };
+                updateUI();
+            } catch (e) {}
+        }
+
+        // Init
+        buildModel();
+
+        // Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>
