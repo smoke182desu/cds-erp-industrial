@@ -630,27 +630,51 @@ export async function transmitirNFe(dadosNFe: DadosNFe): Promise<NFeResponse> {
     };
   }
 }
-
-// ──────────────────────────────────────────────────────────────
-//  GERAÇÃO DE DANFE SIMPLIFICADO (HTML para impressão)
-// ──────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+//  GERAÇÃO DE DANFE A4 — PADRÃO SEFAZ NF-e MODELO 55
+// ──────────────────────────────────────────────────────────────────────────────
 
 export function gerarDanfeHTML(dados: DadosNFe, resultado: NFeResponse): string {
-  const totalNF = dados.itens.reduce((s, i) => s + i.valorTotal, 0);
-  const agora = new Date().toLocaleString('pt-BR');
+  const totalNF     = dados.itens.reduce((s, i) => s + i.valorTotal, 0);
+  const totalIcms   = dados.itens.reduce((s, i) => s + ((i as any).valorIcms   || 0), 0);
+  const totalPis    = dados.itens.reduce((s, i) => s + ((i as any).valorPis    || 0), 0);
+  const totalCofins = dados.itens.reduce((s, i) => s + ((i as any).valorCofins || 0), 0);
+  const agora     = new Date();
+  const dhEmissao = agora.toLocaleDateString('pt-BR') + ' ' + agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const chaveGrupos = (resultado.chaveAcesso || '').match(/.{1,4}/g)?.join(' ') || '—';
+  const isHomologacao = dados.ambiente === 2;
+  const numSerie = String((dados as any).numero || 1).padStart(9, '0');
+  const serie    = ((dados as any).serie || '001').padStart(3, '0');
+  const pgto = (dados as any).formaPagamento || '';
+  const pgtoLabel = pgto === '17' ? 'PIX' : pgto === '1' ? 'Dinheiro' : pgto === '3' ? 'Cartão de Crédito' :
+                    pgto === '4' ? 'Cartão de Débito' : pgto === '15' ? 'Boleto' : pgto === '2' ? 'Cheque' : 'Outro';
 
-  const itensRows = dados.itens.map(item => `
+  const wm = isHomologacao
+    ? `.danfe::before{content:"SEM VALOR FISCAL";position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-45deg);font-size:60pt;color:rgba(255,180,0,.10);font-weight:bold;white-space:nowrap;pointer-events:none;z-index:0}`
+    : '';
+  const ambBg  = isHomologacao ? '#FFF3CD' : '#D4EDDA';
+  const ambFg  = isHomologacao ? '#856404' : '#155724';
+  const ambMsg = isHomologacao
+    ? '⚠ EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO — SEM VALOR FISCAL ⚠'
+    : '✔ NOTA FISCAL ELETRÔNICA — AMBIENTE DE PRODUÇÃO';
+
+  const itensRows = dados.itens.map((item, idx) => `
     <tr>
+      <td style="text-align:center">${String(idx + 1).padStart(3, '0')}</td>
       <td>${item.codigo}</td>
       <td>${item.descricao}</td>
-      <td>${item.ncm}</td>
-      <td>${item.cfop}</td>
-      <td>${item.unidade}</td>
-      <td style="text-align:right">${item.quantidade.toFixed(3)}</td>
-      <td style="text-align:right">R$ ${item.valorUnitario.toFixed(2)}</td>
-      <td style="text-align:right">R$ ${item.valorTotal.toFixed(2)}</td>
-    </tr>
-  `).join('');
+      <td style="text-align:center">${item.ncm}</td>
+      <td style="text-align:center">${(item as any).csosn || (item as any).cst || ''}</td>
+      <td style="text-align:center">${item.cfop}</td>
+      <td style="text-align:center">${item.unidade}</td>
+      <td style="text-align:right">${item.quantidade.toFixed(4)}</td>
+      <td style="text-align:right">${item.valorUnitario.toLocaleString('pt-BR', { minimumFractionDigits: 4 })}</td>
+      <td style="text-align:right">0,00</td>
+      <td style="text-align:right">0,00</td>
+      <td style="text-align:right;font-weight:bold">${item.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+      <td style="text-align:right">${((item as any).aliqIcms  || 0).toFixed(2)}</td>
+      <td style="text-align:right">${((item as any).valorIcms || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+    </tr>`).join('');
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -658,101 +682,182 @@ export function gerarDanfeHTML(dados: DadosNFe, resultado: NFeResponse): string 
   <meta charset="UTF-8">
   <title>DANFE - NF-e ${resultado.chaveAcesso || ''}</title>
   <style>
-    body { font-family: Arial, sans-serif; font-size: 10px; margin: 10mm; color: #000; }
-    .header { border: 2px solid #000; padding: 8px; margin-bottom: 4px; display: flex; gap: 8px; }
-    .logo-box { border: 1px solid #000; padding: 8px; min-width: 160px; text-align: center; font-weight: bold; font-size: 14px; }
-    .title-box { border: 1px solid #000; padding: 8px; text-align: center; flex: 1; }
-    .title-box h1 { font-size: 14px; margin: 0; }
-    .chave-box { border: 1px solid #000; padding: 8px; min-width: 200px; font-size: 8px; word-break: break-all; }
-    .section { border: 1px solid #000; margin-bottom: 4px; }
-    .section-title { background: #ddd; font-weight: bold; padding: 2px 6px; border-bottom: 1px solid #000; font-size: 9px; }
-    .section-body { padding: 4px 6px; }
-    table { width: 100%; border-collapse: collapse; font-size: 9px; }
-    th { background: #eee; border: 1px solid #999; padding: 3px; text-align: left; }
-    td { border: 1px solid #ccc; padding: 2px 3px; }
-    .total { font-size: 12px; font-weight: bold; text-align: right; margin-top: 8px; }
-    .footer { border-top: 1px solid #000; margin-top: 8px; padding-top: 4px; font-size: 8px; color: #555; }
-    @media print { button { display: none; } }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,Helvetica,sans-serif;font-size:7pt;color:#000;background:#fff}
+    .danfe{width:210mm;min-height:297mm;margin:0 auto;padding:5mm;background:#fff}
+    ${wm}
+    .lbl{font-size:5.5pt;color:#444;text-transform:uppercase;font-weight:bold;padding:1mm 1.5mm 0;display:block;letter-spacing:.02em}
+    .val{font-size:7.5pt;padding:.5mm 1.5mm 1mm;display:block}
+    .val-b{font-size:8pt;font-weight:bold;padding:.5mm 1.5mm 1mm;display:block}
+    .hdr{display:flex;border:.5pt solid #000}
+    .hdr-emit{flex:0 0 65mm;padding:2mm;border-right:.5pt solid #000}
+    .hdr-emit .rzs{font-size:9pt;font-weight:bold;line-height:1.3}
+    .hdr-emit .inf{font-size:6.5pt;margin-top:1mm;line-height:1.5}
+    .hdr-d{flex:0 0 44mm;text-align:center;border-right:.5pt solid #000;padding:1.5mm;display:flex;flex-direction:column;align-items:center;justify-content:center}
+    .hdr-d .tit{font-size:12pt;font-weight:bold;letter-spacing:2px}
+    .hdr-d .sub{font-size:6pt;line-height:1.4;margin:.7mm 0}
+    .hdr-d .nnum{font-size:8pt;font-weight:bold;margin-top:.7mm}
+    .hdr-k{flex:1;padding:1.5mm}
+    .chave{font-size:6.5pt;font-family:'Courier New',monospace;font-weight:bold;word-break:break-all;margin:.8mm 0;letter-spacing:.4px}
+    .cons{font-size:5pt;color:#555;margin-top:.5mm}
+    .amb{border:.5pt solid #000;border-top:none;text-align:center;padding:1mm;font-size:6.5pt;font-weight:bold;letter-spacing:.7px;background:${ambBg};color:${ambFg}}
+    .row{display:flex;border:.5pt solid #000;border-top:none}
+    .cel{border-right:.5pt solid #000}
+    .cel:last-child{border-right:none}
+    .sec{border:.5pt solid #000;border-top:none}
+    .sec-h{background:#F0F0F0;border-bottom:.5pt solid #000;padding:.8mm 1.5mm;font-size:6pt;font-weight:bold;text-transform:uppercase;text-align:center;letter-spacing:.4px}
+    .sec-b{display:flex;flex-wrap:wrap}
+    .sec-b .f{border-right:.5pt solid #000;border-bottom:.5pt solid #000}
+    .sec-b .f:last-child{border-right:none}
+    .ptbl{width:100%;border-collapse:collapse;font-size:6.5pt}
+    .ptbl th{background:#EBEBEB;border:.3pt solid #666;padding:.8mm .6mm;text-align:center;font-size:5.5pt;font-weight:bold;text-transform:uppercase;line-height:1.1}
+    .ptbl td{border:.3pt solid #bbb;padding:.6mm .6mm;vertical-align:top}
+    .tot-r{display:flex;border:.5pt solid #000;border-top:none}
+    .tot-l{flex:1;border-right:.5pt solid #000}
+    .tot-v{width:55mm;background:#000;padding:2.5mm 3mm;display:flex;flex-direction:column;justify-content:center}
+    @media print{html,body{margin:0;padding:0;background:#fff}.danfe{width:100%;padding:5mm;min-height:auto}.prt{display:none!important}@page{size:A4 portrait;margin:5mm}}
+    @media screen{body{background:#9ca3af}.danfe{box-shadow:0 4px 24px rgba(0,0,0,.3);margin:8mm auto}}
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="logo-box">
-      <div>${dados.emissor.razaoSocial}</div>
-      <div style="font-size:9px;font-weight:normal">CNPJ: ${dados.emissor.cnpj}</div>
-      <div style="font-size:9px;font-weight:normal">IE: ${dados.emissor.ie}</div>
-      <div style="font-size:9px;font-weight:normal">${dados.emissor.logradouro}, ${dados.emissor.numero}</div>
-      <div style="font-size:9px;font-weight:normal">${dados.emissor.municipio} - ${dados.emissor.uf}</div>
+<div class="danfe">
+<div class="hdr">
+  <div class="hdr-emit">
+    <div class="rzs">${dados.emissor.razaoSocial}</div>
+    <div class="inf">
+      ${dados.emissor.logradouro}, ${dados.emissor.numero}${dados.emissor.bairro ? ' — ' + dados.emissor.bairro : ''}<br>
+      ${dados.emissor.municipio} / ${dados.emissor.uf} — CEP: ${dados.emissor.cep}<br>
+      CNPJ: <strong>${dados.emissor.cnpj}</strong> &nbsp; IE: ${dados.emissor.ie}
+      ${dados.emissor.telefone ? '<br>Fone: ' + dados.emissor.telefone : ''}
     </div>
-    <div class="title-box">
-      <h1>DANFE</h1>
-      <div>Documento Auxiliar da<br>Nota Fiscal Eletrônica</div>
-      <div style="margin-top:6px;font-size:11px;font-weight:bold">NF-e Nº ${dados.itens.length > 0 ? '—' : ''}</div>
-      <div style="margin-top:4px">
-        <strong>Ambiente:</strong> ${dados.ambiente === 1 ? '🟢 PRODUÇÃO' : '🟡 HOMOLOGAÇÃO - SEM VALOR FISCAL'}
+  </div>
+  <div class="hdr-d">
+    <div class="tit">DANFE</div>
+    <div class="sub">Documento Auxiliar da<br>Nota Fiscal Eletrônica</div>
+    <div style="font-size:5.5pt;margin:.5mm 0">
+      <span style="background:#eee;padding:1px 4px;border:.3pt solid #999">Entrada <b>0</b></span>
+      &nbsp;
+      <span style="background:#000;color:#fff;padding:1px 4px">Saída <b>1</b></span>
+    </div>
+    <div class="nnum">Nº ${numSerie}</div>
+    <div style="font-size:6pt">Série: ${serie} &nbsp; Folha: 1/1</div>
+  </div>
+  <div class="hdr-k">
+    <span class="lbl">Chave de Acesso</span>
+    <div class="chave">${chaveGrupos}</div>
+    <div class="cons">Consulte em: www.nfe.fazenda.gov.br ou no site da SEFAZ autorizadora</div>
+    <div style="margin-top:2mm">
+      <span class="lbl">Protocolo de Autorização</span>
+      <div class="val">${resultado.nProtocolo || '—'} ${resultado.nProtocolo ? '· ' + dhEmissao : ''}</div>
+    </div>
+  </div>
+</div>
+<div class="amb">${ambMsg}</div>
+<div class="row">
+  <div class="cel" style="flex:2"><span class="lbl">Natureza da Operação</span><span class="val-b">${dados.naturezaOperacao}</span></div>
+  <div class="cel" style="flex:1"><span class="lbl">Forma de Pagamento</span><span class="val">${pgtoLabel}</span></div>
+  <div class="cel" style="flex:1;border-right:none"><span class="lbl">Data de Emissão</span><span class="val">${dhEmissao}</span></div>
+</div>
+<div class="sec">
+  <div class="sec-h">Emitente</div>
+  <div class="sec-b">
+    <div class="f" style="flex:3"><span class="lbl">Nome / Razão Social</span><span class="val-b">${dados.emissor.razaoSocial}</span></div>
+    <div class="f" style="flex:1"><span class="lbl">CNPJ</span><span class="val">${dados.emissor.cnpj}</span></div>
+    <div class="f" style="flex:1;border-right:none"><span class="lbl">Insc. Estadual</span><span class="val">${dados.emissor.ie}</span></div>
+    <div class="f" style="flex:2"><span class="lbl">Endereço</span><span class="val">${dados.emissor.logradouro}, ${dados.emissor.numero}</span></div>
+    <div class="f" style="flex:1"><span class="lbl">Bairro</span><span class="val">${dados.emissor.bairro}</span></div>
+    <div class="f" style="flex:1"><span class="lbl">CEP</span><span class="val">${dados.emissor.cep}</span></div>
+    <div class="f" style="flex:1"><span class="lbl">Município</span><span class="val">${dados.emissor.municipio}</span></div>
+    <div class="f" style="flex:0 0 10mm"><span class="lbl">UF</span><span class="val">${dados.emissor.uf}</span></div>
+    <div class="f" style="flex:1"><span class="lbl">Fone</span><span class="val">${dados.emissor.telefone || '—'}</span></div>
+    <div class="f" style="flex:1;border-right:none"><span class="lbl">CRT</span><span class="val">${dados.emissor.crt === '1' ? '1 – Simples Nacional' : dados.emissor.crt === '2' ? '2 – Simples Excesso' : '3 – Regime Normal'}</span></div>
+  </div>
+</div>
+<div class="sec">
+  <div class="sec-h">Destinatário / Remetente</div>
+  <div class="sec-b">
+    <div class="f" style="flex:3"><span class="lbl">Nome / Razão Social</span><span class="val-b">${dados.destinatario.nome}</span></div>
+    <div class="f" style="flex:1"><span class="lbl">${dados.destinatario.cnpj ? 'CNPJ' : 'CPF'}</span><span class="val">${dados.destinatario.cnpj || dados.destinatario.cpf || '—'}</span></div>
+    <div class="f" style="flex:1;border-right:none"><span class="lbl">Insc. Estadual</span><span class="val">${dados.destinatario.ie || 'ISENTO'}</span></div>
+    <div class="f" style="flex:2"><span class="lbl">Endereço</span><span class="val">${dados.destinatario.logradouro}, ${dados.destinatario.numero}</span></div>
+    <div class="f" style="flex:1"><span class="lbl">Bairro</span><span class="val">${dados.destinatario.bairro}</span></div>
+    <div class="f" style="flex:1"><span class="lbl">CEP</span><span class="val">${dados.destinatario.cep}</span></div>
+    <div class="f" style="flex:1"><span class="lbl">Município</span><span class="val">${dados.destinatario.municipio}</span></div>
+    <div class="f" style="flex:0 0 10mm"><span class="lbl">UF</span><span class="val">${dados.destinatario.uf}</span></div>
+    <div class="f" style="flex:1;border-right:none"><span class="lbl">E-mail</span><span class="val">${dados.destinatario.email || '—'}</span></div>
+  </div>
+</div>
+<div class="sec">
+  <div class="sec-h">Dados dos Produtos / Serviços</div>
+  <table class="ptbl">
+    <thead><tr>
+      <th style="width:8mm">Nº</th><th style="width:13mm">Código</th>
+      <th>Descrição do Produto / Serviço</th>
+      <th style="width:13mm">NCM/SH</th><th style="width:9mm">CST/<br>CSOSN</th>
+      <th style="width:9mm">CFOP</th><th style="width:8mm">Un.</th>
+      <th style="width:16mm">Qtd.</th><th style="width:18mm">Vl. Unit.</th>
+      <th style="width:13mm">Vl. Desc.</th><th style="width:13mm">Vl. Frete</th>
+      <th style="width:18mm">Vl. Total</th><th style="width:11mm">% ICMS</th>
+      <th style="width:14mm">Vl. ICMS</th>
+    </tr></thead>
+    <tbody>${itensRows}</tbody>
+  </table>
+</div>
+<div class="tot-r">
+  <div class="tot-l">
+    <div style="display:flex;border-bottom:.3pt solid #bbb">
+      <div style="flex:1;border-right:.3pt solid #bbb;padding:.5mm 1.2mm"><span class="lbl">BC ICMS</span><span class="val" style="text-align:right">R$ 0,00</span></div>
+      <div style="flex:1;border-right:.3pt solid #bbb;padding:.5mm 1.2mm"><span class="lbl">Valor ICMS</span><span class="val" style="text-align:right">R$ ${totalIcms.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+      <div style="flex:1;border-right:.3pt solid #bbb;padding:.5mm 1.2mm"><span class="lbl">BC ICMS ST</span><span class="val" style="text-align:right">R$ 0,00</span></div>
+      <div style="flex:1;border-right:.3pt solid #bbb;padding:.5mm 1.2mm"><span class="lbl">Valor ICMS ST</span><span class="val" style="text-align:right">R$ 0,00</span></div>
+      <div style="flex:1;padding:.5mm 1.2mm"><span class="lbl">Trib. Aprox.</span><span class="val" style="text-align:right">R$ ${(totalPis+totalCofins+totalIcms).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+    </div>
+    <div style="display:flex">
+      <div style="flex:1;border-right:.3pt solid #bbb;padding:.5mm 1.2mm"><span class="lbl">Valor Frete</span><span class="val" style="text-align:right">R$ 0,00</span></div>
+      <div style="flex:1;border-right:.3pt solid #bbb;padding:.5mm 1.2mm"><span class="lbl">Valor Seguro</span><span class="val" style="text-align:right">R$ 0,00</span></div>
+      <div style="flex:1;border-right:.3pt solid #bbb;padding:.5mm 1.2mm"><span class="lbl">Desconto</span><span class="val" style="text-align:right">R$ 0,00</span></div>
+      <div style="flex:1;border-right:.3pt solid #bbb;padding:.5mm 1.2mm"><span class="lbl">Outras Despesas</span><span class="val" style="text-align:right">R$ 0,00</span></div>
+      <div style="flex:1;padding:.5mm 1.2mm"><span class="lbl">Valor IPI</span><span class="val" style="text-align:right">R$ 0,00</span></div>
+    </div>
+  </div>
+  <div class="tot-v">
+    <div style="color:#aaa;font-size:5pt;font-weight:bold;text-transform:uppercase;letter-spacing:.5px">Valor Total da NF-e</div>
+    <div style="color:#fff;font-size:13pt;font-weight:bold;text-align:right;margin-top:1mm">R$ ${totalNF.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+  </div>
+</div>
+<div class="sec">
+  <div class="sec-h">Transportador / Volumes Transportados</div>
+  <div class="sec-b">
+    <div class="f" style="flex:2"><span class="lbl">Razão Social</span><span class="val">—</span></div>
+    <div class="f" style="flex:1"><span class="lbl">CNPJ / CPF</span><span class="val">—</span></div>
+    <div class="f" style="flex:1"><span class="lbl">Modalidade do Frete</span><span class="val">9 – Sem Frete</span></div>
+    <div class="f" style="flex:1;border-right:none"><span class="lbl">Placa do Veículo</span><span class="val">—</span></div>
+  </div>
+</div>
+<div class="sec">
+  <div class="sec-h">Dados Adicionais</div>
+  <div style="display:flex;min-height:18mm">
+    <div style="flex:2;border-right:.3pt solid #bbb;padding:1.5mm">
+      <span class="lbl">Informações Complementares</span>
+      <div style="font-size:7pt;margin-top:1mm;line-height:1.4">
+        ${dados.infoAdicionais || '—'}
+        ${isHomologacao ? '<br><strong>NOTA DE HOMOLOGAÇÃO — NÃO POSSUI VALOR FISCAL</strong>' : ''}
       </div>
-      ${resultado.nProtocolo ? `<div><strong>Protocolo:</strong> ${resultado.nProtocolo}</div>` : ''}
-      <div><strong>Emissão:</strong> ${agora}</div>
     </div>
-    <div class="chave-box">
-      <div style="font-weight:bold;margin-bottom:4px">CHAVE DE ACESSO</div>
-      <div>${resultado.chaveAcesso || '—'}</div>
-      <div style="margin-top:6px;font-weight:bold">STATUS</div>
-      <div style="color:${resultado.status === 'autorizado' ? 'green' : 'orange'};font-weight:bold">
-        ${resultado.status.toUpperCase()}
-      </div>
-    </div>
+    <div style="flex:1;padding:1.5mm"><span class="lbl">Reservado ao Fisco</span></div>
   </div>
-
-  <div class="section">
-    <div class="section-title">DESTINATÁRIO / REMETENTE</div>
-    <div class="section-body">
-      <table><tr>
-        <td><strong>Nome/Razão Social:</strong> ${dados.destinatario.nome}</td>
-        <td><strong>${dados.destinatario.cnpj ? 'CNPJ' : 'CPF'}:</strong> ${dados.destinatario.cnpj || dados.destinatario.cpf}</td>
-      </tr><tr>
-        <td><strong>Endereço:</strong> ${dados.destinatario.logradouro}, ${dados.destinatario.numero} - ${dados.destinatario.bairro}</td>
-        <td><strong>Município:</strong> ${dados.destinatario.municipio} - ${dados.destinatario.uf}</td>
-      </tr></table>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">DADOS DOS PRODUTOS / SERVIÇOS</div>
-    <table>
-      <thead><tr>
-        <th>Código</th><th>Descrição</th><th>NCM</th><th>CFOP</th>
-        <th>UN</th><th>Qtd</th><th>Vl. Unit.</th><th>Vl. Total</th>
-      </tr></thead>
-      <tbody>${itensRows}</tbody>
-    </table>
-  </div>
-
-  <div class="total">VALOR TOTAL DA NOTA: R$ ${totalNF.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-
-  <div class="section" style="margin-top:8px">
-    <div class="section-title">INFORMAÇÕES COMPLEMENTARES</div>
-    <div class="section-body">${dados.infoAdicionais || 'Nenhuma informação adicional.'}</div>
-  </div>
-
-  <div class="footer">
-    Gerado pelo sistema CDS Industrial ERP em ${agora}. 
-    Este documento é uma representação simplificada da NF-e.
-    A autenticidade pode ser verificada em: https://www.nfe.fazenda.gov.br
-  </div>
-
-  <div style="margin-top:12px;text-align:center">
-    <button onclick="window.print()" style="font-size:14px;padding:8px 24px;cursor:pointer;background:#1a56db;color:#fff;border:none;border-radius:6px">
-      🖨️ Imprimir DANFE
-    </button>
-  </div>
+</div>
+<div style="border:.5pt solid #000;border-top:none;padding:1.2mm;font-size:5.5pt;color:#555;text-align:center">
+  Consulte a autenticidade em: <strong>www.nfe.fazenda.gov.br</strong> &nbsp;|&nbsp; CDS Industrial ERP &nbsp;|&nbsp; ${dhEmissao}
+</div>
+</div>
+<div class="prt" style="margin:5mm auto;display:flex;justify-content:center;gap:8px">
+  <button onclick="window.print()" style="padding:8px 28px;font-size:12px;font-weight:bold;cursor:pointer;border:none;border-radius:6px;background:#1a56db;color:#fff">Imprimir / Salvar PDF (A4)</button>
+  <button onclick="window.close()" style="padding:8px 20px;font-size:12px;cursor:pointer;border:none;border-radius:6px;background:#e5e7eb;color:#111">Fechar</button>
+</div>
 </body>
 </html>`;
 }
-
-// ──────────────────────────────────────────────────────────────
-//  DOWNLOAD DE XML
-// ──────────────────────────────────────────────────────────────
 
 export function downloadXml(xmlContent: string, chaveAcesso: string): void {
   const blob = new Blob([xmlContent], { type: 'application/xml' });
