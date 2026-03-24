@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useConfig } from '../contexts/ConfigContext';
-import { Save, Image as ImageIcon, Briefcase, Phone, Percent } from 'lucide-react';
+import { Save, Image as ImageIcon, Briefcase, Phone, Percent, FileText, Building2 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export const Configuracoes: React.FC = () => {
@@ -12,11 +12,33 @@ export const Configuracoes: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Dados fiscais NF-e
+  const [cnpjEmissor, setCnpjEmissor] = useState(config.cnpjEmissor || '');
+  const [ieEmissor, setIeEmissor] = useState(config.ieEmissor || 'ISENTO');
+  const [crtEmissor, setCrtEmissor] = useState(config.crtEmissor || '1');
+  const [logradouroEmissor, setLogradouroEmissor] = useState(config.logradouroEmissor || '');
+  const [numeroEmissor, setNumeroEmissor] = useState(config.numeroEmissor || 'S/N');
+  const [bairroEmissor, setBairroEmissor] = useState(config.bairroEmissor || '');
+  const [municipioEmissor, setMunicipioEmissor] = useState(config.municipioEmissor || 'Brasília');
+  const [codMunEmissor, setCodMunEmissor] = useState(config.codMunEmissor || '5300108');
+  const [ufEmissor, setUfEmissor] = useState(config.ufEmissor || 'DF');
+  const [cepEmissor, setCepEmissor] = useState(config.cepEmissor || '');
+
   useEffect(() => {
     setNomeEmpresa(config.nomeEmpresa);
     setTelefone(config.telefone);
     setMultiplicadorLucro(config.multiplicadorLucro.toString());
     setLogoBase64(config.logoBase64);
+    setCnpjEmissor(config.cnpjEmissor || '');
+    setIeEmissor(config.ieEmissor || 'ISENTO');
+    setCrtEmissor(config.crtEmissor || '1');
+    setLogradouroEmissor(config.logradouroEmissor || '');
+    setNumeroEmissor(config.numeroEmissor || 'S/N');
+    setBairroEmissor(config.bairroEmissor || '');
+    setMunicipioEmissor(config.municipioEmissor || 'Brasília');
+    setCodMunEmissor(config.codMunEmissor || '5300108');
+    setUfEmissor(config.ufEmissor || 'DF');
+    setCepEmissor(config.cepEmissor || '');
   }, [config]);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,6 +92,16 @@ export const Configuracoes: React.FC = () => {
         telefone,
         logoBase64,
         multiplicadorLucro: parseFloat(multiplicadorLucro) || 1.5,
+        cnpjEmissor,
+        ieEmissor,
+        crtEmissor,
+        logradouroEmissor,
+        numeroEmissor,
+        bairroEmissor,
+        municipioEmissor,
+        codMunEmissor,
+        ufEmissor,
+        cepEmissor,
       });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -211,6 +243,105 @@ export const Configuracoes: React.FC = () => {
                 O valor do material será multiplicado por este número para calcular a Mão de Obra. 
                 Ex: 1.5 significa 50% a mais sobre o material. 2.0 significa 100% (o dobro).
               </p>
+            </div>
+          </div>
+
+          {/* ── SEÇÃO FISCAL NF-e ── */}
+          <div className="pt-6 border-t border-gray-100">
+            <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2 mb-5">
+              <FileText className="w-5 h-5 text-indigo-500" />
+              Dados Fiscais para Emissão de NF-e
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* CNPJ */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">CNPJ do Emissor *</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Building2 className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input type="text" value={cnpjEmissor} onChange={e => setCnpjEmissor(e.target.value)}
+                    placeholder="00.000.000/0001-00"
+                    className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" />
+                </div>
+              </div>
+
+              {/* IE */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Inscrição Estadual (IE)</label>
+                <input type="text" value={ieEmissor} onChange={e => setIeEmissor(e.target.value)}
+                  placeholder="ISENTO ou número da IE"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2" />
+              </div>
+
+              {/* CRT */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Regime Tributário (CRT)</label>
+                <select value={crtEmissor} onChange={e => setCrtEmissor(e.target.value)}
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2">
+                  <option value="1">1 — Simples Nacional</option>
+                  <option value="2">2 — Simples Nacional — Excesso de Receita</option>
+                  <option value="3">3 — Regime Normal (Lucro Real/Presumido)</option>
+                </select>
+              </div>
+
+              {/* CEP */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">CEP do Estabelecimento</label>
+                <input type="text" value={cepEmissor} onChange={e => setCepEmissor(e.target.value)}
+                  placeholder="70000-000"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2" />
+              </div>
+
+              {/* Logradouro + Número */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Logradouro</label>
+                <input type="text" value={logradouroEmissor} onChange={e => setLogradouroEmissor(e.target.value)}
+                  placeholder="Rua, Avenida, etc."
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Número</label>
+                <input type="text" value={numeroEmissor} onChange={e => setNumeroEmissor(e.target.value)}
+                  placeholder="S/N"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2" />
+              </div>
+
+              {/* Bairro */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bairro</label>
+                <input type="text" value={bairroEmissor} onChange={e => setBairroEmissor(e.target.value)}
+                  placeholder="Centro"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2" />
+              </div>
+
+              {/* Município */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Município</label>
+                <input type="text" value={municipioEmissor} onChange={e => setMunicipioEmissor(e.target.value)}
+                  placeholder="Brasília"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2" />
+              </div>
+
+              {/* UF */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">UF</label>
+                <select value={ufEmissor} onChange={e => setUfEmissor(e.target.value)}
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2">
+                  {['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'].map(uf => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Código IBGE */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Código IBGE do Município (7 dígitos)</label>
+                <input type="text" value={codMunEmissor} onChange={e => setCodMunEmissor(e.target.value)}
+                  placeholder="5300108 (Brasília-DF)"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2" />
+                <p className="mt-1 text-xs text-gray-400">Consulte em ibge.gov.br. Ex: Brasília-DF = 5300108, São Paulo-SP = 3550308</p>
+              </div>
             </div>
           </div>
 

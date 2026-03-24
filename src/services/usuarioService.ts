@@ -9,6 +9,17 @@ export interface UsuarioConfig {
   logoBase64: string;
   multiplicadorLucro: number;
   plano: 'free' | 'pro';
+  // Dados fiscais para NF-e
+  cnpjEmissor?: string;
+  ieEmissor?: string;
+  crtEmissor?: string;          // '1'=Simples, '2'=Simples Excesso, '3'=Normal
+  logradouroEmissor?: string;
+  numeroEmissor?: string;
+  bairroEmissor?: string;
+  municipioEmissor?: string;
+  codMunEmissor?: string;       // Código IBGE 7 dígitos
+  ufEmissor?: string;
+  cepEmissor?: string;
 }
 
 export const defaultConfig: UsuarioConfig = {
@@ -17,6 +28,16 @@ export const defaultConfig: UsuarioConfig = {
   logoBase64: '',
   multiplicadorLucro: 1.5,
   plano: 'free',
+  cnpjEmissor: '',
+  ieEmissor: 'ISENTO',
+  crtEmissor: '1',
+  logradouroEmissor: '',
+  numeroEmissor: 'S/N',
+  bairroEmissor: '',
+  municipioEmissor: 'Brasília',
+  codMunEmissor: '5300108',
+  ufEmissor: 'DF',
+  cepEmissor: '',
 };
 
 export const buscarConfiguracoes = async (userId: string): Promise<UsuarioConfig> => {
