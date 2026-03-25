@@ -138,6 +138,25 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // --- PROXY PNCP (Portal Nacional de Contratações Públicas) ---
+  // Necessário pois o browser bloqueia chamadas cross-origin diretas ao api.pncp.gov.br
+  app.get("/pncp-api/*", async (req, res) => {
+    const pncpPath = req.originalUrl.replace("/pncp-api", "");
+    const targetUrl = `https://api.pncp.gov.br${pncpPath}`;
+    try {
+      const response = await axios.get(targetUrl, {
+        headers: { "Accept": "application/json" },
+        timeout: 15000,
+      });
+      res.status(response.status).json(response.data);
+    } catch (error: any) {
+      const status = error.response?.status || 502;
+      const data = error.response?.data || { error: "Erro ao consultar PNCP" };
+      console.error(`[PNCP Proxy] ${targetUrl} → ${status}`, error.message);
+      res.status(status).json(data);
+    }
+  });
+
   // --- Project Routes ---
   app.get("/api/projects", (req, res) => {
     const user = getUser(req);
