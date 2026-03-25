@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Search, Filter, ExternalLink, RefreshCw, ChevronLeft, ChevronRight,
   MapPin, Calendar, DollarSign, Tag, Briefcase, Building2, AlertCircle,
-  Loader2, Star, StarOff, Plus, X, Printer, ClipboardList, Globe,
-  TrendingUp, ChevronDown, CheckCircle2, Clock, Info, BookOpen
+  Loader2, Plus, X, ClipboardList, Globe,
+  CheckCircle2, Clock, Info, Settings
 } from 'lucide-react';
 import { useConfig } from '../contexts/ConfigContext';
 import {
@@ -11,13 +11,12 @@ import {
   MODALIDADES, UFS_BR, PALAVRAS_CHAVE_SUGERIDAS,
   formatarDataPNCP, formatarMoeda, urlPNCP,
 } from '../services/LicitacoesService';
+import { LicitacaoWorkspace, LicitacaoExtra, defaultExtra } from '../components/licitacoes/LicitacaoWorkspace';
 
 // ── Tipos locais ─────────────────────────────────────────────────
 
 interface LicitacaoTracked extends ContratacaoPNCP {
   etapa: 'captacao' | 'analise' | 'proposta' | 'disputa' | 'ganha';
-  favorito?: boolean;
-  bdi?: number;
 }
 
 const ETAPAS = [
@@ -217,9 +216,15 @@ export const Licitacoes: React.FC = () => {
 
   // ── Estado de gestão (kanban) ─────────────────────────────────
   const [tracked, setTracked] = useState<LicitacaoTracked[]>([]);
+  const [extras, setExtras] = useState<Record<string, LicitacaoExtra>>({});
+  const [workspaceAberto, setWorkspaceAberto] = useState<LicitacaoTracked | null>(null);
   const [detalheItem, setDetalheItem] = useState<ContratacaoPNCP | null>(null);
   const [mostraSugestoes, setMostraSugestoes] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const getExtra = (id: string): LicitacaoExtra => extras[id] ?? defaultExtra();
+  const setExtra = (id: string, patch: Partial<LicitacaoExtra>) =>
+    setExtras(prev => ({ ...prev, [id]: { ...getExtra(id), ...patch } }));
 
   // ── Buscar ────────────────────────────────────────────────────
   const handleBuscar = async (pg = 1) => {
@@ -259,7 +264,10 @@ export const Licitacoes: React.FC = () => {
       setTracked(prev => prev.filter(t => t.numeroControlePNCP !== item.numeroControlePNCP));
       return;
     }
-    setTracked(prev => [...prev, { ...item, etapa: 'captacao', bdi: 25 }]);
+    const novo: LicitacaoTracked = { ...item, etapa: 'captacao' };
+    setTracked(prev => [...prev, novo]);
+    // Inicializa extras com checklist padrão
+    setExtras(prev => ({ ...prev, [item.numeroControlePNCP]: defaultExtra() }));
   };
 
   const isTracked = (id: string) => tracked.some(t => t.numeroControlePNCP === id);
@@ -491,13 +499,26 @@ export const Licitacoes: React.FC = () => {
                       <span className="text-xs font-bold bg-white/70 px-2 py-0.5 rounded-full">{cards.length}</span>
                     </div>
                     <div className="space-y-2 flex-1 overflow-y-auto max-h-[60vh] pr-0.5">
-                      {cards.map(card => (
+                      {cards.map(card => {
+                      const ex = getExtra(card.numeroControlePNCP);
+                      const pct = ex.checklist.length > 0
+                        ? Math.round((ex.checklist.filter(c => c.feito).length / ex.checklist.length) * 100) : 0;
+                      return (
                         <div key={card.numeroControlePNCP} className="bg-white rounded-lg border border-white/80 p-3 shadow-sm">
-                          <p className="text-xs font-bold text-slate-900 line-clamp-2 mb-2">{card.objetoCompra}</p>
+                          <p className="text-xs font-bold text-slate-900 line-clamp-2 mb-1">{card.objetoCompra}</p>
                           <p className="text-xs text-slate-500 mb-1">{card.orgaoEntidade.razaoSocial}</p>
-                          <p className="text-xs font-bold text-emerald-600 mb-3">{formatarMoeda(card.valorTotalEstimado)}</p>
+                          <p className="text-xs font-bold text-emerald-600 mb-2">{formatarMoeda(card.valorTotalEstimado)}</p>
 
-                          {/* Selecionar etapa */}
+                          {/* Barra de progresso checklist */}
+                          <div className="mb-2">
+                            <div className="flex justify-between text-xs text-slate-400 mb-0.5">
+                              <span>Checklist</span><span className={pct===100?'text-emerald-600 font-bold':''}>{pct}%</span>
+                            </div>
+                            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${pct===100?'bg-emerald-500':'bg-blue-400'}`} style={{width:`${pct}%`}} />
+                            </div>
+                          </div>
+
                           <select value={card.etapa}
                             onChange={e => moverEtapa(card.numeroControlePNCP, e.target.value as LicitacaoTracked['etapa'])}
                             className="w-full text-xs border border-slate-200 rounded px-2 py-1 mb-2">
@@ -505,9 +526,13 @@ export const Licitacoes: React.FC = () => {
                           </select>
 
                           <div className="flex gap-1">
+                            <button onClick={() => setWorkspaceAberto(card)}
+                              className="flex-1 flex items-center justify-center gap-1 text-xs bg-blue-600 text-white rounded py-1 hover:bg-blue-700 transition">
+                              <ClipboardList size={11} /> Abrir
+                            </button>
                             <a href={urlPNCP(card)} target="_blank" rel="noopener noreferrer"
-                              className="flex-1 flex items-center justify-center gap-1 text-xs border border-slate-200 rounded py-1 hover:bg-slate-50">
-                              <ExternalLink size={11} /> PNCP
+                              className="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50">
+                              <ExternalLink size={11} />
                             </a>
                             <button onClick={() => removerTracked(card.numeroControlePNCP)}
                               className="px-2 py-1 text-xs border border-rose-200 rounded text-rose-500 hover:bg-rose-50">
@@ -515,7 +540,8 @@ export const Licitacoes: React.FC = () => {
                             </button>
                           </div>
                         </div>
-                      ))}
+                      );
+                    })}
                     </div>
                   </div>
                 );
@@ -523,6 +549,16 @@ export const Licitacoes: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {/* Workspace de licitação */}
+      {workspaceAberto && (
+        <LicitacaoWorkspace
+          item={workspaceAberto}
+          extra={getExtra(workspaceAberto.numeroControlePNCP)}
+          onChangeExtra={patch => setExtra(workspaceAberto.numeroControlePNCP, patch)}
+          onClose={() => setWorkspaceAberto(null)}
+        />
       )}
 
       {/* Modal de detalhes */}
