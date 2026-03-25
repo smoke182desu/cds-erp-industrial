@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import {
   FileText, Loader2, Download, Send, PlusCircle, X,
   CheckCircle2, XCircle, AlertTriangle, Eye, FileDown,
-  ShieldCheck, Settings2
+  ShieldCheck, Settings2, Zap, Ban, Edit3, Search, Trash2, RefreshCw
 } from 'lucide-react';
 import { useERP } from '../contexts/ERPContext';
 import { useConfig } from '../contexts/ConfigContext';
 import {
-  DadosNFe, ItemNFe, NFeResponse,
-  transmitirNFe, abrirDanfe, downloadXml
+  DadosNFe, ItemNFe, NFeResponse, EventoResponse,
+  transmitirNFe, abrirDanfe, downloadXml,
+  calcularCFOP, sugerirNCM, descricaoNCM,
+  cancelarNFe, corrigirNFe, inutilizarNFe, consultarNFe
 } from '../services/NFeService';
 
 // ──────────────────────────────────────────────────────────────
@@ -20,7 +22,10 @@ interface NFeHistorico {
   resultado: NFeResponse;
   emitidaEm: string;
   numero: number;
+  statusEvento?: 'cancelada' | 'corrigida'; // Status após eventos
 }
+
+type ModalEvento = 'cancelar' | 'cce' | 'inutilizar' | 'consultar' | null;
 
 const STATUS_LABELS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   autorizado:   { label: 'Autorizada',    color: 'bg-emerald-100 text-emerald-700', icon: <CheckCircle2 size={14} /> },
@@ -52,6 +57,23 @@ export const Faturamento: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [configCertOpen, setConfigCertOpen] = useState(false);
 
+  // ── Estados dos modais de evento ─────────────────────────────
+  const [modalEvento, setModalEvento] = useState<ModalEvento>(null);
+  const [nfeSelecionada, setNfeSelecionada] = useState<NFeHistorico | null>(null);
+  const [loadingEvento, setLoadingEvento] = useState(false);
+  const [resultadoEvento, setResultadoEvento] = useState<EventoResponse | null>(null);
+
+  // Cancelamento
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
+  // CC-e
+  const [textoCorrecao, setTextoCorrecao] = useState('');
+  const [nSeqCCe, setNSeqCCe] = useState(1);
+  // Inutilização
+  const [serieInut, setSerieInut] = useState('001');
+  const [nNFIni, setNNFIni] = useState('');
+  const [nNFFin, setNNFFin] = useState('');
+  const [justInut, setJustInut] = useState('');
+
   // Dados do certificado (armazenados em sessionStorage por segurança)
   const [certBase64, setCertBase64] = useState(sessionStorage.getItem('@cds-cert-b64') || '');
   const [certSenha, setCertSenha] = useState('');
@@ -80,6 +102,15 @@ export const Faturamento: React.FC = () => {
     { codigo: '001', descricao: '', ncm: '73089010', cfop: '5101', unidade: 'UN', quantidade: 1, valorUnitario: 0, valorTotal: 0, csosn: '400' }
   ]);
 
+  // Recalcula o CFOP de todos os itens quando a UF muda
+  const recalcularCFOPs = (novaUfDest: string) => {
+    const ufOrig = config.ufEmissor || 'DF';
+    setItens(prev => prev.map(item => ({
+      ...item,
+      cfop: calcularCFOP(ufOrig, novaUfDest),
+    })));
+  };
+
   // ── Preenchimento automático ao selecionar cliente ──────────
   const handleClienteChange = (clienteId: string) => {
     setClienteSelecionado(clienteId);
@@ -92,15 +123,17 @@ export const Faturamento: React.FC = () => {
     setDestBairro(cli.bairro || '');
     setDestCep(cli.cep || '');
     setDestEmail(cli.email || '');
-    // UF
+    // UF — recalcula CFOP automaticamente
     const uf = cli.uf || 'DF';
     setDestUf(uf);
     const munPadrao = MUNICIPIOS_PADRAO[uf] || MUNICIPIOS_PADRAO['DF'];
     setDestMunicipio(cli.cidade || munPadrao.municipio);
     setDestCodMun(munPadrao.codigoMunicipio);
+    recalcularCFOPs(uf);
   };
 
   // ── Atualizar item ───────────────────────────────────────────
+  // Quando muda a descrição: sugere NCM automaticamente
   const atualizarItem = (idx: number, campo: string, valor: string | number) => {
     setItens(prev => {
       const novos = [...prev];
@@ -108,15 +141,22 @@ export const Faturamento: React.FC = () => {
       if (campo === 'quantidade' || campo === 'valorUnitario') {
         item.valorTotal = parseFloat((item.quantidade * item.valorUnitario).toFixed(2));
       }
+      // Auto-sugestão de NCM ao digitar a descrição
+      if (campo === 'descricao' && typeof valor === 'string') {
+        const ncmSugerido = sugerirNCM(valor);
+        item.ncm = ncmSugerido;
+      }
       novos[idx] = item;
       return novos;
     });
   };
 
   const adicionarItem = () => {
+    const ufOrig = config.ufEmissor || 'DF';
+    const cfopNovo = calcularCFOP(ufOrig, destUf);
     setItens(prev => [
       ...prev,
-      { codigo: String(prev.length + 1).padStart(3, '0'), descricao: '', ncm: '73089010', cfop: '5101', unidade: 'UN', quantidade: 1, valorUnitario: 0, valorTotal: 0, csosn: '400' }
+      { codigo: String(prev.length + 1).padStart(3, '0'), descricao: '', ncm: '73089010', cfop: cfopNovo, unidade: 'UN', quantidade: 1, valorUnitario: 0, valorTotal: 0, csosn: '400' }
     ]);
   };
 
@@ -131,6 +171,93 @@ export const Faturamento: React.FC = () => {
       sessionStorage.setItem('@cds-cert-b64', b64);
     };
     reader.readAsBinaryString(file);
+  };
+
+  // ── Abrir modal de evento ────────────────────────────────────
+  const abrirEvento = (tipo: ModalEvento, nfe: NFeHistorico) => {
+    setNfeSelecionada(nfe);
+    setModalEvento(tipo);
+    setResultadoEvento(null);
+    setMotivoCancelamento('');
+    setTextoCorrecao('');
+  };
+
+  // ── Executar Cancelamento ────────────────────────────────────
+  const handleCancelar = async () => {
+    if (!nfeSelecionada) return;
+    setLoadingEvento(true);
+    const uf = config.ufEmissor || 'DF';
+    const res = await cancelarNFe(
+      {
+        chaveAcesso: nfeSelecionada.resultado.chaveAcesso || '',
+        nProtocolo: nfeSelecionada.resultado.nProtocolo || '',
+        motivo: motivoCancelamento,
+        certificado: certBase64 ? { pfxBase64: certBase64, senha: certSenha } : undefined,
+      },
+      uf,
+      ambiente
+    );
+    setResultadoEvento(res);
+    if (res.status === 'sucesso') {
+      setHistorico(prev => prev.map(h =>
+        h.id === nfeSelecionada.id ? { ...h, statusEvento: 'cancelada' } : h
+      ));
+    }
+    setLoadingEvento(false);
+  };
+
+  // ── Executar CC-e ────────────────────────────────────────────
+  const handleCCe = async () => {
+    if (!nfeSelecionada) return;
+    setLoadingEvento(true);
+    const uf = config.ufEmissor || 'DF';
+    const res = await corrigirNFe(
+      {
+        chaveAcesso: nfeSelecionada.resultado.chaveAcesso || '',
+        xCorrecao: textoCorrecao,
+        nSeqEvento: nSeqCCe,
+        certificado: certBase64 ? { pfxBase64: certBase64, senha: certSenha } : undefined,
+      },
+      uf,
+      ambiente
+    );
+    setResultadoEvento(res);
+    if (res.status === 'sucesso') {
+      setHistorico(prev => prev.map(h =>
+        h.id === nfeSelecionada.id ? { ...h, statusEvento: 'corrigida' } : h
+      ));
+    }
+    setLoadingEvento(false);
+  };
+
+  // ── Executar Consulta ────────────────────────────────────────
+  const handleConsultar = async () => {
+    if (!nfeSelecionada) return;
+    setLoadingEvento(true);
+    const uf = config.ufEmissor || 'DF';
+    const res = await consultarNFe(
+      nfeSelecionada.resultado.chaveAcesso || '',
+      uf,
+      ambiente
+    );
+    setResultadoEvento(res);
+    setLoadingEvento(false);
+  };
+
+  // ── Executar Inutilização ────────────────────────────────────
+  const handleInutilizar = async () => {
+    setLoadingEvento(true);
+    const res = await inutilizarNFe({
+      cnpj: config.cnpjEmissor || '',
+      justificativa: justInut,
+      serie: serieInut,
+      nNFIni: parseInt(nNFIni) || 0,
+      nNFFin: parseInt(nNFFin) || 0,
+      uf: config.ufEmissor || 'DF',
+      ambiente,
+    });
+    setResultadoEvento(res);
+    setLoadingEvento(false);
   };
 
   // ── Emitir NF-e ─────────────────────────────────────────────
@@ -250,13 +377,22 @@ export const Faturamento: React.FC = () => {
             {certBase64 ? <span className="text-emerald-600 font-medium">Cert. A1 ✓</span> : 'Configurar Cert. A1'}
           </button>
 
-          {/* Nova NF-e */}
-          <button
-            onClick={() => setModalAberto(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition shadow-sm"
-          >
-            <PlusCircle size={18} /> Nova NF-e
-          </button>
+          {/* Botões: Inutilizar + Nova NF-e */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setNfeSelecionada(null); setModalEvento('inutilizar'); setResultadoEvento(null); }}
+              title="Inutilizar numeração não utilizada"
+              className="flex items-center gap-1 px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition"
+            >
+              <Trash2 size={14} /> Inutilizar
+            </button>
+            <button
+              onClick={() => setModalAberto(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition shadow-sm"
+            >
+              <PlusCircle size={18} /> Nova NF-e
+            </button>
+          </div>
         </div>
       </div>
 
@@ -340,24 +476,44 @@ export const Faturamento: React.FC = () => {
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${st.color}`}>
                         {st.icon} {st.label}
                       </span>
+                      {nfe.statusEvento === 'cancelada' && (
+                        <span className="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                          <Ban size={10} /> Cancelada
+                        </span>
+                      )}
+                      {nfe.statusEvento === 'corrigida' && (
+                        <span className="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700">
+                          <Edit3 size={10} /> CC-e
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => abrirDanfe(nfe.dados, nfe.resultado)}
-                          title="Visualizar DANFE"
-                          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
-                        >
-                          <Eye size={14} /> DANFE
+                      <div className="flex gap-1 flex-wrap">
+                        <button onClick={() => abrirDanfe(nfe.dados, nfe.resultado)} title="Visualizar DANFE"
+                          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium px-1.5 py-1 rounded hover:bg-blue-50">
+                          <Eye size={13} /> DANFE
                         </button>
                         {nfe.resultado.xmlAssinado && (
-                          <button
-                            onClick={() => downloadXml(nfe.resultado.xmlAssinado!, nfe.resultado.chaveAcesso || nfe.id)}
-                            title="Baixar XML"
-                            className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-800 font-medium"
-                          >
-                            <FileDown size={14} /> XML
+                          <button onClick={() => downloadXml(nfe.resultado.xmlAssinado!, nfe.resultado.chaveAcesso || nfe.id)}
+                            title="Baixar XML" className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-800 font-medium px-1.5 py-1 rounded hover:bg-slate-100">
+                            <FileDown size={13} /> XML
                           </button>
+                        )}
+                        {nfe.resultado.status === 'autorizado' && nfe.statusEvento !== 'cancelada' && (
+                          <>
+                            <button onClick={() => abrirEvento('cancelar', nfe)} title="Cancelar NF-e"
+                              className="flex items-center gap-1 text-xs text-rose-600 hover:text-rose-800 font-medium px-1.5 py-1 rounded hover:bg-rose-50">
+                              <Ban size={13} /> Cancelar
+                            </button>
+                            <button onClick={() => abrirEvento('cce', nfe)} title="Carta de Correção"
+                              className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium px-1.5 py-1 rounded hover:bg-indigo-50">
+                              <Edit3 size={13} /> CC-e
+                            </button>
+                            <button onClick={() => abrirEvento('consultar', nfe)} title="Consultar SEFAZ"
+                              className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-medium px-1.5 py-1 rounded hover:bg-emerald-50">
+                              <Search size={13} /> Consultar
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -481,14 +637,18 @@ export const Faturamento: React.FC = () => {
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">UF</label>
                     <select value={destUf} onChange={e => {
-                      setDestUf(e.target.value);
-                      const mp = MUNICIPIOS_PADRAO[e.target.value];
+                      const novaUf = e.target.value;
+                      setDestUf(novaUf);
+                      const mp = MUNICIPIOS_PADRAO[novaUf];
                       if (mp) { setDestMunicipio(mp.municipio); setDestCodMun(mp.codigoMunicipio); }
+                      // ✦ CFOP automático ao trocar UF
+                      recalcularCFOPs(novaUf);
                     }} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
                       {['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'].map(uf => (
                         <option key={uf} value={uf}>{uf}</option>
                       ))}
                     </select>
+                    <p className="text-xs text-slate-400 mt-0.5">CFOP atualiza automaticamente</p>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">E-mail</label>
@@ -526,15 +686,34 @@ export const Faturamento: React.FC = () => {
                             className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm mt-0.5" />
                         </div>
                         <div>
-                          <label className="text-xs text-slate-500">NCM</label>
+                          <label className="text-xs text-slate-500 flex items-center gap-1">
+                            NCM
+                            <span title={descricaoNCM(item.ncm)} className="cursor-help text-blue-400">ⓘ</span>
+                          </label>
                           <input value={item.ncm} onChange={e => atualizarItem(idx, 'ncm', e.target.value)}
                             placeholder="73089010"
-                            className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm mt-0.5" />
+                            className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm mt-0.5 font-mono" />
+                          <p className="text-xs text-blue-500 mt-0.5 leading-none flex items-center gap-0.5">
+                            <Zap size={9} /> {descricaoNCM(item.ncm)}
+                          </p>
                         </div>
                         <div>
-                          <label className="text-xs text-slate-500">CFOP</label>
-                          <input value={item.cfop} onChange={e => atualizarItem(idx, 'cfop', e.target.value)}
-                            className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm mt-0.5" />
+                          <label className="text-xs text-slate-500 flex items-center gap-1">
+                            CFOP
+                            <span title={destUf === (config.ufEmissor || 'DF') ? 'Operação interna (mesmo estado)' : 'Operação interestadual'} className="cursor-help text-blue-400">ⓘ</span>
+                          </label>
+                          <select value={item.cfop} onChange={e => atualizarItem(idx, 'cfop', e.target.value)}
+                            className="w-full border border-slate-300 rounded px-2 py-1.5 text-sm mt-0.5">
+                            <option value="5101">5101 – Venda (mesmo estado)</option>
+                            <option value="5102">5102 – Venda p/ uso/consumo (mesmo estado)</option>
+                            <option value="6101">6101 – Venda (outro estado)</option>
+                            <option value="6102">6102 – Venda p/ uso/consumo (outro estado)</option>
+                            <option value="5405">5405 – Venda s/ ST (mesmo estado)</option>
+                            <option value="6949">6949 – Outra saída (outro estado)</option>
+                          </select>
+                          <p className="text-xs mt-0.5 leading-none">
+                            {item.cfop.startsWith('5') ? <span className="text-emerald-600">✦ Interna</span> : item.cfop.startsWith('6') ? <span className="text-amber-600">✦ Interestadual</span> : <span className="text-blue-600">✦ Exportação</span>}
+                          </p>
                         </div>
                         <div>
                           <label className="text-xs text-slate-500">Unidade</label>
@@ -605,6 +784,229 @@ export const Faturamento: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════
+          MODAIS DE EVENTOS NF-e
+      ═══════════════════════════════════════════════════════════ */}
+      {modalEvento && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col">
+
+            {/* ── Cabeçalho do modal de evento ── */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                {modalEvento === 'cancelar'    && <><Ban size={20} className="text-rose-500" /> Cancelar NF-e</>}
+                {modalEvento === 'cce'         && <><Edit3 size={20} className="text-indigo-500" /> Carta de Correção (CC-e)</>}
+                {modalEvento === 'consultar'   && <><Search size={20} className="text-emerald-500" /> Consultar Status — SEFAZ</>}
+                {modalEvento === 'inutilizar'  && <><Trash2 size={20} className="text-amber-500" /> Inutilizar Numeração</>}
+              </h3>
+              <button onClick={() => { setModalEvento(null); setResultadoEvento(null); }} className="text-slate-400 hover:text-slate-600">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+
+              {/* Chave da NF-e selecionada */}
+              {nfeSelecionada && (
+                <div className="bg-slate-50 rounded-lg px-3 py-2 border border-slate-200">
+                  <p className="text-xs text-slate-500 font-medium">NF-e Nº {String(nfeSelecionada.numero).padStart(6,'0')} — {nfeSelecionada.dados.destinatario.nome}</p>
+                  <p className="font-mono text-xs text-slate-600 break-all mt-0.5">{nfeSelecionada.resultado.chaveAcesso || '—'}</p>
+                </div>
+              )}
+
+              {/* ── CANCELAMENTO ── */}
+              {modalEvento === 'cancelar' && (
+                <div className="space-y-3">
+                  <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-xs text-rose-700">
+                    ⚠️ <strong>Prazo:</strong> até 24 horas após a autorização. Após cancelada, a nota não pode ser reativada.
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Motivo do Cancelamento <span className="text-slate-400 text-xs">(mín. 15 caracteres)</span>
+                    </label>
+                    <textarea
+                      value={motivoCancelamento}
+                      onChange={e => setMotivoCancelamento(e.target.value)}
+                      rows={3}
+                      placeholder="Ex: Cancelamento a pedido do cliente, erro na emissão..."
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-rose-500 focus:border-rose-500"
+                    />
+                    <p className={`text-xs mt-0.5 ${motivoCancelamento.length < 15 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                      {motivoCancelamento.length}/15 caracteres mínimos
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── CC-e ── */}
+              {modalEvento === 'cce' && (
+                <div className="space-y-3">
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-xs text-indigo-700">
+                    ℹ️ <strong>Prazo:</strong> até 30 dias. <strong>Não pode corrigir:</strong> destinatário, valores, CFOP, data de emissão.
+                    Máximo de 20 CC-e por NF-e.
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Nº Sequencial</label>
+                      <input type="number" min={1} max={20} value={nSeqCCe}
+                        onChange={e => setNSeqCCe(parseInt(e.target.value) || 1)}
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Texto da Correção <span className="text-slate-400 text-xs">(mín. 15 · máx. 1000 caracteres)</span>
+                    </label>
+                    <textarea
+                      value={textoCorrecao}
+                      onChange={e => setTextoCorrecao(e.target.value)}
+                      rows={4}
+                      maxLength={1000}
+                      placeholder="Ex: Onde se lê 'Rua A', leia-se 'Rua B'..."
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                    <p className={`text-xs mt-0.5 ${textoCorrecao.length < 15 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                      {textoCorrecao.length}/1000 caracteres
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── CONSULTA ── */}
+              {modalEvento === 'consultar' && (
+                <div className="space-y-3">
+                  <p className="text-sm text-slate-600">
+                    Consulta o status atual desta NF-e diretamente na SEFAZ e exibe se está autorizada, cancelada ou denegada.
+                  </p>
+                  {!resultadoEvento && (
+                    <button
+                      onClick={handleConsultar}
+                      disabled={loadingEvento}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 disabled:opacity-60 transition"
+                    >
+                      {loadingEvento ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                      {loadingEvento ? 'Consultando SEFAZ...' : 'Consultar Agora'}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* ── INUTILIZAÇÃO ── */}
+              {modalEvento === 'inutilizar' && (
+                <div className="space-y-3">
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+                    ⚠️ Use quando números de NF-e foram pulados ou emitidos com erro e nunca transmitidos à SEFAZ. 
+                    Ação <strong>irreversível</strong>.
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Série</label>
+                      <input value={serieInut} onChange={e => setSerieInut(e.target.value)}
+                        placeholder="001"
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Nº Inicial</label>
+                      <input type="number" value={nNFIni} onChange={e => setNNFIni(e.target.value)}
+                        placeholder="1"
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Nº Final</label>
+                      <input type="number" value={nNFFin} onChange={e => setNNFFin(e.target.value)}
+                        placeholder="5"
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Justificativa <span className="text-slate-400 text-xs">(mín. 15 caracteres)</span>
+                    </label>
+                    <textarea
+                      value={justInut}
+                      onChange={e => setJustInut(e.target.value)}
+                      rows={3}
+                      placeholder="Ex: Números pulados por erro de sistema durante testes..."
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                    />
+                    <p className={`text-xs mt-0.5 ${justInut.length < 15 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                      {justInut.length}/15 caracteres mínimos
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Resultado do evento ── */}
+              {resultadoEvento && (
+                <div className={`rounded-lg p-4 border text-sm font-medium flex items-start gap-3 ${
+                  resultadoEvento.status === 'sucesso'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : resultadoEvento.status === 'rejeitado'
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-red-50 border-red-200 text-red-800'
+                }`}>
+                  {resultadoEvento.status === 'sucesso' ? <CheckCircle2 size={20} className="shrink-0 mt-0.5" /> :
+                   resultadoEvento.status === 'rejeitado' ? <AlertTriangle size={20} className="shrink-0 mt-0.5" /> :
+                   <XCircle size={20} className="shrink-0 mt-0.5" />}
+                  <div>
+                    <p className="font-bold">{resultadoEvento.mensagem}</p>
+                    {resultadoEvento.cStat && (
+                      <p className="text-xs mt-1 opacity-70">cStat {resultadoEvento.cStat} · {resultadoEvento.xMotivo}</p>
+                    )}
+                    {resultadoEvento.nProtocolo && (
+                      <p className="text-xs mt-0.5 opacity-70">Protocolo: {resultadoEvento.nProtocolo}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Footer do modal de evento ── */}
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+              <button
+                onClick={() => { setModalEvento(null); setResultadoEvento(null); }}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-100"
+              >
+                {resultadoEvento ? 'Fechar' : 'Cancelar'}
+              </button>
+
+              {!resultadoEvento && modalEvento !== 'consultar' && (
+                <button
+                  onClick={
+                    modalEvento === 'cancelar'   ? handleCancelar   :
+                    modalEvento === 'cce'        ? handleCCe        :
+                    modalEvento === 'inutilizar' ? handleInutilizar : undefined
+                  }
+                  disabled={loadingEvento ||
+                    (modalEvento === 'cancelar'   && motivoCancelamento.trim().length < 15) ||
+                    (modalEvento === 'cce'        && textoCorrecao.trim().length < 15) ||
+                    (modalEvento === 'inutilizar' && (justInut.trim().length < 15 || !nNFIni || !nNFFin))
+                  }
+                  className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-sm text-white transition disabled:opacity-50 ${
+                    modalEvento === 'cancelar'   ? 'bg-rose-600 hover:bg-rose-700'     :
+                    modalEvento === 'cce'        ? 'bg-indigo-600 hover:bg-indigo-700' :
+                    'bg-amber-600 hover:bg-amber-700'
+                  }`}
+                >
+                  {loadingEvento && <Loader2 size={16} className="animate-spin" />}
+                  {!loadingEvento && (
+                    modalEvento === 'cancelar'   ? <Ban size={16} /> :
+                    modalEvento === 'cce'        ? <Edit3 size={16} /> :
+                    <Trash2 size={16} />
+                  )}
+                  {loadingEvento ? 'Enviando à SEFAZ...' :
+                    modalEvento === 'cancelar'   ? 'Confirmar Cancelamento' :
+                    modalEvento === 'cce'        ? 'Enviar CC-e'            :
+                    'Inutilizar Números'
+                  }
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

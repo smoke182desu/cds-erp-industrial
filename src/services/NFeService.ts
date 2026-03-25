@@ -877,3 +877,499 @@ export function abrirDanfe(dados: DadosNFe, resultado: NFeResponse): void {
     win.document.close();
   }
 }
+
+// ──────────────────────────────────────────────────────────────
+//  CFOP AUTOMÁTICO — baseado na UF do emissor vs destinatário
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * Calcula o CFOP correto com base na UF do emissor e do destinatário.
+ *
+ * Regras:
+ *   5xxx → mesma UF (operação interna)
+ *   6xxx → UF diferente (operação interestadual)
+ *   3xxx → exterior (exportação)
+ *
+ * @param ufEmissor    UF configurada nas Configurações (ex: "DF")
+ * @param ufDest       UF do destinatário selecionado na NF-e
+ * @param sufixo       Sufixo do CFOP (ex: "101" → 5101 / 6101)
+ */
+export function calcularCFOP(ufEmissor: string, ufDest: string, sufixo: '101' | '102' | '405' | '949' = '101'): string {
+  const dest = ufDest.trim().toUpperCase();
+  if (dest === 'EX' || dest === 'EXTERIOR') return `3${sufixo}`;
+  if (dest === ufEmissor.trim().toUpperCase()) return `5${sufixo}`;
+  return `6${sufixo}`;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  NCM AUTOMÁTICO — por palavra-chave na descrição do produto
+// ──────────────────────────────────────────────────────────────
+
+interface NcmRegra {
+  palavras: string[];
+  ncm: string;
+  descricao: string;
+}
+
+const NCM_REGRAS: NcmRegra[] = [
+  // Estruturas metálicas (galpões, coberturas, mezaninos)
+  { palavras: ['galpao', 'galpão', 'cobertura', 'estrutura metalica', 'estrutura metálica', 'mezanino', 'shed', 'hangar', 'telhado metalico', 'telhado metálico'], ncm: '73089020', descricao: 'Estruturas metálicas' },
+
+  // Escadas, corrimões e guarda-corpos
+  { palavras: ['escada', 'corrimao', 'corrimão', 'guarda corpo', 'guarda-corpo', 'guardacorpo', 'passarela', 'plataforma'], ncm: '73089090', descricao: 'Outras obras de ferro/aço – escadas/guarda-corpos' },
+
+  // Portões, grades, cercas, telas
+  { palavras: ['portao', 'portão', 'grade', 'gradil', 'cerca', 'tela soldada', 'alambrado', 'muro', 'cancela', 'divisória', 'divisoria'], ncm: '73089010', descricao: 'Obras de ferro/aço – portões e grades' },
+
+  // Telhas e coberturas (não estrutural)
+  { palavras: ['telha', 'galvalume', 'trapezoidal', 'cumeeira', 'rufo', 'calha'], ncm: '73219000', descricao: 'Telhas e coberturas metálicas' },
+
+  // Ferragens (fechaduras, dobradiças, gonzos)
+  { palavras: ['fechadura', 'dobradica', 'dobradiça', 'gonzo', 'trinco', 'ferrolho', 'puxador', 'aldrava', 'tramela', 'roldana', 'orelha para cadeado'], ncm: '83024100', descricao: 'Ferragens para construção' },
+
+  // Rodas e rodízios
+  { palavras: ['roda de portao', 'roda de portão', 'rodizio', 'rodízio', 'rolamento', 'roda canal'], ncm: '84839000', descricao: 'Peças mecânicas e rodízios' },
+
+  // Discos abrasivos
+  { palavras: ['disco de corte', 'disco de desbaste', 'disco flap', 'policorte', 'abrasivo', 'broca', 'rebolo'], ncm: '68042210', descricao: 'Abrasivos' },
+
+  // Tintas e produtos químicos
+  { palavras: ['tinta', 'primer', 'zarcao', 'zarcão', 'esmalte', 'fundo anticorrosivo', 'galvite', 'thinner', 'spray', 'selante'], ncm: '32082000', descricao: 'Tintas e vernizes' },
+
+  // Eletrodos e arames de solda
+  { palavras: ['eletrodo', 'arame mig', 'arame tig', 'solda'], ncm: '72172000', descricao: 'Arames/fios de aço para solda' },
+
+  // Parafusos, buchas, chumbadores e fixadores
+  { palavras: ['parafuso', 'bucha', 'chumbador', 'parabolt', 'barra roscada', 'porca', 'arruela', 'clips', 'grampo'], ncm: '73181590', descricao: 'Parafusos e fixadores de aço' },
+
+  // Perfis, tubos, barras e chapas de aço (matéria-prima)
+  { palavras: ['metalon', 'tubo quadrado', 'tubo redondo', 'tubo retangular', 'cantoneira', 'chapa', 'perfil u', 'perfil c', 'ferro chato', 'barra chata', 'viga', 'coluna', 'terca', 'terça', 'diagonal'], ncm: '72161000', descricao: 'Perfis de ferro/aço' },
+];
+
+/**
+ * Sugere o código NCM com 8 dígitos baseado em palavras-chave da descrição do produto.
+ * A busca é case-insensitive e ignora acentuação para maior cobertura.
+ *
+ * @param descricao  Descrição do produto digitada pelo usuário
+ * @returns          NCM com 8 dígitos (ex: "73089010")
+ */
+export function sugerirNCM(descricao: string): string {
+  if (!descricao) return '73089010';
+
+  const desc = descricao
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .replace(/[^a-z0-9\s-]/g, ' ');
+
+  for (const regra of NCM_REGRAS) {
+    for (const palavra of regra.palavras) {
+      const palavraNorm = palavra
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s-]/g, ' ');
+      if (desc.includes(palavraNorm)) {
+        return regra.ncm;
+      }
+    }
+  }
+
+  // NCM padrão: obras de ferro/aço (portões/grades/ferragens)
+  return '73089010';
+}
+
+/** Retorna a descrição do NCM para exibição no tooltip */
+export function descricaoNCM(ncm: string): string {
+  const todas = NCM_REGRAS.flatMap(r => r.ncm === ncm ? [r.descricao] : []);
+  return todas[0] || 'Obras de ferro e aço';
+}
+
+// ══════════════════════════════════════════════════════════════
+//  EVENTOS DE NF-e — Cancelamento, CC-e, Inutilização, Consulta
+// ══════════════════════════════════════════════════════════════
+
+export interface EventoNFe {
+  chaveAcesso: string;     // Chave de 44 dígitos da NF-e
+  nProtocolo: string;      // Número do protocolo de autorização
+  motivo: string;          // Motivo/justificativa (mín. 15 chars)
+  certificado?: CertificadoDigital;
+}
+
+export interface CCeNFe {
+  chaveAcesso: string;
+  nSeqEvento?: number;     // Sequencial do evento (default: 1)
+  xCorrecao: string;       // Texto da correção (mín. 15 chars)
+  certificado?: CertificadoDigital;
+}
+
+export interface InutilizacaoNFe {
+  cnpj: string;
+  justificativa: string;   // Mín. 15 chars
+  serie: string;           // Série a inutilizar
+  nNFIni: number;          // Número inicial
+  nNFFin: number;          // Número final
+  uf: string;
+  ambiente: 1 | 2;
+  ano?: number;            // Ano de emissão (default: ano atual)
+  certificado?: CertificadoDigital;
+}
+
+export interface EventoResponse {
+  status: 'sucesso' | 'rejeitado' | 'erro';
+  cStat?: string;
+  xMotivo?: string;
+  nProtocolo?: string;
+  xmlRetorno?: string;
+  mensagem?: string;
+}
+
+// ── URLs de Eventos NF-e por UF ────────────────────────────────
+
+const SEFAZ_EVENTOS_URLS: Record<string, { producao: string; homologacao: string }> = {
+  DF: {
+    producao: 'https://nfe.fazenda.df.gov.br/ws/NfeRecepcaoEvento4.asmx',
+    homologacao: 'https://nfe-homologacao.fazenda.df.gov.br/ws/NfeRecepcaoEvento4.asmx',
+  },
+  SP: {
+    producao: 'https://nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx',
+    homologacao: 'https://homologacao.nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx',
+  },
+  // SVRS atende a maioria dos estados
+  SVRS: {
+    producao: 'https://nfe.svrs.rs.gov.br/ws/recepcaoEvento/recepcaoEvento4.asmx',
+    homologacao: 'https://nfe-homologacao.svrs.rs.gov.br/ws/recepcaoEvento/recepcaoEvento4.asmx',
+  },
+};
+
+function getEventoUrl(uf: string, ambiente: 1 | 2): string {
+  const key = SEFAZ_EVENTOS_URLS[uf] ? uf : 'SVRS';
+  return ambiente === 1
+    ? SEFAZ_EVENTOS_URLS[key].producao
+    : SEFAZ_EVENTOS_URLS[key].homologacao;
+}
+
+// ── Helpers de XML de Evento ────────────────────────────────────
+
+function gerarXmlEvento(
+  tpEvento: string,
+  xEvento: string,
+  chaveAcesso: string,
+  nSeqEvento: number,
+  nProt: string,
+  xDescEvento: string,
+  camposExtras: string = ''
+): string {
+  const agora = new Date();
+  const dhEvento = agora.toISOString().slice(0, 19) + '-03:00';
+  const cUF = chaveAcesso.slice(0, 2);
+  const cnpj = chaveAcesso.slice(6, 20);
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<envEvento versao="1.00" xmlns="http://www.portalfiscal.inf.br/nfe">
+  <idLote>${Date.now()}</idLote>
+  <evento versao="1.00">
+    <infEvento Id="ID${tpEvento}${chaveAcesso}${String(nSeqEvento).padStart(2, '0')}">
+      <cOrgao>${cUF}</cOrgao>
+      <tpAmb>2</tpAmb>
+      <CNPJ>${cnpj}</CNPJ>
+      <chNFe>${chaveAcesso}</chNFe>
+      <dhEvento>${dhEvento}</dhEvento>
+      <tpEvento>${tpEvento}</tpEvento>
+      <nSeqEvento>${nSeqEvento}</nSeqEvento>
+      <verEvento>1.00</verEvento>
+      <detEvento versao="1.00">
+        <xEvento>${xDescEvento}</xEvento>
+        <nProt>${nProt}</nProt>
+        ${camposExtras}
+      </detEvento>
+    </infEvento>
+  </evento>
+</envEvento>`;
+}
+
+function montarSOAPEvento(xmlEvento: string, uf: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                 xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
+  <soap12:Body>
+    <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">
+      ${xmlEvento}
+    </nfeDadosMsg>
+  </soap12:Body>
+</soap12:Envelope>`;
+}
+
+function parsearRetornoEvento(xmlRetorno: string): { cStat: string; xMotivo: string; nProt?: string } {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlRetorno, 'text/xml');
+  return {
+    cStat: doc.querySelector('cStat')?.textContent || '',
+    xMotivo: doc.querySelector('xMotivo')?.textContent || '',
+    nProt: doc.querySelector('nProt')?.textContent || undefined,
+  };
+}
+
+async function enviarEvento(
+  url: string,
+  xmlEvento: string,
+  uf: string,
+  certificado?: CertificadoDigital
+): Promise<EventoResponse> {
+  try {
+    // Assinar evento se tiver certificado
+    let xmlFinal = xmlEvento;
+    if (certificado) {
+      try {
+        const { privateKey, certificate } = await carregarCertificado(certificado.pfxBase64, certificado.senha);
+        // Para eventos usa-se o mesmo mecanismo de assinatura do infNFe
+        xmlFinal = await assinarXmlNFe(xmlFinal, privateKey, certificate);
+      } catch {
+        // Continua sem assinatura (funciona em homologação)
+      }
+    }
+
+    const soapBody = montarSOAPEvento(xmlFinal, uf);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/soap+xml; charset=utf-8',
+        'SOAPAction': 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEvento',
+      },
+      body: soapBody,
+    });
+
+    if (!res.ok) throw new Error(`SEFAZ HTTP ${res.status}`);
+    const xmlRetorno = await res.text();
+    const retorno = parsearRetornoEvento(xmlRetorno);
+
+    if (retorno.cStat === '135' || retorno.cStat === '136') {
+      return { status: 'sucesso', cStat: retorno.cStat, xMotivo: retorno.xMotivo, nProtocolo: retorno.nProt, xmlRetorno, mensagem: retorno.xMotivo };
+    }
+    return { status: 'rejeitado', cStat: retorno.cStat, xMotivo: retorno.xMotivo, xmlRetorno, mensagem: `Rejeição ${retorno.cStat}: ${retorno.xMotivo}` };
+  } catch (err) {
+    return { status: 'erro', mensagem: err instanceof Error ? err.message : 'Erro ao enviar evento' };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  1. CANCELAMENTO DE NF-e  (tpEvento 110111)
+//     Prazo: até 24h após autorização (ou até o início do transporte)
+//     Motivo: mínimo 15 caracteres
+// ══════════════════════════════════════════════════════════════
+
+export async function cancelarNFe(
+  evento: EventoNFe,
+  uf: string,
+  ambiente: 1 | 2 = 2
+): Promise<EventoResponse> {
+  if (!evento.motivo || evento.motivo.trim().length < 15) {
+    return { status: 'erro', mensagem: 'O motivo do cancelamento deve ter no mínimo 15 caracteres.' };
+  }
+
+  const xmlEvento = gerarXmlEvento(
+    '110111',
+    'Cancelamento',
+    evento.chaveAcesso,
+    1,
+    evento.nProtocolo,
+    'Cancelamento',
+    `<xJust>${evento.motivo.trim()}</xJust>`
+  );
+
+  const url = getEventoUrl(uf, ambiente);
+  const resultado = await enviarEvento(url, xmlEvento, uf, evento.certificado);
+
+  if (resultado.status === 'sucesso') {
+    resultado.mensagem = `✅ NF-e Cancelada! Protocolo: ${resultado.nProtocolo}`;
+  }
+  return resultado;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  2. CARTA DE CORREÇÃO ELETRÔNICA — CC-e  (tpEvento 110110)
+//     Não pode corrigir: destinatário, valor, CFOP, data
+//     Pode corrigir: informações complementares, dados do emitente, etc.
+//     Prazo: até 720h (30 dias)
+//     Máximo: 20 CC-e por NF-e
+// ══════════════════════════════════════════════════════════════
+
+export async function corrigirNFe(
+  cce: CCeNFe,
+  uf: string,
+  ambiente: 1 | 2 = 2
+): Promise<EventoResponse> {
+  if (!cce.xCorrecao || cce.xCorrecao.trim().length < 15) {
+    return { status: 'erro', mensagem: 'A correção deve ter no mínimo 15 caracteres.' };
+  }
+  if (cce.xCorrecao.trim().length > 1000) {
+    return { status: 'erro', mensagem: 'A correção não pode ter mais de 1000 caracteres.' };
+  }
+
+  const nSeq = cce.nSeqEvento || 1;
+  const xmlEvento = gerarXmlEvento(
+    '110110',
+    'Carta de Correcao',
+    cce.chaveAcesso,
+    nSeq,
+    '', // CC-e não usa nProt
+    'Carta de Correcao',
+    `<xCorrecao>${cce.xCorrecao.trim()}</xCorrecao>
+     <xCondUso>A Carta de Correção é disciplinada pelo § 1º-A do art. 7º do Convênio S/N, de 15 de dezembro de 1970 e pode ser utilizada para regularização de erro ocorrido na emissão de documento fiscal, desde que o erro não esteja relacionado com: I - as variáveis que determinam o valor do imposto tais como: base de cálculo, alíquota, diferença de preço, quantidade, valor da operação ou da prestação; II - a correção de dados cadastrais que implique mudança do remetente ou do destinatário; III - a data de emissão ou de saída.</xCondUso>`
+  );
+
+  const url = getEventoUrl(uf, ambiente);
+  const resultado = await enviarEvento(url, xmlEvento, uf, cce.certificado);
+
+  if (resultado.status === 'sucesso') {
+    resultado.mensagem = `✅ Carta de Correção Enviada! Protocolo: ${resultado.nProtocolo}`;
+  }
+  return resultado;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  3. INUTILIZAÇÃO DE NUMERAÇÃO  (NFeInutilizacao4)
+//     Usar quando números foram pulados/não utilizados
+//     Apenas para ambiente de produção após restrições da SEFAZ
+// ══════════════════════════════════════════════════════════════
+
+export async function inutilizarNFe(dados: InutilizacaoNFe): Promise<EventoResponse> {
+  if (!dados.justificativa || dados.justificativa.trim().length < 15) {
+    return { status: 'erro', mensagem: 'A justificativa deve ter no mínimo 15 caracteres.' };
+  }
+
+  const ano = dados.ano || new Date().getFullYear();
+  const cnpjSoDigitos = dados.cnpj.replace(/\D/g, '');
+  const cUF = dados.uf === 'DF' ? '53' : '35'; // Simplificado; em produção usar tabela IBGE
+
+  const id = `ID${cUF}${String(ano).slice(2)}${cnpjSoDigitos}${dados.serie.padStart(3,'0')}${String(dados.nNFIni).padStart(9,'0')}${String(dados.nNFFin).padStart(9,'0')}`;
+
+  const xmlInut = `<?xml version="1.0" encoding="UTF-8"?>
+<inutNFe versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe">
+  <infInut Id="${id}">
+    <tpAmb>${dados.ambiente}</tpAmb>
+    <xServ>INUTILIZAR</xServ>
+    <cUF>${cUF}</cUF>
+    <ano>${String(ano).slice(2)}</ano>
+    <CNPJ>${cnpjSoDigitos}</CNPJ>
+    <mod>55</mod>
+    <serie>${dados.serie.padStart(3,'0')}</serie>
+    <nNFIni>${dados.nNFIni}</nNFIni>
+    <nNFFin>${dados.nNFFin}</nNFFin>
+    <xJust>${dados.justificativa.trim()}</xJust>
+  </infInut>
+</inutNFe>`;
+
+  try {
+    const urlBase = dados.uf === 'DF'
+      ? (dados.ambiente === 1 ? 'https://nfe.fazenda.df.gov.br/ws/NfeInutilizacao4.asmx' : 'https://nfe-homologacao.fazenda.df.gov.br/ws/NfeInutilizacao4.asmx')
+      : (dados.ambiente === 1 ? 'https://nfe.svrs.rs.gov.br/ws/nfeInutilizacao/nfeInutilizacao4.asmx' : 'https://nfe-homologacao.svrs.rs.gov.br/ws/nfeInutilizacao/nfeInutilizacao4.asmx');
+
+    const soap = `<?xml version="1.0" encoding="UTF-8"?>
+<soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                 xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
+  <soap12:Body>
+    <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeInutilizacao4">
+      ${xmlInut}
+    </nfeDadosMsg>
+  </soap12:Body>
+</soap12:Envelope>`;
+
+    const res = await fetch(urlBase, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
+      body: soap,
+    });
+
+    if (!res.ok) throw new Error(`SEFAZ HTTP ${res.status}`);
+    const xmlRetorno = await res.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlRetorno, 'text/xml');
+    const cStat = doc.querySelector('cStat')?.textContent || '';
+    const xMotivo = doc.querySelector('xMotivo')?.textContent || '';
+    const nProt = doc.querySelector('nProt')?.textContent || undefined;
+
+    if (cStat === '102') {
+      return { status: 'sucesso', cStat, xMotivo, nProtocolo: nProt, xmlRetorno, mensagem: `✅ Inutilização registrada! Protocolo: ${nProt}` };
+    }
+    return { status: 'rejeitado', cStat, xMotivo, xmlRetorno, mensagem: `Rejeição ${cStat}: ${xMotivo}` };
+  } catch (err) {
+    return { status: 'erro', mensagem: err instanceof Error ? err.message : 'Erro ao inutilizar' };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  4. CONSULTA DE STATUS DE NF-e  (NFeConsultaProtocolo4)
+// ══════════════════════════════════════════════════════════════
+
+export async function consultarNFe(
+  chaveAcesso: string,
+  uf: string,
+  ambiente: 1 | 2 = 2
+): Promise<EventoResponse> {
+  if (!chaveAcesso || chaveAcesso.replace(/\D/g, '').length !== 44) {
+    return { status: 'erro', mensagem: 'Chave de acesso inválida (deve ter 44 dígitos).' };
+  }
+
+  const chave = chaveAcesso.replace(/\D/g, '');
+  const urlConsulta = uf === 'DF'
+    ? (ambiente === 1 ? 'https://nfe.fazenda.df.gov.br/ws/NfeConsulta4.asmx' : 'https://nfe-homologacao.fazenda.df.gov.br/ws/NfeConsulta4.asmx')
+    : (ambiente === 1 ? 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NFeConsultaProtocolo4.asmx' : 'https://nfe-homologacao.svrs.rs.gov.br/ws/NfeConsulta/NFeConsultaProtocolo4.asmx');
+
+  const xmlConsulta = `<?xml version="1.0" encoding="UTF-8"?>
+<consSitNFe versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe">
+  <tpAmb>${ambiente}</tpAmb>
+  <xServ>CONSULTAR</xServ>
+  <chNFe>${chave}</chNFe>
+</consSitNFe>`;
+
+  const soap = `<?xml version="1.0" encoding="UTF-8"?>
+<soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                 xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
+  <soap12:Body>
+    <nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4">
+      ${xmlConsulta}
+    </nfeDadosMsg>
+  </soap12:Body>
+</soap12:Envelope>`;
+
+  try {
+    const res = await fetch(urlConsulta, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
+      body: soap,
+    });
+
+    if (!res.ok) throw new Error(`SEFAZ HTTP ${res.status}`);
+    const xmlRetorno = await res.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlRetorno, 'text/xml');
+    const cStat = doc.querySelector('cStat')?.textContent || '';
+    const xMotivo = doc.querySelector('xMotivo')?.textContent || '';
+    const nProt = doc.querySelector('nProt')?.textContent || undefined;
+
+    // cStat 100 = Autorizado, 101 = Cancelada, 110/301 = Outros
+    const descStatus: Record<string, string> = {
+      '100': '✅ Autorizada de Uso',
+      '101': '🚫 Cancelada',
+      '110': '⚠️ Uso Denegado',
+      '301': '⚠️ Uso Denegado (irregularidade fiscal do emitente)',
+      '302': '⚠️ Uso Denegado (irregularidade fiscal do destinatário)',
+    };
+
+    return {
+      status: 'sucesso',
+      cStat,
+      xMotivo,
+      nProtocolo: nProt,
+      xmlRetorno,
+      mensagem: `${descStatus[cStat] || `Status ${cStat}`}: ${xMotivo}`,
+    };
+  } catch (err) {
+    return { status: 'erro', mensagem: err instanceof Error ? err.message : 'Erro ao consultar' };
+  }
+}
+
