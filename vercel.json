@@ -2,7 +2,11 @@
   "rewrites": [
     {
       "source": "/pncp-api/:path*",
-      "destination": "https://pncp.gov.br/:path*"
+      "destination": "/api/pncp?path=:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
