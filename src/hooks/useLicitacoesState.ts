@@ -12,9 +12,23 @@ import { LicitacaoExtra, defaultExtra } from '../components/licitacoes/Licitacao
 
 export type EtapaLicitacao = 'captacao' | 'analise' | 'proposta' | 'disputa' | 'ganha';
 
+export interface LicitacaoManualData {
+  titulo: string;
+  orgao: string;
+  numeroEdital: string;
+  modalidade: string;
+  objeto: string;
+  dataAbertura?: string;
+  dataEncerramento?: string;
+  valorEstimado?: number;
+  observacoes?: string;
+}
+
 export interface LicitacaoTracked extends ContratacaoPNCP {
   etapa: EtapaLicitacao;
-  adicionadoEm: string; // ISO string
+  adicionadoEm: string;
+  manual?: boolean;
+  manualData?: LicitacaoManualData;
 }
 
 // ── Chaves de localStorage ─────────────────────────────────────────
@@ -132,6 +146,40 @@ export function useLicitacoesState() {
     }).length,
   };
 
+  /** Adiciona uma licitação manualmente (sem PNCP) */
+  const adicionarManual = useCallback((
+    data: LicitacaoManualData,
+    etapa: EtapaLicitacao = 'captacao'
+  ) => {
+    const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const nova: LicitacaoTracked = {
+      numeroControlePNCP: id,
+      orgaoEntidade: { cnpj: '', razaoSocial: data.orgao, poderId: '', esferaId: '' },
+      unidadeOrgao: { ufNome: '', ufSigla: '', municipioNome: '', codigoUnidade: '', nomeUnidade: data.orgao },
+      modalidadeId: 6,
+      modalidadeNome: data.modalidade || 'Pregão Eletrônico',
+      objetoCompra: data.objeto || data.titulo,
+      informacaoComplementar: data.observacoes,
+      dataPublicacaoPncp: new Date().toISOString(),
+      dataEncerramentoProposta: data.dataEncerramento,
+      dataAberturaProposta: data.dataAbertura,
+      valorTotalEstimado: data.valorEstimado ?? undefined,
+      situacaoCompraNome: 'Manual',
+      sequencialCompra: 0,
+      anoCompra: new Date().getFullYear(),
+      etapa,
+      adicionadoEm: new Date().toISOString(),
+      manual: true,
+      manualData: data,
+    };
+    setTracked(prev => [nova, ...prev]);
+    setExtras(prev => ({
+      ...prev,
+      [id]: { ...defaultExtra(), numeroPregao: data.numeroEdital },
+    }));
+    return id;
+  }, []);
+
   return {
     tracked,
     extras,
@@ -141,6 +189,7 @@ export function useLicitacoesState() {
     isTracked,
     moverEtapa,
     removerTracked,
+    adicionarManual,
     stats,
   };
 }

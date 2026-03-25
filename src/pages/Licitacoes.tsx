@@ -18,7 +18,7 @@ import {
 } from '../services/LicitacoesService';
 import { LicitacaoWorkspace } from '../components/licitacoes/LicitacaoWorkspace';
 import {
-  useLicitacoesState, EtapaLicitacao, LicitacaoTracked,
+  useLicitacoesState, EtapaLicitacao, LicitacaoTracked, LicitacaoManualData,
 } from '../hooks/useLicitacoesState';
 
 // ── Constantes ─────────────────────────────────────────────────────
@@ -233,7 +233,7 @@ export const Licitacoes: React.FC = () => {
   // ── Estado persistente (hook) ────────────────────────────────────
   const {
     tracked, extras, getExtra, setExtra,
-    acompanhar, isTracked, moverEtapa, removerTracked, stats,
+    acompanhar, isTracked, moverEtapa, removerTracked, adicionarManual, stats,
   } = useLicitacoesState();
 
   // ── Estado de busca ──────────────────────────────────────────────
@@ -253,6 +253,10 @@ export const Licitacoes: React.FC = () => {
   // ── Estado de UI ─────────────────────────────────────────────────
   const [workspaceAberto,   setWorkspaceAberto]   = useState<LicitacaoTracked | null>(null);
   const [detalheItem,       setDetalheItem]       = useState<ContratacaoPNCP | null>(null);
+  const [modalManualAberto, setModalManualAberto] = useState(false);
+  const [formManual,        setFormManual]        = useState<LicitacaoManualData>({
+    titulo: '', orgao: '', numeroEdital: '', modalidade: 'Pregão Eletrônico', objeto: '',
+  });
   const inputRef = useRef<HTMLInputElement>(null);
 
   // ── Busca ────────────────────────────────────────────────────────
@@ -548,19 +552,24 @@ export const Licitacoes: React.FC = () => {
               <ClipboardList size={48} className="mb-4 opacity-20" />
               <p className="text-lg font-semibold">Nenhuma licitação sendo acompanhada</p>
               <p className="text-sm mt-1">
-                Vá até <strong>Buscar Oportunidades</strong> e clique em <strong>Acompanhar</strong>
+                Vá até <strong>Buscar Oportunidades</strong> e clique em <strong>Acompanhar</strong>,<br />
+                ou adicione uma licitação manualmente abaixo.
               </p>
-              <button
-                onClick={() => setAba('busca')}
-                className="mt-4 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700"
-              >
-                <Search size={15} /> Buscar Licitações
-              </button>
+              <div className="flex gap-3 mt-4">
+                <button onClick={() => setAba('busca')}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">
+                  <Search size={15} /> Buscar no PNCP
+                </button>
+                <button onClick={() => setModalManualAberto(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700">
+                  <Plus size={15} /> Adicionar Manualmente
+                </button>
+              </div>
             </div>
           ) : (
             <>
-              {/* Mini stats no topo do kanban */}
-              <div className="flex gap-3 mb-4 flex-wrap">
+              {/* Mini stats + botão manual */}
+              <div className="flex gap-3 mb-4 flex-wrap items-center">
                 <span className="text-xs bg-white border border-slate-200 rounded-full px-3 py-1 text-slate-600 font-medium">
                   Total: <strong>{stats.total}</strong>
                 </span>
@@ -575,6 +584,12 @@ export const Licitacoes: React.FC = () => {
                 <span className="text-xs bg-indigo-50 border border-indigo-200 rounded-full px-3 py-1 text-indigo-700 font-medium">
                   Valor total: <strong>{formatarMoeda(stats.valorTotal)}</strong>
                 </span>
+                <div className="ml-auto">
+                  <button onClick={() => setModalManualAberto(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition shadow-sm">
+                    <Plus size={13} /> Adicionar Licitação Manual
+                  </button>
+                </div>
               </div>
 
               {/* Colunas do Kanban */}
@@ -692,6 +707,112 @@ export const Licitacoes: React.FC = () => {
           onAcompanhar={() => acompanhar(detalheItem)}
           acompanhando={isTracked(detalheItem.numeroControlePNCP)}
         />
+      )}
+
+      {/* ── Modal: Adicionar Licitação Manual ── */}
+      {modalManualAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="px-6 pt-5 pb-3 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-emerald-600 font-bold uppercase tracking-wide">Licitação Manual</p>
+                <h2 className="text-base font-bold text-slate-900">Adicionar ao Kanban</h2>
+              </div>
+              <button onClick={() => setModalManualAberto(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+
+            <div className="p-6 space-y-3 max-h-[70vh] overflow-y-auto">
+              {/* Título / Objeto */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Título da Licitação *</label>
+                <input value={formManual.titulo} onChange={e => setFormManual(p => ({ ...p, titulo: e.target.value }))}
+                  placeholder="Ex: Pregão para aquisição de portões metálicos"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Objeto / Descrição</label>
+                <textarea value={formManual.objeto} onChange={e => setFormManual(p => ({ ...p, objeto: e.target.value }))}
+                  rows={2} placeholder="Descrição detalhada do objeto..."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none" />
+              </div>
+
+              {/* Órgão + Nº Edital */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Órgão Licitante *</label>
+                  <input value={formManual.orgao} onChange={e => setFormManual(p => ({ ...p, orgao: e.target.value }))}
+                    placeholder="Ex: Prefeitura de Brasília"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Nº do Edital</label>
+                  <input value={formManual.numeroEdital} onChange={e => setFormManual(p => ({ ...p, numeroEdital: e.target.value }))}
+                    placeholder="Ex: PE 045/2026"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {/* Modalidade + Valor */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Modalidade</label>
+                  <select value={formManual.modalidade} onChange={e => setFormManual(p => ({ ...p, modalidade: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+                    {Object.values({ 6: 'Pregão Eletrônico', 7: 'Pregão Presencial', 8: 'Dispensa Eletrônica', 4: 'Concorrência', 5: 'Concorrência Eletrônica', 9: 'Inexigibilidade', 3: 'Concurso', 12: 'Credenciamento' }).map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Valor Estimado (R$)</label>
+                  <input type="number" value={formManual.valorEstimado ?? ''} onChange={e => setFormManual(p => ({ ...p, valorEstimado: parseFloat(e.target.value) || undefined }))}
+                    placeholder="0,00"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {/* Datas */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Data de Abertura</label>
+                  <input type="date" value={formManual.dataAbertura ?? ''} onChange={e => setFormManual(p => ({ ...p, dataAbertura: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Data de Encerramento</label>
+                  <input type="date" value={formManual.dataEncerramento ?? ''} onChange={e => setFormManual(p => ({ ...p, dataEncerramento: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {/* Observações */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Observações</label>
+                <textarea value={formManual.observacoes ?? ''} onChange={e => setFormManual(p => ({ ...p, observacoes: e.target.value }))}
+                  rows={2} placeholder="Notas internas, pontos de atenção..."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none" />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
+              <button onClick={() => setModalManualAberto(false)}
+                className="px-4 py-2 border border-slate-300 rounded-lg text-sm hover:bg-slate-50">
+                Cancelar
+              </button>
+              <button
+                disabled={!formManual.titulo || !formManual.orgao}
+                onClick={() => {
+                  adicionarManual(formManual);
+                  setModalManualAberto(false);
+                  setFormManual({ titulo: '', orgao: '', numeroEdital: '', modalidade: 'Pregão Eletrônico', objeto: '' });
+                  setAba('gestao');
+                }}
+                className="px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 disabled:opacity-50 transition">
+                Adicionar ao Kanban
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
