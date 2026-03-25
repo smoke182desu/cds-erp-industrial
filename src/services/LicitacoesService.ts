@@ -174,8 +174,9 @@ export async function buscarLicitacoes(params: BuscaPNCPParams): Promise<Resulta
     tam_pagina: String(fetchSize),
   });
 
-  if (params.q?.trim())      qs.set('q', params.q.trim());
-  if (params.apenasAbertas)  qs.set('status', 'recebendo_proposta');
+  if (params.q?.trim())       qs.set('q', params.q.trim());
+  if (params.apenasAbertas)   qs.set('status', 'recebendo_proposta');
+  if (params.modalidadeId)    qs.set('modalidades', String(params.modalidadeId));  // server-side ✅
 
   try {
     const res = await fetch(`${PNCP_BASE}/api/search/?${qs}`, {
