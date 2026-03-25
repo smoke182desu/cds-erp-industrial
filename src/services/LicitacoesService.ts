@@ -95,7 +95,7 @@ function mapSearchItem(item: SearchItemPNCP): ContratacaoPNCP {
     dataEncerramentoProposta: item.data_fim_vigencia,  // campo real
     valorTotalEstimado: item.valor_global,              // campo real
     situacaoCompraNome: item.situacao_nome || 'Divulgada no PNCP',
-    linkSistemaOrigem: `https://pncp.gov.br${item.item_url}`,
+    linkSistemaOrigem: `https://pncp.gov.br/app/editais/${item.orgao_cnpj}/${item.ano}/${item.numero_sequencial}`,
     sequencialCompra: seq,
     anoCompra: ano,
   };
