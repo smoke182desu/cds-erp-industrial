@@ -164,18 +164,18 @@ export const PALAVRAS_CHAVE_SUGERIDAS = [
 
 export async function buscarLicitacoes(params: BuscaPNCPParams): Promise<ResultadoBuscaPNCP> {
   const pagina = params.pagina ?? 1;
-  // Se UF filtrada, busca mais itens para compensar filtro client-side
-  const fetchSize = params.uf ? Math.min(100, (params.tamanhoPagina ?? 20) * 5) : (params.tamanhoPagina ?? 20);
+  const pageSize = params.tamanhoPagina ?? 20;
 
   const qs = new URLSearchParams({
     path: 'api/search/',
     tipos_documento: 'edital',
     ordenacao: '-data',
-    pagina: String(params.uf ? 1 : pagina),  // Always page 1 when UF filter active
-    tam_pagina: String(fetchSize),
+    pagina: String(pagina),
+    tam_pagina: String(pageSize),
   });
 
   if (params.q?.trim()) qs.set('q', params.q.trim());
+  if (params.uf) qs.set('ufs', params.uf.toUpperCase());
   
   // A API do PNCP exige o filtro 'status' na busca.
   if (params.apenasAbertas) {
@@ -194,21 +194,11 @@ export async function buscarLicitacoes(params: BuscaPNCPParams): Promise<Resulta
     if (!res.ok) throw new Error(`PNCP HTTP ${res.status}`);
 
     const json = await res.json();
-    let items: SearchItemPNCP[] = json.items ?? [];
-    let total: number = json.total ?? json.count ?? items.length;
-
-    // Filtro client-side por UF (API não suporta server-side)
-    if (params.uf) {
-      items = items.filter(it => (it.uf || '').toUpperCase() === params.uf!.toUpperCase());
-      total = items.length;
-    }
-
-    const pageSize = params.tamanhoPagina ?? 20;
-    const start = params.uf ? 0 : 0;  // já está na página certa
-    const pageItems = items.slice(start, start + pageSize);
+    const items: SearchItemPNCP[] = json.items ?? [];
+    const total: number = json.total ?? json.count ?? items.length;
 
     return {
-      data: pageItems.map(mapSearchItem),
+      data: items.map(mapSearchItem),
       totalRegistros: total,
       totalPaginas: Math.max(1, Math.ceil(total / pageSize)),
       paginaAtual: pagina,
