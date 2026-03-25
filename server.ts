@@ -139,11 +139,14 @@ async function startServer() {
   });
 
   // --- PROXY PNCP (Portal Nacional de Contratações Públicas) ---
-  // Endpoint de busca: pncp.gov.br/api/search/?tipos_documento=edital
-  // O domínio api.pncp.gov.br não resolve — usar pncp.gov.br diretamente
-  app.get("/pncp-api/*", async (req, res) => {
-    const pncpPath = req.originalUrl.replace("/pncp-api", "");
-    const targetUrl = `https://pncp.gov.br${pncpPath}`;
+  app.get("/api/pncp", async (req, res) => {
+    const basePath = (req.query.path as string) || '';
+    const qsObj = { ...req.query };
+    delete qsObj.path;
+    const qs = new URLSearchParams(qsObj as Record<string, string>).toString();
+    const normalizedPath = basePath.endsWith('/') ? basePath : `${basePath}/`;
+    const targetUrl = `https://pncp.gov.br/${normalizedPath}${qs ? `?${qs}` : ''}`;
+
     try {
       const response = await axios.get(targetUrl, {
         headers: { "Accept": "application/json" },
@@ -157,6 +160,7 @@ async function startServer() {
       res.status(status).json(data);
     }
   });
+
 
   // --- Project Routes ---
   app.get("/api/projects", (req, res) => {

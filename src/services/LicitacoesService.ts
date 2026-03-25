@@ -6,8 +6,8 @@
 //  Em dev/produção: requisições via proxy Express /pncp-api/* → pncp.gov.br/*
 // ══════════════════════════════════════════════════════════════
 
-// O proxy no server.ts redireciona /pncp-api/* → https://pncp.gov.br/*
-const PNCP_BASE = '/pncp-api';
+// O proxy no server.ts ou Vercel Serverless Function atende em /api/pncp
+const PNCP_BASE = '/api/pncp';
 
 // ── Resposta da API de busca PNCP ───────────────────────────────
 
@@ -168,18 +168,27 @@ export async function buscarLicitacoes(params: BuscaPNCPParams): Promise<Resulta
   const fetchSize = params.uf ? Math.min(100, (params.tamanhoPagina ?? 20) * 5) : (params.tamanhoPagina ?? 20);
 
   const qs = new URLSearchParams({
+    path: 'api/search/',
     tipos_documento: 'edital',
     ordenacao: '-data',
     pagina: String(params.uf ? 1 : pagina),  // Always page 1 when UF filter active
     tam_pagina: String(fetchSize),
   });
 
-  if (params.q?.trim())       qs.set('q', params.q.trim());
-  if (params.apenasAbertas)   qs.set('status', 'recebendo_proposta');
-  if (params.modalidadeId)    qs.set('modalidades', String(params.modalidadeId));  // server-side ✅
+  if (params.q?.trim()) qs.set('q', params.q.trim());
+  
+  // A API do PNCP exige o filtro 'status' na busca.
+  if (params.apenasAbertas) {
+    qs.set('status', 'recebendo_proposta');
+  } else {
+    // Para buscar todos, passamos todas as situações válidas.
+    qs.set('status', 'recebendo_proposta,encerrado,suspenso,revogado,anulado');
+  }
+
+  if (params.modalidadeId) qs.set('modalidades', String(params.modalidadeId));
 
   try {
-    const res = await fetch(`${PNCP_BASE}/api/search/?${qs}`, {
+    const res = await fetch(`${PNCP_BASE}?${qs}`, {
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) throw new Error(`PNCP HTTP ${res.status}`);
