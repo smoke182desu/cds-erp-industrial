@@ -11,6 +11,15 @@ export default defineConfig(({mode}) => {
       hmr: {
         overlay: false,
       },
+      proxy: {
+        // Proxy para contornar CORS da API do PNCP
+        '/pncp-api': {
+          target: 'https://api.pncp.gov.br',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/pncp-api/, ''),
+          secure: true,
+        },
+      },
     },
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),

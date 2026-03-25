@@ -1,10 +1,13 @@
 // ══════════════════════════════════════════════════════════════
 //  LicitacoesService.ts
 //  Integração com o Portal Nacional de Contratações Públicas (PNCP)
-//  API pública e gratuita: https://api.pncp.gov.br
+//  API pública: https://api.pncp.gov.br
+//  Em dev: requisições vão para /pncp-api/* (proxy Vite → api.pncp.gov.br)
 // ══════════════════════════════════════════════════════════════
 
-const PNCP_BASE = 'https://api.pncp.gov.br';
+// Usa proxy local em dev para evitar CORS.
+// Em produção (Vercel) configure rewrite no vercel.json ou use um backend.
+const PNCP_BASE = '/pncp-api';
 
 // ── Tipos retornados pela API PNCP ──────────────────────────────
 
