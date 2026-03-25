@@ -13,27 +13,27 @@ const PNCP_BASE = '/pncp-api';
 
 export interface SearchItemPNCP {
   id: string;
-  numero_controle_pncp: string;    // Ex: "10091502000129-1-000013/2026"
-  title: string;                   // Título do edital
-  description: string;             // Objeto/descrição
-  item_url: string;                // Ex: "/compras/cnpj/2026/13"
-  document_type: string;           // "edital" | "contrato" | "ata"
-  createdAt: string;               // ISO
+  numero_controle_pncp: string;
+  title: string;
+  description: string;
+  item_url: string;
+  document_type: string;
+  createdAt: string;
   ano: string;
   numero_sequencial: string;
   orgao_cnpj: string;
   orgao_nome: string;
   unidade_nome: string;
-  esfera_nome: string;             // "Federal" | "Estadual" | "Municipal"
-  // Campos opcionais (nem sempre presentes)
-  uf_nome?: string;
-  municipio_nome?: string;
-  modalidade_nome?: string;
-  modalidade_id?: number;
-  valor_total_estimado?: number;
-  data_encerramento_proposta?: string;
+  esfera_nome: string;
+  uf: string;                        // "SP", "MG", "RJ" etc — campo real da API
+  municipio_nome: string;
+  modalidade_licitacao_id?: string;
+  modalidade_licitacao_nome?: string;
+  valor_global?: number;             // Campo real para valor estimado
   data_publicacao_pncp?: string;
-  situacao_compra_nome?: string;
+  data_fim_vigencia?: string;        // Campo real para encerramento proposta
+  situacao_nome?: string;
+  cancelado?: boolean;
 }
 
 // Interface normalizada usada nos componentes (mantida p/ compatibilidade)
@@ -67,13 +67,11 @@ export interface ContratacaoPNCP {
   anoCompra: number;
 }
 
-// Converte SearchItemPNCP → ContratacaoPNCP (para compatibilidade com os componentes)
+// Converte SearchItemPNCP → ContratacaoPNCP
 function mapSearchItem(item: SearchItemPNCP): ContratacaoPNCP {
-  // Extrai UF de uf_nome se disponível
-  const ufSigla = item.uf_nome?.slice(0, 2).toUpperCase() || '';
   const seq = parseInt(item.numero_sequencial || '0');
   const ano = parseInt(item.ano || '2026');
-
+  const modalId = parseInt(item.modalidade_licitacao_id || '6');
   return {
     numeroControlePNCP: item.numero_controle_pncp || item.id,
     orgaoEntidade: {
@@ -83,20 +81,20 @@ function mapSearchItem(item: SearchItemPNCP): ContratacaoPNCP {
       esferaId: item.esfera_nome?.charAt(0) || '',
     },
     unidadeOrgao: {
-      ufNome: item.uf_nome || '',
-      ufSigla,
+      ufNome: item.uf || '',
+      ufSigla: item.uf || '',          // campo real: "SP", "MG" etc
       municipioNome: item.municipio_nome || '',
       codigoUnidade: '',
       nomeUnidade: item.unidade_nome || '',
     },
-    modalidadeId: item.modalidade_id || 6,
-    modalidadeNome: item.modalidade_nome || 'Pregão Eletrônico',
+    modalidadeId: modalId,
+    modalidadeNome: item.modalidade_licitacao_nome || MODALIDADES[modalId] || 'Pregão Eletrônico',
     objetoCompra: item.title || item.description || '',
     informacaoComplementar: item.description,
     dataPublicacaoPncp: item.data_publicacao_pncp || item.createdAt || '',
-    dataEncerramentoProposta: item.data_encerramento_proposta,
-    valorTotalEstimado: item.valor_total_estimado,
-    situacaoCompraNome: item.situacao_compra_nome || 'Recebendo Proposta',
+    dataEncerramentoProposta: item.data_fim_vigencia,  // campo real
+    valorTotalEstimado: item.valor_global,              // campo real
+    situacaoCompraNome: item.situacao_nome || 'Divulgada no PNCP',
     linkSistemaOrigem: `https://pncp.gov.br${item.item_url}`,
     sequencialCompra: seq,
     anoCompra: ano,
@@ -166,36 +164,43 @@ export const PALAVRAS_CHAVE_SUGERIDAS = [
 
 export async function buscarLicitacoes(params: BuscaPNCPParams): Promise<ResultadoBuscaPNCP> {
   const pagina = params.pagina ?? 1;
-  const tamanhoPagina = params.tamanhoPagina ?? 20;
+  // Se UF filtrada, busca mais itens para compensar filtro client-side
+  const fetchSize = params.uf ? Math.min(100, (params.tamanhoPagina ?? 20) * 5) : (params.tamanhoPagina ?? 20);
 
   const qs = new URLSearchParams({
     tipos_documento: 'edital',
     ordenacao: '-data',
-    pagina: String(pagina),
-    tam_pagina: String(tamanhoPagina),
+    pagina: String(params.uf ? 1 : pagina),  // Always page 1 when UF filter active
+    tam_pagina: String(fetchSize),
   });
 
   if (params.q?.trim())      qs.set('q', params.q.trim());
   if (params.apenasAbertas)  qs.set('status', 'recebendo_proposta');
 
-  // Filtro de UF (o search API aceita uf via query)
-  if (params.uf) qs.set('uf', params.uf);
-
   try {
     const res = await fetch(`${PNCP_BASE}/api/search/?${qs}`, {
       headers: { Accept: 'application/json' },
     });
-
     if (!res.ok) throw new Error(`PNCP HTTP ${res.status}`);
 
     const json = await res.json();
-    const items: SearchItemPNCP[] = json.items ?? [];
-    const total: number = json.total ?? json.count ?? items.length;
+    let items: SearchItemPNCP[] = json.items ?? [];
+    let total: number = json.total ?? json.count ?? items.length;
+
+    // Filtro client-side por UF (API não suporta server-side)
+    if (params.uf) {
+      items = items.filter(it => (it.uf || '').toUpperCase() === params.uf!.toUpperCase());
+      total = items.length;
+    }
+
+    const pageSize = params.tamanhoPagina ?? 20;
+    const start = params.uf ? 0 : 0;  // já está na página certa
+    const pageItems = items.slice(start, start + pageSize);
 
     return {
-      data: items.map(mapSearchItem),
+      data: pageItems.map(mapSearchItem),
       totalRegistros: total,
-      totalPaginas: Math.max(1, Math.ceil(total / tamanhoPagina)),
+      totalPaginas: Math.max(1, Math.ceil(total / pageSize)),
       paginaAtual: pagina,
     };
   } catch (err) {
