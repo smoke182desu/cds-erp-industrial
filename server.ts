@@ -139,10 +139,11 @@ async function startServer() {
   });
 
   // --- PROXY PNCP (Portal Nacional de Contratações Públicas) ---
-  // Necessário pois o browser bloqueia chamadas cross-origin diretas ao api.pncp.gov.br
+  // Endpoint de busca: pncp.gov.br/api/search/?tipos_documento=edital
+  // O domínio api.pncp.gov.br não resolve — usar pncp.gov.br diretamente
   app.get("/pncp-api/*", async (req, res) => {
     const pncpPath = req.originalUrl.replace("/pncp-api", "");
-    const targetUrl = `https://api.pncp.gov.br${pncpPath}`;
+    const targetUrl = `https://pncp.gov.br${pncpPath}`;
     try {
       const response = await axios.get(targetUrl, {
         headers: { "Accept": "application/json" },

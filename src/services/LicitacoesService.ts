@@ -1,18 +1,44 @@
 // ══════════════════════════════════════════════════════════════
 //  LicitacoesService.ts
 //  Integração com o Portal Nacional de Contratações Públicas (PNCP)
-//  API pública: https://api.pncp.gov.br
-//  Em dev: requisições vão para /pncp-api/* (proxy Vite → api.pncp.gov.br)
+//  Endpoint de busca: https://pncp.gov.br/api/search/
+//
+//  Em dev/produção: requisições via proxy Express /pncp-api/* → pncp.gov.br/*
 // ══════════════════════════════════════════════════════════════
 
-// Usa proxy local em dev para evitar CORS.
-// Em produção (Vercel) configure rewrite no vercel.json ou use um backend.
+// O proxy no server.ts redireciona /pncp-api/* → https://pncp.gov.br/*
 const PNCP_BASE = '/pncp-api';
 
-// ── Tipos retornados pela API PNCP ──────────────────────────────
+// ── Resposta da API de busca PNCP ───────────────────────────────
 
+export interface SearchItemPNCP {
+  id: string;
+  numero_controle_pncp: string;    // Ex: "10091502000129-1-000013/2026"
+  title: string;                   // Título do edital
+  description: string;             // Objeto/descrição
+  item_url: string;                // Ex: "/compras/cnpj/2026/13"
+  document_type: string;           // "edital" | "contrato" | "ata"
+  createdAt: string;               // ISO
+  ano: string;
+  numero_sequencial: string;
+  orgao_cnpj: string;
+  orgao_nome: string;
+  unidade_nome: string;
+  esfera_nome: string;             // "Federal" | "Estadual" | "Municipal"
+  // Campos opcionais (nem sempre presentes)
+  uf_nome?: string;
+  municipio_nome?: string;
+  modalidade_nome?: string;
+  modalidade_id?: number;
+  valor_total_estimado?: number;
+  data_encerramento_proposta?: string;
+  data_publicacao_pncp?: string;
+  situacao_compra_nome?: string;
+}
+
+// Interface normalizada usada nos componentes (mantida p/ compatibilidade)
 export interface ContratacaoPNCP {
-  numeroControlePNCP: string;          // ID único PNCP
+  numeroControlePNCP: string;
   orgaoEntidade: {
     cnpj: string;
     razaoSocial: string;
@@ -30,25 +56,64 @@ export interface ContratacaoPNCP {
   modalidadeNome: string;
   objetoCompra: string;
   informacaoComplementar?: string;
-  dataPublicacaoPncp: string;          // ISO Date
+  dataPublicacaoPncp: string;
   dataAberturaProposta?: string;
   dataEncerramentoProposta?: string;
   valorTotalEstimado?: number;
   valorTotalHomologado?: number;
-  situacaoCompraNome: string;          // "Divulgada no PNCP" | "Encerrada" | etc.
+  situacaoCompraNome: string;
   linkSistemaOrigem?: string;
   sequencialCompra: number;
   anoCompra: number;
 }
 
+// Converte SearchItemPNCP → ContratacaoPNCP (para compatibilidade com os componentes)
+function mapSearchItem(item: SearchItemPNCP): ContratacaoPNCP {
+  // Extrai UF de uf_nome se disponível
+  const ufSigla = item.uf_nome?.slice(0, 2).toUpperCase() || '';
+  const seq = parseInt(item.numero_sequencial || '0');
+  const ano = parseInt(item.ano || '2026');
+
+  return {
+    numeroControlePNCP: item.numero_controle_pncp || item.id,
+    orgaoEntidade: {
+      cnpj: item.orgao_cnpj || '',
+      razaoSocial: item.orgao_nome || '',
+      poderId: '',
+      esferaId: item.esfera_nome?.charAt(0) || '',
+    },
+    unidadeOrgao: {
+      ufNome: item.uf_nome || '',
+      ufSigla,
+      municipioNome: item.municipio_nome || '',
+      codigoUnidade: '',
+      nomeUnidade: item.unidade_nome || '',
+    },
+    modalidadeId: item.modalidade_id || 6,
+    modalidadeNome: item.modalidade_nome || 'Pregão Eletrônico',
+    objetoCompra: item.title || item.description || '',
+    informacaoComplementar: item.description,
+    dataPublicacaoPncp: item.data_publicacao_pncp || item.createdAt || '',
+    dataEncerramentoProposta: item.data_encerramento_proposta,
+    valorTotalEstimado: item.valor_total_estimado,
+    situacaoCompraNome: item.situacao_compra_nome || 'Recebendo Proposta',
+    linkSistemaOrigem: `https://pncp.gov.br${item.item_url}`,
+    sequencialCompra: seq,
+    anoCompra: ano,
+  };
+}
+
+// ── Tipos de parâmetros de busca ────────────────────────────────
+
 export interface BuscaPNCPParams {
-  q?: string;                          // Palavra-chave no objeto
-  uf?: string;                         // Ex: "DF", "SP"
-  dataInicial?: string;                // YYYY-MM-DD
+  q?: string;
+  uf?: string;
+  dataInicial?: string;
   dataFinal?: string;
-  modalidadeId?: number;               // 6 = Pregão Eletrônico, etc.
+  modalidadeId?: number;
   pagina?: number;
   tamanhoPagina?: number;
+  apenasAbertas?: boolean;
 }
 
 export interface ResultadoBuscaPNCP {
@@ -85,69 +150,52 @@ export const UFS_BR = [
   'RO','RR','RS','SC','SE','SP','TO',
 ];
 
-// ── Palavras-chave sugeridas para metalurgia/construção ────────
+// ── Palavras-chave sugeridas para metalurgia ────────────────────
 
 export const PALAVRAS_CHAVE_SUGERIDAS = [
   'portão metálico', 'estrutura metálica', 'galpão', 'grade de ferro',
   'escada metálica', 'cobertura metálica', 'mezanino', 'guarda-corpo',
   'corrimão', 'cerca metálica', 'tela soldada', 'telha metálica',
   'guarita metálica', 'hangar', 'shed metálico', 'construção metálica',
-  'metalúrgica', 'serralheria',
+  'metalurgia', 'serralheria',
 ];
 
 // ══════════════════════════════════════════════════════════════
-//  BUSCA POR PUBLICAÇÃO — endpoint principal para novidades
-//  GET /api/pncp/v1/contratacoes/publicacao
+//  BUSCA PRINCIPAL via /api/search/
 // ══════════════════════════════════════════════════════════════
 
-export async function buscarLicitacoesPNCP(params: BuscaPNCPParams): Promise<ResultadoBuscaPNCP> {
+export async function buscarLicitacoes(params: BuscaPNCPParams): Promise<ResultadoBuscaPNCP> {
   const pagina = params.pagina ?? 1;
   const tamanhoPagina = params.tamanhoPagina ?? 20;
 
-  // Datas padrão: últimos 30 dias
-  const hoje = new Date();
-  const trintaDiasAtras = new Date(hoje);
-  trintaDiasAtras.setDate(hoje.getDate() - 30);
-
-  const dataFinal   = params.dataFinal   ?? hoje.toISOString().slice(0, 10);
-  const dataInicial = params.dataInicial ?? trintaDiasAtras.toISOString().slice(0, 10);
-
   const qs = new URLSearchParams({
-    dataInicial,
-    dataFinal,
+    tipos_documento: 'edital',
+    ordenacao: '-data',
     pagina: String(pagina),
-    tamanhoPagina: String(tamanhoPagina),
+    tam_pagina: String(tamanhoPagina),
   });
 
-  if (params.modalidadeId) qs.set('modalidadeId', String(params.modalidadeId));
-  if (params.uf)           qs.set('uf', params.uf);
+  if (params.q?.trim())      qs.set('q', params.q.trim());
+  if (params.apenasAbertas)  qs.set('status', 'recebendo_proposta');
+
+  // Filtro de UF (o search API aceita uf via query)
+  if (params.uf) qs.set('uf', params.uf);
 
   try {
-    const res = await fetch(`${PNCP_BASE}/api/pncp/v1/contratacoes/publicacao?${qs}`, {
-      headers: { 'Accept': 'application/json' },
+    const res = await fetch(`${PNCP_BASE}/api/search/?${qs}`, {
+      headers: { Accept: 'application/json' },
     });
 
     if (!res.ok) throw new Error(`PNCP HTTP ${res.status}`);
 
     const json = await res.json();
-
-    // API retorna { data: [], totalRegistros: N, totalPaginas: N }
-    let registros: ContratacaoPNCP[] = json.data ?? json ?? [];
-
-    // Filtrar por palavra-chave no lado cliente (a API não suporta busca full-text neste endpoint)
-    if (params.q && params.q.trim()) {
-      const termo = params.q.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      registros = registros.filter(c => {
-        const obj = (c.objetoCompra || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        const info = (c.informacaoComplementar || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        return obj.includes(termo) || info.includes(termo);
-      });
-    }
+    const items: SearchItemPNCP[] = json.items ?? [];
+    const total: number = json.total ?? json.count ?? items.length;
 
     return {
-      data: registros,
-      totalRegistros: json.totalRegistros ?? registros.length,
-      totalPaginas: json.totalPaginas ?? Math.ceil((json.totalRegistros ?? registros.length) / tamanhoPagina),
+      data: items.map(mapSearchItem),
+      totalRegistros: total,
+      totalPaginas: Math.max(1, Math.ceil(total / tamanhoPagina)),
       paginaAtual: pagina,
     };
   } catch (err) {
@@ -159,74 +207,6 @@ export async function buscarLicitacoesPNCP(params: BuscaPNCPParams): Promise<Res
       erro: err instanceof Error ? err.message : 'Erro ao consultar PNCP',
     };
   }
-}
-
-// ══════════════════════════════════════════════════════════════
-//  BUSCA POR PROPOSTA — editais com propostas abertas
-//  GET /api/pncp/v1/contratacoes/proposta
-// ══════════════════════════════════════════════════════════════
-
-export async function buscarPropostasAbertas(params: BuscaPNCPParams): Promise<ResultadoBuscaPNCP> {
-  const pagina = params.pagina ?? 1;
-  const tamanhoPagina = params.tamanhoPagina ?? 20;
-
-  const hoje = new Date();
-  const dataFinal   = params.dataFinal   ?? new Date(hoje.getTime() + 60 * 86400000).toISOString().slice(0, 10);
-  const dataInicial = params.dataInicial ?? hoje.toISOString().slice(0, 10);
-
-  const qs = new URLSearchParams({
-    dataInicial,
-    dataFinal,
-    pagina: String(pagina),
-    tamanhoPagina: String(tamanhoPagina),
-  });
-
-  if (params.modalidadeId) qs.set('modalidadeId', String(params.modalidadeId));
-  if (params.uf)           qs.set('uf', params.uf);
-
-  try {
-    const res = await fetch(`${PNCP_BASE}/api/pncp/v1/contratacoes/proposta?${qs}`, {
-      headers: { 'Accept': 'application/json' },
-    });
-
-    if (!res.ok) throw new Error(`PNCP HTTP ${res.status}`);
-    const json = await res.json();
-    let registros: ContratacaoPNCP[] = json.data ?? json ?? [];
-
-    if (params.q?.trim()) {
-      const termo = params.q.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      registros = registros.filter(c => {
-        const obj = (c.objetoCompra || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        return obj.includes(termo);
-      });
-    }
-
-    return {
-      data: registros,
-      totalRegistros: json.totalRegistros ?? registros.length,
-      totalPaginas: json.totalPaginas ?? 1,
-      paginaAtual: pagina,
-    };
-  } catch (err) {
-    return {
-      data: [],
-      totalRegistros: 0,
-      totalPaginas: 0,
-      paginaAtual: pagina,
-      erro: err instanceof Error ? err.message : 'Erro ao consultar PNCP',
-    };
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-//  BUSCA UNIFICADA — tenta proposta aberta, cai para publicação
-// ══════════════════════════════════════════════════════════════
-
-export async function buscarLicitacoes(params: BuscaPNCPParams & { apenasAbertas?: boolean }): Promise<ResultadoBuscaPNCP> {
-  if (params.apenasAbertas) {
-    return buscarPropostasAbertas(params);
-  }
-  return buscarLicitacoesPNCP(params);
 }
 
 // ── Helpers de formatação ───────────────────────────────────────
