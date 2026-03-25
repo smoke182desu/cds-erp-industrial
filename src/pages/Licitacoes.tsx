@@ -1,180 +1,539 @@
-import React, { useState } from 'react';
-import { FileText, Briefcase, AlertTriangle, CheckCircle, X, Printer } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Search, Filter, ExternalLink, RefreshCw, ChevronLeft, ChevronRight,
+  MapPin, Calendar, DollarSign, Tag, Briefcase, Building2, AlertCircle,
+  Loader2, Star, StarOff, Plus, X, Printer, ClipboardList, Globe,
+  TrendingUp, ChevronDown, CheckCircle2, Clock, Info, BookOpen
+} from 'lucide-react';
 import { useConfig } from '../contexts/ConfigContext';
-import { configEmpresa } from '../constants/configEmpresa';
+import {
+  buscarLicitacoes, ContratacaoPNCP, BuscaPNCPParams,
+  MODALIDADES, UFS_BR, PALAVRAS_CHAVE_SUGERIDAS,
+  formatarDataPNCP, formatarMoeda, urlPNCP,
+} from '../services/LicitacoesService';
 
-interface Licitacao {
-  id: number;
-  uasg: string;
-  orgao: string;
-  objeto: string;
-  data: string;
-  valor: string;
-  status: string;
-  pregao?: string;
+// ── Tipos locais ─────────────────────────────────────────────────
+
+interface LicitacaoTracked extends ContratacaoPNCP {
+  etapa: 'captacao' | 'analise' | 'proposta' | 'disputa' | 'ganha';
+  favorito?: boolean;
+  bdi?: number;
 }
 
-const PropostaVisualizacao: React.FC<{ licitacao: Licitacao; items: any[]; bdi: number; onClose: () => void }> = ({ licitacao, items, bdi, onClose }) => {
-  const { config } = useConfig();
-  const totalComBdi = items.reduce((acc, item) => acc + (item.custo * (1 + bdi / 100) * item.qtd), 0);
+const ETAPAS = [
+  { id: 'captacao', label: 'Captação', color: 'bg-slate-100 border-slate-300 text-slate-700' },
+  { id: 'analise',  label: 'Análise do Edital', color: 'bg-blue-50 border-blue-200 text-blue-700' },
+  { id: 'proposta', label: 'Montando Proposta', color: 'bg-amber-50 border-amber-200 text-amber-700' },
+  { id: 'disputa',  label: 'Em Disputa', color: 'bg-indigo-50 border-indigo-200 text-indigo-700' },
+  { id: 'ganha',    label: '🏆 Ganhas', color: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
+] as const;
+
+// ── Componente: Badge de modalidade ─────────────────────────────
+
+const ModalidadeBadge: React.FC<{ id: number }> = ({ id }) => {
+  const cores: Record<number, string> = {
+    6: 'bg-blue-100 text-blue-700',
+    8: 'bg-amber-100 text-amber-700',
+    5: 'bg-indigo-100 text-indigo-700',
+    4: 'bg-purple-100 text-purple-700',
+    9: 'bg-rose-100 text-rose-700',
+  };
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-white p-4 print:p-0">
-      <div className="w-[210mm] h-[297mm] bg-[#ffffff] text-[#000000] p-10 border border-gray-300 shadow-lg">
-        <div className="flex justify-between mb-10 border-b-2 border-black pb-4">
-          <div className="w-20 h-20 flex items-center justify-center overflow-hidden">
-            {config.logoBase64 ? (
-              <img src={config.logoBase64} alt="Logo" className="max-w-full max-h-full object-contain" />
-            ) : (
-              <div className="w-full h-full bg-gray-300 flex items-center justify-center text-[10px] font-bold text-gray-500 border border-gray-400">LOGO</div>
-            )}
-          </div>
-          <div className="text-right text-sm">
-            <p className="font-bold">{config.nomeEmpresa || configEmpresa.razaoSocial}</p>
-            <p>CNPJ: {configEmpresa.cnpj}</p>
-            <p>Tel: {config.telefone || configEmpresa.telefone}</p>
-          </div>
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${cores[id] || 'bg-slate-100 text-slate-600'}`}>
+      {MODALIDADES[id] || `Modalidade ${id}`}
+    </span>
+  );
+};
+
+// ── Componente: Card de licitação ────────────────────────────────
+
+const LicitacaoCard: React.FC<{
+  item: ContratacaoPNCP;
+  onAcompanhar: (item: ContratacaoPNCP) => void;
+  onDetalhar: (item: ContratacaoPNCP) => void;
+  acompanhando: boolean;
+}> = ({ item, onAcompanhar, onDetalhar, acompanhando }) => {
+  const diasRestantes = item.dataEncerramentoProposta
+    ? Math.ceil((new Date(item.dataEncerramentoProposta).getTime() - Date.now()) / 86400000)
+    : null;
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 hover:border-blue-300 hover:shadow-md transition-all group">
+      {/* Cabeçalho */}
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-slate-900 line-clamp-2 leading-snug">{item.objetoCompra}</p>
+          <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+            <Building2 size={11} />
+            {item.orgaoEntidade.razaoSocial}
+          </p>
         </div>
-        <h1 className="text-center font-bold text-lg mb-6">PROPOSTA COMERCIAL - PREGÃO Nº {licitacao.pregao || 'XXX'}</h1>
-        <p className="mb-6">Ao Pregoeiro do {licitacao.orgao}</p>
-        <table className="w-full text-left mb-10">
-          <thead><tr className="border-b border-black"><th className="p-2">Produto</th><th className="p-2">Qtd</th><th className="p-2">Valor Unit.</th><th className="p-2">Subtotal</th></tr></thead>
-          <tbody>
-            {items.map(item => (
-              <tr key={item.id} className="border-b border-gray-200">
-                <td className="p-2">{item.nome}</td>
-                <td className="p-2">{item.qtd}</td>
-                <td className="p-2">R$ {(item.custo * (1 + bdi / 100)).toFixed(2)}</td>
-                <td className="p-2">R$ {(item.custo * (1 + bdi / 100) * item.qtd).toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="text-right font-bold text-lg mb-10">Total: R$ {totalComBdi.toFixed(2)}</div>
-        <div className="text-sm space-y-2">
-          <p>"Declaramos que nos preços propostos estão inclusos todos os tributos, fretes, encargos sociais e trabalhistas."</p>
-          <p>"Validade da Proposta: 60 (sessenta) dias."</p>
-          <p>"Prazo de Entrega: Conforme Termo de Referência (TR)."</p>
-          <p>"Dados Bancários para Empenho: Banco do Brasil, Ag X, CC Y."</p>
-        </div>
-        <div className="mt-20 text-center">
-          <div className="w-64 border-t border-black mx-auto"></div>
-          <p className="text-sm mt-2">Assinatura do Representante Legal</p>
-        </div>
-        <button onClick={onClose} className="mt-10 bg-slate-100 text-slate-900 px-4 py-2 rounded print:hidden">Fechar</button>
+        <ModalidadeBadge id={item.modalidadeId} />
+      </div>
+
+      {/* Localidade + datas */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 mb-3">
+        <span className="flex items-center gap-1">
+          <MapPin size={11} />
+          {item.unidadeOrgao.municipioNome} — {item.unidadeOrgao.ufSigla}
+        </span>
+        <span className="flex items-center gap-1">
+          <Calendar size={11} />
+          Publicado: {formatarDataPNCP(item.dataPublicacaoPncp)}
+        </span>
+        {item.dataEncerramentoProposta && (
+          <span className={`flex items-center gap-1 font-semibold ${
+            diasRestantes != null && diasRestantes <= 3 ? 'text-rose-600' :
+            diasRestantes != null && diasRestantes <= 7 ? 'text-amber-600' : 'text-emerald-600'
+          }`}>
+            <Clock size={11} />
+            Encerra: {formatarDataPNCP(item.dataEncerramentoProposta)}
+            {diasRestantes != null && diasRestantes >= 0 && ` (${diasRestantes}d)`}
+          </span>
+        )}
+      </div>
+
+      {/* Valor estimado */}
+      <div className="flex items-center justify-between mb-4">
+        <span className="flex items-center gap-1 text-sm font-bold text-emerald-600">
+          <DollarSign size={13} />
+          {formatarMoeda(item.valorTotalEstimado)}
+        </span>
+        <span className="text-xs text-slate-400 font-mono">{item.numeroControlePNCP.slice(-12)}</span>
+      </div>
+
+      {/* Ações */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => onAcompanhar(item)}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition ${
+            acompanhando
+              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+        >
+          {acompanhando ? <><CheckCircle2 size={13} /> Acompanhando</> : <><Plus size={13} /> Acompanhar</>}
+        </button>
+        <button
+          onClick={() => onDetalhar(item)}
+          className="px-3 py-1.5 rounded-lg text-xs border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+        >
+          <Info size={13} />
+        </button>
+        <a
+          href={urlPNCP(item)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="px-3 py-1.5 rounded-lg text-xs border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+        >
+          <ExternalLink size={13} />
+        </a>
       </div>
     </div>
   );
 };
 
-const LicitacaoModal: React.FC<{ licitacao: Licitacao; onClose: () => void }> = ({ licitacao, onClose }) => {
-  const [bdi, setBdi] = useState(25);
-  const [items, setItems] = useState([
-    { id: 1, nome: 'Estrutura Metálica', qtd: 10, custo: 1000 },
-    { id: 2, nome: 'Parafusos', qtd: 100, custo: 5 },
-  ]);
-  const [showProposta, setShowProposta] = useState(false);
+// ── Componente: Modal de detalhes ────────────────────────────────
 
-  const totalComBdi = items.reduce((acc, item) => acc + (item.custo * (1 + bdi / 100) * item.qtd), 0);
-
-  return (
-    <>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-        <div className="bg-slate-100 w-full max-w-4xl rounded-2xl p-6 shadow-2xl text-slate-900 border border-slate-300 max-h-[90vh] overflow-y-auto">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold text-slate-900">Gestão de Pregão: {licitacao.objeto}</h2>
-            <div className="flex gap-2">
-              <button onClick={() => setShowProposta(true)} className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-emerald-500">
-                <Printer size={18} /> Gerar Proposta Formal (PDF)
-              </button>
-              <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full"><X size={20} /></button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <input type="text" defaultValue={licitacao.orgao} className="p-3 bg-white border border-slate-300 rounded-xl" placeholder="Órgão Público" />
-            <input type="text" defaultValue={licitacao.uasg} className="p-3 bg-white border border-slate-300 rounded-xl" placeholder="UASG" />
-            <input type="text" className="p-3 bg-white border border-slate-300 rounded-xl" placeholder="Nº do Pregão" />
-            <input type="date" className="p-3 bg-white border border-slate-300 rounded-xl" />
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-sm font-bold mb-2">BDI Aplicado ({bdi}%)</label>
-            <input type="range" min="0" max="50" value={bdi} onChange={(e) => setBdi(Number(e.target.value))} className="w-full" />
-          </div>
-
-          <table className="w-full text-left mb-6">
-            <thead>
-              <tr className="border-b border-slate-300 text-slate-600 text-xs">
-                <th className="p-2">Produto</th>
-                <th className="p-2">Qtd</th>
-                <th className="p-2">Custo Base</th>
-                <th className="p-2">Valor com BDI</th>
-                <th className="p-2">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(item => (
-                <tr key={item.id} className="border-b border-slate-300 text-sm">
-                  <td className="p-2">{item.nome}</td>
-                  <td className="p-2">{item.qtd}</td>
-                  <td className="p-2">R$ {item.custo.toFixed(2)}</td>
-                  <td className="p-2">R$ {(item.custo * (1 + bdi / 100)).toFixed(2)}</td>
-                  <td className="p-2">R$ {(item.custo * (1 + bdi / 100) * item.qtd).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="text-right text-xl font-bold">Total: R$ {totalComBdi.toFixed(2)}</div>
+const DetalheModal: React.FC<{ item: ContratacaoPNCP; onClose: () => void; onAcompanhar: () => void; acompanhando: boolean }> = ({
+  item, onClose, onAcompanhar, acompanhando
+}) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+      <div className="flex items-start justify-between px-6 py-4 border-b border-slate-200">
+        <div>
+          <ModalidadeBadge id={item.modalidadeId} />
+          <h2 className="text-base font-bold text-slate-900 mt-1 leading-snug max-w-xl">{item.objetoCompra}</h2>
         </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 shrink-0 ml-2"><X size={22} /></button>
       </div>
-      {showProposta && <PropostaVisualizacao licitacao={licitacao} items={items} bdi={bdi} onClose={() => setShowProposta(false)} />}
-    </>
-  );
-};
 
-export const Licitacoes: React.FC = () => {
-  const [selectedLicitacao, setSelectedLicitacao] = useState<Licitacao | null>(null);
-  const columns = [
-    { id: 'mapeamento', title: 'Captação/Mapeamento' },
-    { id: 'analise', title: 'Análise de Edital (TR)' },
-    { id: 'montagem', title: 'Montagem de Proposta' },
-    { id: 'disputa', title: 'Em Disputa (Pregão)' },
-    { id: 'ganha', title: 'Ganha/Contrato' },
-  ];
+      <div className="overflow-y-auto p-6 space-y-4 text-sm">
+        {/* Grid de dados */}
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            ['Órgão',        item.orgaoEntidade.razaoSocial],
+            ['CNPJ Órgão',   item.orgaoEntidade.cnpj],
+            ['Unidade',      item.unidadeOrgao.nomeUnidade],
+            ['Município/UF', `${item.unidadeOrgao.municipioNome} — ${item.unidadeOrgao.ufSigla}`],
+            ['Publicação',   formatarDataPNCP(item.dataPublicacaoPncp)],
+            ['Abertura',     formatarDataPNCP(item.dataAberturaProposta)],
+            ['Encerramento', formatarDataPNCP(item.dataEncerramentoProposta)],
+            ['Situação',     item.situacaoCompraNome],
+            ['Valor Est.',   formatarMoeda(item.valorTotalEstimado)],
+            ['Nº PNCP',      item.numeroControlePNCP],
+          ].map(([label, value]) => (
+            <div key={label} className="bg-slate-50 rounded-lg px-3 py-2">
+              <p className="text-xs text-slate-400 font-medium">{label}</p>
+              <p className="text-sm font-semibold text-slate-800 mt-0.5 break-words">{value}</p>
+            </div>
+          ))}
+        </div>
 
-  const mockCards: Licitacao[] = [
-    { id: 1, uasg: '123456', orgao: 'Exército Brasileiro', objeto: 'Aquisição de Estruturas Metálicas', data: '20/03/2026', valor: 'R$ 500.000', status: 'mapeamento' },
-    { id: 2, uasg: '654321', orgao: 'Secretaria de Saúde', objeto: 'Manutenção Predial', data: '25/03/2026', valor: 'R$ 1.200.000', status: 'analise' },
-    { id: 3, uasg: '987654', orgao: 'Prefeitura de SP', objeto: 'Estruturas para Eventos', data: '15/03/2026', valor: 'R$ 300.000', status: 'disputa' },
-  ];
+        {item.informacaoComplementar && (
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Informação Complementar</p>
+            <p className="text-sm text-slate-700 bg-slate-50 rounded-lg p-3 leading-relaxed">{item.informacaoComplementar}</p>
+          </div>
+        )}
+      </div>
 
-  return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Licitações (B2G)</h1>
-        <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-500 transition-colors">
-          📄 Gerar Proposta Padrão Governo (PDF)
+      <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+        <a href={urlPNCP(item)} target="_blank" rel="noopener noreferrer"
+          className="flex items-center gap-1.5 px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-white transition">
+          <Globe size={15} /> Abrir no PNCP
+        </a>
+        <button onClick={() => { onAcompanhar(); onClose(); }}
+          className={`flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-bold transition ${
+            acompanhando ? 'bg-slate-200 text-slate-700' : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}>
+          {acompanhando ? 'Já acompanhando' : <><Plus size={15} /> Adicionar ao Kanban</>}
         </button>
       </div>
-      <div className="grid grid-cols-5 gap-4">
-        {columns.map(col => (
-          <div key={col.id} className="bg-slate-100 p-4 rounded-xl">
-            <h2 className="font-bold text-slate-900 mb-4 text-sm">{col.title}</h2>
-            <div className="space-y-3">
-              {mockCards.filter(c => c.status === col.id).map(card => (
-                <div key={card.id} onClick={() => setSelectedLicitacao(card)} className="bg-slate-50 p-3 rounded-lg border border-slate-300 cursor-pointer hover:border-blue-500">
-                  <h3 className="font-bold text-sm text-slate-900">{card.objeto}</h3>
-                  <p className="text-xs text-slate-600 mt-1">UASG: {card.uasg}</p>
-                  <p className="text-xs text-slate-600">Órgão: {card.orgao}</p>
-                  <p className="text-xs text-slate-600">Data: {card.data}</p>
-                  <p className="text-xs font-bold text-emerald-400 mt-1">{card.valor}</p>
+    </div>
+  </div>
+);
+
+// ═════════════════════════════════════════════════════════════════
+//  COMPONENTE PRINCIPAL
+// ═════════════════════════════════════════════════════════════════
+
+export const Licitacoes: React.FC = () => {
+  const { config } = useConfig();
+  const [aba, setAba] = useState<'busca' | 'gestao'>('busca');
+
+  // ── Estado de busca ───────────────────────────────────────────
+  const [keyword, setKeyword] = useState('');
+  const [ufFiltro, setUfFiltro] = useState('');
+  const [modalidadeFiltro, setModalidadeFiltro] = useState<number | ''>('');
+  const [apenasAbertas, setApenasAbertas] = useState(false);
+  const [pagina, setPagina] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [resultados, setResultados] = useState<ContratacaoPNCP[]>([]);
+  const [totalRegistros, setTotalRegistros] = useState(0);
+  const [totalPaginas, setTotalPaginas] = useState(0);
+  const [erroApi, setErroApi] = useState('');
+  const [jaConsultou, setJaConsultou] = useState(false);
+
+  // ── Estado de gestão (kanban) ─────────────────────────────────
+  const [tracked, setTracked] = useState<LicitacaoTracked[]>([]);
+  const [detalheItem, setDetalheItem] = useState<ContratacaoPNCP | null>(null);
+  const [mostraSugestoes, setMostraSugestoes] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // ── Buscar ────────────────────────────────────────────────────
+  const handleBuscar = async (pg = 1) => {
+    setLoading(true);
+    setErroApi('');
+    setJaConsultou(true);
+    setPagina(pg);
+
+    const params: BuscaPNCPParams & { apenasAbertas?: boolean } = {
+      q: keyword,
+      uf: ufFiltro || undefined,
+      modalidadeId: modalidadeFiltro ? Number(modalidadeFiltro) : undefined,
+      pagina: pg,
+      tamanhoPagina: 20,
+      apenasAbertas,
+    };
+
+    const res = await buscarLicitacoes(params);
+    setResultados(res.data);
+    setTotalRegistros(res.totalRegistros);
+    setTotalPaginas(res.totalPaginas);
+    if (res.erro) setErroApi(res.erro);
+    setLoading(false);
+  };
+
+  // Busca automática ao entrar na aba com sugestão do negócio
+  useEffect(() => {
+    if (aba === 'busca' && !jaConsultou) {
+      setKeyword('estrutura metálica');
+      handleBuscar();
+    }
+  }, [aba]);
+
+  // ── Acompanhar licitação ──────────────────────────────────────
+  const acompanhar = (item: ContratacaoPNCP) => {
+    if (tracked.find(t => t.numeroControlePNCP === item.numeroControlePNCP)) {
+      setTracked(prev => prev.filter(t => t.numeroControlePNCP !== item.numeroControlePNCP));
+      return;
+    }
+    setTracked(prev => [...prev, { ...item, etapa: 'captacao', bdi: 25 }]);
+  };
+
+  const isTracked = (id: string) => tracked.some(t => t.numeroControlePNCP === id);
+
+  const moverEtapa = (id: string, etapa: LicitacaoTracked['etapa']) => {
+    setTracked(prev => prev.map(t => t.numeroControlePNCP === id ? { ...t, etapa } : t));
+  };
+
+  const removerTracked = (id: string) => setTracked(prev => prev.filter(t => t.numeroControlePNCP !== id));
+
+  // ─────────────────────────────────────────────────────────────
+  return (
+    <div className="h-full flex flex-col bg-slate-50">
+
+      {/* ── Cabeçalho ── */}
+      <div className="bg-white border-b border-slate-200 px-6 py-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <Briefcase size={22} className="text-blue-600" /> Licitações B2G
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">Portal Nacional de Contratações Públicas (PNCP) — dados em tempo real</p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-500 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+            <Globe size={13} className="text-emerald-600" />
+            <span className="text-emerald-700 font-medium">API PNCP conectada</span>
+          </div>
+        </div>
+
+        {/* Abas */}
+        <div className="flex gap-1">
+          {[
+            { id: 'busca',  label: 'Buscar Oportunidades', icon: <Search size={15} /> },
+            { id: 'gestao', label: `Gestão / Kanban ${tracked.length > 0 ? `(${tracked.length})` : ''}`, icon: <ClipboardList size={15} /> },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setAba(tab.id as 'busca' | 'gestao')}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                aba === tab.id
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}>
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════
+          ABA: BUSCA
+      ══════════════════════════════════════════════════════════ */}
+      {aba === 'busca' && (
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+          {/* Painel de filtros */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+
+              {/* Palavra-chave */}
+              <div className="md:col-span-2 relative">
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Palavra-chave no objeto</label>
+                <div className="relative">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    ref={inputRef}
+                    value={keyword}
+                    onChange={e => setKeyword(e.target.value)}
+                    onFocus={() => setMostraSugestoes(true)}
+                    onBlur={() => setTimeout(() => setMostraSugestoes(false), 200)}
+                    onKeyDown={e => e.key === 'Enter' && handleBuscar()}
+                    placeholder="Ex: estrutura metálica, portão, galpão..."
+                    className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  {mostraSugestoes && (
+                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-52 overflow-y-auto">
+                      {PALAVRAS_CHAVE_SUGERIDAS.map(s => (
+                        <button key={s} onMouseDown={() => { setKeyword(s); setMostraSugestoes(false); }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center gap-2">
+                          <Tag size={12} className="text-blue-400 shrink-0" /> {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
+              </div>
+
+              {/* UF */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Estado (UF)</label>
+                <select value={ufFiltro} onChange={e => setUfFiltro(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm">
+                  <option value="">Todos</option>
+                  {UFS_BR.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+                </select>
+              </div>
+
+              {/* Modalidade */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Modalidade</label>
+                <select value={modalidadeFiltro} onChange={e => setModalidadeFiltro(e.target.value ? Number(e.target.value) : '')}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm">
+                  <option value="">Todas</option>
+                  {Object.entries(MODALIDADES).map(([id, nome]) => (
+                    <option key={id} value={id}>{nome}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input type="checkbox" checked={apenasAbertas} onChange={e => setApenasAbertas(e.target.checked)}
+                  className="w-4 h-4 rounded text-blue-600" />
+                <span className="font-medium text-slate-700">Apenas com proposta aberta</span>
+              </label>
+              <button onClick={() => handleBuscar(1)} disabled={loading}
+                className="ml-auto flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 disabled:opacity-60 transition shadow-sm">
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                {loading ? 'Buscando...' : 'Buscar no PNCP'}
+              </button>
             </div>
           </div>
-        ))}
-      </div>
-      {selectedLicitacao && <LicitacaoModal licitacao={selectedLicitacao} onClose={() => setSelectedLicitacao(null)} />}
+
+          {/* Erro */}
+          {erroApi && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 text-sm text-red-700">
+              <AlertCircle size={18} className="shrink-0 mt-0.5 text-red-500" />
+              <div>
+                <p className="font-bold">Erro ao consultar a API do PNCP</p>
+                <p className="text-xs mt-1 opacity-80">{erroApi}</p>
+                <p className="text-xs mt-1">Verifique sua conexão ou tente novamente em instantes.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Resultados */}
+          {jaConsultou && !loading && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-slate-700">
+                  {totalRegistros > 0 ? (
+                    <><span className="text-blue-600">{totalRegistros.toLocaleString('pt-BR')}</span> resultado(s) encontrados</>
+                  ) : 'Nenhum resultado encontrado'}
+                </p>
+                <button onClick={() => handleBuscar(pagina)} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800">
+                  <RefreshCw size={13} /> Atualizar
+                </button>
+              </div>
+
+              {resultados.length === 0 && !erroApi && (
+                <div className="text-center py-16 text-slate-400">
+                  <Search size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">Nenhuma licitação encontrada</p>
+                  <p className="text-sm mt-1">Tente outras palavras-chave ou ampliar o período</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {resultados.map(item => (
+                  <LicitacaoCard
+                    key={item.numeroControlePNCP}
+                    item={item}
+                    onAcompanhar={() => acompanhar(item)}
+                    onDetalhar={() => setDetalheItem(item)}
+                    acompanhando={isTracked(item.numeroControlePNCP)}
+                  />
+                ))}
+              </div>
+
+              {/* Paginação */}
+              {totalPaginas > 1 && (
+                <div className="flex items-center justify-center gap-3 mt-6">
+                  <button onClick={() => handleBuscar(pagina - 1)} disabled={pagina <= 1 || loading}
+                    className="flex items-center gap-1 px-3 py-2 border border-slate-300 rounded-lg text-sm disabled:opacity-40 hover:bg-slate-50">
+                    <ChevronLeft size={16} /> Anterior
+                  </button>
+                  <span className="text-sm text-slate-600 font-medium">
+                    Página {pagina} de {totalPaginas}
+                  </span>
+                  <button onClick={() => handleBuscar(pagina + 1)} disabled={pagina >= totalPaginas || loading}
+                    className="flex items-center gap-1 px-3 py-2 border border-slate-300 rounded-lg text-sm disabled:opacity-40 hover:bg-slate-50">
+                    Próxima <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!jaConsultou && !loading && (
+            <div className="text-center py-20 text-slate-400">
+              <Briefcase size={48} className="mx-auto mb-4 opacity-20" />
+              <p className="text-lg font-semibold">Busque licitações no PNCP</p>
+              <p className="text-sm mt-1">Use os filtros acima e clique em <strong>Buscar no PNCP</strong></p>
+            </div>
+          )}
+
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-500">
+              <Loader2 size={36} className="animate-spin text-blue-500" />
+              <p className="font-medium">Consultando o Portal Nacional de Contratações Públicas...</p>
+              <p className="text-xs">API: api.pncp.gov.br</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════
+          ABA: GESTÃO (KANBAN)
+      ══════════════════════════════════════════════════════════ */}
+      {aba === 'gestao' && (
+        <div className="flex-1 overflow-x-auto p-6">
+          {tracked.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center text-slate-400 py-24">
+              <ClipboardList size={48} className="mb-4 opacity-20" />
+              <p className="text-lg font-semibold">Nenhuma licitação sendo acompanhada</p>
+              <p className="text-sm mt-1">Vá até a aba <strong>Buscar Oportunidades</strong> e clique em <strong>Acompanhar</strong> nas licitações de interesse</p>
+              <button onClick={() => setAba('busca')}
+                className="mt-4 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">
+                <Search size={15} /> Buscar Licitações
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-4 h-full min-w-max">
+              {ETAPAS.map(etapa => {
+                const cards = tracked.filter(t => t.etapa === etapa.id);
+                return (
+                  <div key={etapa.id} className={`w-72 rounded-xl border ${etapa.color} p-3 flex flex-col`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-bold text-sm">{etapa.label}</h3>
+                      <span className="text-xs font-bold bg-white/70 px-2 py-0.5 rounded-full">{cards.length}</span>
+                    </div>
+                    <div className="space-y-2 flex-1 overflow-y-auto max-h-[60vh] pr-0.5">
+                      {cards.map(card => (
+                        <div key={card.numeroControlePNCP} className="bg-white rounded-lg border border-white/80 p-3 shadow-sm">
+                          <p className="text-xs font-bold text-slate-900 line-clamp-2 mb-2">{card.objetoCompra}</p>
+                          <p className="text-xs text-slate-500 mb-1">{card.orgaoEntidade.razaoSocial}</p>
+                          <p className="text-xs font-bold text-emerald-600 mb-3">{formatarMoeda(card.valorTotalEstimado)}</p>
+
+                          {/* Selecionar etapa */}
+                          <select value={card.etapa}
+                            onChange={e => moverEtapa(card.numeroControlePNCP, e.target.value as LicitacaoTracked['etapa'])}
+                            className="w-full text-xs border border-slate-200 rounded px-2 py-1 mb-2">
+                            {ETAPAS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
+                          </select>
+
+                          <div className="flex gap-1">
+                            <a href={urlPNCP(card)} target="_blank" rel="noopener noreferrer"
+                              className="flex-1 flex items-center justify-center gap-1 text-xs border border-slate-200 rounded py-1 hover:bg-slate-50">
+                              <ExternalLink size={11} /> PNCP
+                            </a>
+                            <button onClick={() => removerTracked(card.numeroControlePNCP)}
+                              className="px-2 py-1 text-xs border border-rose-200 rounded text-rose-500 hover:bg-rose-50">
+                              <X size={11} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal de detalhes */}
+      {detalheItem && (
+        <DetalheModal
+          item={detalheItem}
+          onClose={() => setDetalheItem(null)}
+          onAcompanhar={() => acompanhar(detalheItem)}
+          acompanhando={isTracked(detalheItem.numeroControlePNCP)}
+        />
+      )}
     </div>
   );
 };
