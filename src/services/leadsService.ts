@@ -6,76 +6,113 @@ import {
   doc,
   query,
   orderBy,
+  where,
+  onSnapshot,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 
-export type LeadStatus = 'novo' | 'em_triagem' | 'qualificado' | 'descartado';
-export type LeadOrigem = 'site' | 'whatsapp' | 'manual';
+// ---------- Tipos do funil CRM ----------
+export type EtapaFunil =
+  | 'lead_novo'
+  | 'contato_feito'
+  | 'qualificado'
+  | 'proposta_enviada'
+  | 'negociacao'
+  | 'fechado_ganho'
+  | 'fechado_perdido';
+
+export type LeadOrigem = 'site' | 'whatsapp' | 'woocommerce' | 'calculadora' | 'manual';
+
+export const ETAPAS_FUNIL: { id: EtapaFunil; label: string; cor: string; descricao: string }[] = [
+  { id: 'lead_novo',        label: 'Novo Lead',         cor: '#6366f1', descricao: 'Lead recém captado' },
+  { id: 'contato_feito',    label: 'Contato Feito',     cor: '#0ea5e9', descricao: 'Primeiro contato realizado' },
+  { id: 'qualificado',      label: 'Qualificado',       cor: '#f59e0b', descricao: 'Lead validado e com potencial' },
+  { id: 'proposta_enviada', label: 'Proposta Enviada',  cor: '#8b5cf6', descricao: 'Proposta comercial enviada' },
+  { id: 'negociacao',       label: 'Em Negociação',     cor: '#ec4899', descricao: 'Negociação em andamento' },
+  { id: 'fechado_ganho',    label: 'Fechado ✓',         cor: '#10b981', descricao: 'Venda concluída com sucesso' },
+  { id: 'fechado_perdido',  label: 'Perdido ✗',         cor: '#ef4444', descricao: 'Oportunidade perdida' },
+];
+
+export const ORIGEM_LABELS: Record<LeadOrigem, string> = {
+  site:        '🌐 Site',
+  whatsapp:    '💬 WhatsApp',
+  woocommerce: '🛒 WooCommerce',
+  calculadora: '📐 Calculadora',
+  manual:      '✏️ Manual',
+};
 
 export interface Lead {
-  id?: string;
+  id: string;
   nome: string;
   email?: string;
   telefone?: string;
   empresa?: string;
   mensagem?: string;
   origem: LeadOrigem;
-  status: LeadStatus;
+  etapa: EtapaFunil;
+  valor?: number;
+  pedidoId?: string;
+  clienteId?: string;
+  observacoes?: string;
   criadoEm: string;
   atualizadoEm?: string;
-  observacoes?: string;
 }
 
-export const buscarLeads = async (): Promise<Lead[]> => {
-  try {
-    const q = query(collection(db, 'leads'), orderBy('criadoEm', 'desc'));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Lead));
-  } catch (error) {
-    handleFirestoreError(error, OperationType.GET, 'leads');
-    return [];
-  }
-};
+// ---------- buscar todos os leads (tempo real) ----------
+export function subscribeLeads(callback: (leads: Lead[]) => void) {
+  const q = query(collection(db, 'leads'), orderBy('criadoEm', 'desc'));
+  return onSnapshot(q, (snap) => {
+    const leads: Lead[] = snap.docs.map((d) => ({
+      id: d.id,
+      ...(d.data() as Omit<Lead, 'id'>),
+    }));
+    callback(leads);
+  });
+}
 
-export const adicionarLead = async (lead: Omit<Lead, 'id' | 'criadoEm'>): Promise<string> => {
-  try {
-    const docRef = await addDoc(collection(db, 'leads'), {
-      ...lead,
-      status: 'novo' as LeadStatus,
-      criadoEm: new Date().toISOString(),
-    });
-    return docRef.id;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'leads');
-    return '';
-  }
-};
+// ---------- buscar leads (uma vez) ----------
+export async function buscarLeads(): Promise<Lead[]> {
+  const q = query(collection(db, 'leads'), orderBy('criadoEm', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Lead, 'id'>) }));
+}
 
-export const atualizarLead = async (
-  id: string,
-  dados: Partial<Pick<Lead, 'status' | 'observacoes'>>
-): Promise<void> => {
-  try {
-    const docRef = doc(db, 'leads', id);
-    await updateDoc(docRef, {
-      ...dados,
-      atualizadoEm: new Date().toISOString(),
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `leads/${id}`);
-  }
-};
+// ---------- buscar leads por etapa ----------
+export async function buscarLeadsPorEtapa(etapa: EtapaFunil): Promise<Lead[]> {
+  const q = query(collection(db, 'leads'), where('etapa', '==', etapa), orderBy('criadoEm', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Lead, 'id'>) }));
+}
 
-export const STATUS_LABELS: Record<LeadStatus, string> = {
-  novo:        'Novo',
-  em_triagem:  'Em Triagem',
-  qualificado: 'Qualificado',
-  descartado:  'Descartado',
-};
+// ---------- adicionar lead ----------
+export async function adicionarLead(data: Omit<Lead, 'id' | 'criadoEm'>): Promise<string> {
+  const ref = await addDoc(collection(db, 'leads'), {
+    ...data,
+    etapa: data.etapa || 'lead_novo',
+    criadoEm: new Date().toISOString(),
+    atualizadoEm: new Date().toISOString(),
+  });
+  return ref.id;
+}
 
-export const ORIGEM_LABELS: Record<LeadOrigem, string> = {
-  site:      'Site',
-  whatsapp:  'WhatsApp',
-  manual:    'Manual',
-};
+// ---------- atualizar lead ----------
+export async function atualizarLead(id: string, data: Partial<Omit<Lead, 'id'>>): Promise<void> {
+  await updateDoc(doc(db, 'leads', id), {
+    ...data,
+    atualizadoEm: new Date().toISOString(),
+  });
+}
+
+// ---------- mover etapa ----------
+export async function moverEtapa(id: string, etapa: EtapaFunil): Promise<void> {
+  await updateDoc(doc(db, 'leads', id), {
+    etapa,
+    atualizadoEm: new Date().toISOString(),
+  });
+}
+
+// ---------- buscar clientes (pre-cadastro) ----------
+export async function buscarClientes() {
+  const snap = await getDocs(collection(db, 'clientes'));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
