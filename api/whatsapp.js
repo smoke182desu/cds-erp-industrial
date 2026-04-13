@@ -1,155 +1,126 @@
 import axios from 'axios';
 
-// Configuracoes Firebase
 const FIREBASE_API_KEY = 'AIzaSyCr_o3dEiSExaafhkP57SpTf1wTLQSIiMs';
 const PROJECT_ID       = 'gen-lang-client-0908948294';
 const DATABASE_ID      = 'ai-studio-eb49ab80-1528-409e-b7d5-b3e84e7a358d';
-const WEBHOOK_SECRET   = process.env.LEADS_WEBHOOK_SECRET || 'cds-leads-secret';
+const BASE_URL         = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents`;
+const NUMERO_EMPRESA   = '5561993081396';
 
-// Numero WhatsApp da empresa (ignora mensagens enviadas por ela mesma)
-const NUMERO_EMPRESA = '5561993081396';
+function str(v) { return { stringValue: String(v || '') }; }
+function ts()   { return { timestampValue: new Date().toISOString() }; }
 
-/**
- * Parseia payload de diferentes provedores WhatsApp.
- * Suporta: Z-API, Evolution API, Twilio, e formato generico.
- */
-function parsearMensagem(body) {
-  // ---------- Evolution API ----------
-  if (body?.data?.key?.remoteJid) {
-    const data    = body.data;
-    const jid     = data.key.remoteJid || '';
-    const phone   = jid.replace('@s.whatsapp.net', '').replace('@g.us', '');
-    const nome    = data.pushName || data.key.remoteJid || 'Desconhecido';
-    const texto   = data.message?.conversation
-                 || data.message?.extendedTextMessage?.text
-                 || data.message?.imageMessage?.caption
-                 || '';
-    const fromMe  = data.key?.fromMe === true;
-    return { phone, nome, texto, fromMe };
-  }
-
-  // ---------- Z-API ----------
-  if (body?.phone && (body?.text?.message !== undefined || body?.audio)) {
-    const phone  = String(body.phone).replace(/\D/g, '');
-    const nome   = body.senderName || body.chatName || phone;
-    const texto  = body.text?.message || body.caption || '[midia]';
-    const fromMe = body.fromMe === true;
-    return { phone, nome, texto, fromMe };
-  }
-
-  // ---------- Twilio WhatsApp ----------
-  if (body?.From && body?.Body) {
-    const phone = String(body.From).replace('whatsapp:+', '').replace(/\D/g, '');
-    const nome  = body.ProfileName || phone;
-    const texto = body.Body;
-    return { phone, nome, texto, fromMe: false };
-  }
-
-  // ---------- Formato generico ----------
-  if (body?.phone || body?.telefone) {
-    const phone = String(body.phone || body.telefone).replace(/\D/g, '');
-    const nome  = body.name || body.nome || phone;
-    const texto = body.message || body.mensagem || '';
-    return { phone, nome, texto, fromMe: false };
-  }
-
-  return null;
-}
-
-async function salvarLeadFirestore(lead) {
-  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/leads?key=${FIREBASE_API_KEY}`;
-  const payload = {
-    fields: {
-      nome:      { stringValue: lead.nome || '' },
-      telefone:  { stringValue: lead.phone || '' },
-      mensagem:  { stringValue: lead.texto || '' },
-      origem:    { stringValue: 'whatsapp' },
-      status:    { stringValue: 'novo' },
-      criadoEm:  { timestampValue: new Date().toISOString() },
-    }
-  };
-  const res = await axios.post(url, payload);
+async function firestoreAdd(collection, fields) {
+  const res = await axios.post(`${BASE_URL}/${collection}?key=${FIREBASE_API_KEY}`, { fields });
   return res.data.name.split('/').pop();
 }
 
-async function verificarLeadExistente(phone) {
+async function firestoreQuery(collection, field, value) {
   const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents:runQuery?key=${FIREBASE_API_KEY}`;
-  const query = {
+  const body = {
     structuredQuery: {
-      from: [{ collectionId: 'leads' }],
-      where: {
-        fieldFilter: {
-          field: { fieldPath: 'telefone' },
-          op: 'EQUAL',
-          value: { stringValue: phone }
-        }
-      },
+      from: [{ collectionId: collection }],
+      where: { fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: value } } },
       limit: 1,
-    }
+    },
   };
-  const res = await axios.post(url, query);
-  return res.data?.some(r => r.document);
+  const res = await axios.post(url, body);
+  return res.data?.find(r => r.document) || null;
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Webhook-Secret');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+// ---------- parsear mensagem de qualquer provedor ----------
+function parsearMensagem(body) {
+  // Z-API
+  if (body.phone !== undefined && body.text?.message !== undefined) {
+    return {
+      telefone: String(body.phone).replace(/\D/g, ''),
+      texto:    body.text.message,
+      nome:     body.senderName || body.pushName || '',
+      fromMe:   body.fromMe === true,
+    };
   }
+  // Evolution API
+  if (body.data?.key?.remoteJid !== undefined) {
+    const jid = body.data.key.remoteJid;
+    const tel = jid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+    return {
+      telefone: tel,
+      texto:    body.data.message?.conversation || body.data.message?.extendedTextMessage?.text || '',
+      nome:     body.data.pushName || '',
+      fromMe:   body.data.key?.fromMe === true,
+    };
+  }
+  // Twilio
+  if (body.From !== undefined && body.Body !== undefined) {
+    return {
+      telefone: body.From.replace('whatsapp:', '').replace(/\D/g, ''),
+      texto:    body.Body,
+      nome:     body.ProfileName || '',
+      fromMe:   false,
+    };
+  }
+  // Genérico
+  const tel = (body.phone || body.from || body.telefone || '').toString().replace(/\D/g, '');
+  const txt = body.message || body.text || body.body || body.mensagem || '';
+  if (tel && txt) return { telefone: tel, texto: txt, nome: body.name || body.nome || '', fromMe: false };
+  return null;
+}
 
-  // GET para verificacao de webhook (alguns provedores enviam GET na ativacao)
+// ---------- buscar ou criar lead ----------
+async function obterLeadId(telefone, nome) {
+  const existe = await firestoreQuery('leads', 'telefone', telefone);
+  if (existe) return existe.document.name.split('/').pop();
+  // cria se não existir
+  return firestoreAdd('leads', {
+    nome:        str(nome || 'Lead WhatsApp'),
+    telefone:    str(telefone),
+    etapa:       str('lead_novo'),
+    origem:      str('whatsapp'),
+    criadoEm:    ts(),
+    atualizadoEm: ts(),
+  });
+}
+
+// ---------- salvar mensagem no histórico ----------
+async function salvarMensagem(telefone, texto, tipo, leadId) {
+  return firestoreAdd('mensagens', {
+    telefone: str(telefone),
+    leadId:   str(leadId || ''),
+    texto:    str(texto),
+    tipo:     str(tipo),           // 'entrada' | 'saida'
+    origem:   str('whatsapp'),
+    criadoEm: ts(),
+  });
+}
+
+// ---------- handler principal ----------
+export default async function handler(req, res) {
+  // Verificação webhook GET (challenge)
   if (req.method === 'GET') {
     const challenge = req.query['hub.challenge'] || req.query.challenge || 'ok';
     return res.status(200).send(String(challenge));
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  // Validacao de token (opcional via header ou query)
-  const secret = req.headers['x-webhook-secret'] || req.query.secret;
-  if (secret && secret !== WEBHOOK_SECRET) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const body = req.body;
-  console.log('[WhatsApp Webhook] payload:', JSON.stringify(body).substring(0, 300));
-
-  // Parseia a mensagem do provedor
-  const parsed = parsearMensagem(body);
-  if (!parsed) {
-    return res.status(200).json({ skip: true, reason: 'formato nao reconhecido' });
-  }
-
-  const { phone, nome, texto, fromMe } = parsed;
-
-  // Ignora mensagens enviadas pela propria empresa
-  if (fromMe || phone === NUMERO_EMPRESA) {
-    return res.status(200).json({ skip: true, reason: 'mensagem propria' });
-  }
-
-  // Ignora se nao tem texto (sticker, localizacao, etc)
-  if (!phone) {
-    return res.status(200).json({ skip: true, reason: 'sem telefone' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    // Verifica se ja existe lead com esse telefone
-    const jaExiste = await verificarLeadExistente(phone);
-    if (jaExiste) {
-      return res.status(200).json({ skip: true, reason: 'lead ja existe', phone });
+    const msg = parsearMensagem(req.body);
+    if (!msg || !msg.texto || !msg.telefone) {
+      return res.status(200).json({ ok: true, msg: 'Sem dados de mensagem' });
+    }
+    // Ignora mensagens enviadas pelo próprio número da empresa
+    if (msg.fromMe || msg.telefone === NUMERO_EMPRESA) {
+      return res.status(200).json({ ok: true, msg: 'fromMe ignorado' });
     }
 
-    // Cria o lead
-    const id = await salvarLeadFirestore({ phone, nome, texto });
-    console.log('[WhatsApp Webhook] Lead criado:', id, phone, nome);
-    return res.status(201).json({ success: true, id, phone, nome });
+    // Garante lead e cliente no CRM
+    const leadId = await obterLeadId(msg.telefone, msg.nome);
+
+    // Salva a mensagem no histórico
+    await salvarMensagem(msg.telefone, msg.texto, 'entrada', leadId);
+
+    return res.status(200).json({ ok: true, leadId });
   } catch (err) {
-    console.error('[WhatsApp Webhook] Erro:', err.response?.data || err.message);
-    return res.status(500).json({ error: 'Erro ao processar webhook' });
+    console.error('[whatsapp] erro:', err.message);
+    return res.status(500).json({ error: err.message });
   }
 }
