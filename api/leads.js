@@ -25,21 +25,40 @@ async function firestoreQuery(collection, field, value) {
   return res.data?.find(r => r.document) || null;
 }
 
-// ---------- pre-cadastro no CRM ----------
+// ---------- contador sequencial de clientes ----------
+async function proximoCodigoCliente() {
+  const counterUrl = `${BASE_URL}/config/cliente_counter?key=${FIREBASE_API_KEY}`;
+  let atual = 0;
+  try {
+    const snap = await axios.get(counterUrl);
+    atual = snap.data?.fields?.numero?.integerValue || 0;
+  } catch { /* documento ainda nao existe */ }
+  const proximo = Number(atual) + 1;
+  await axios.patch(`${counterUrl}&updateMask.fieldPaths=numero`, {
+    fields: { numero: { integerValue: String(proximo) } }
+  });
+  return proximo;
+}
+
+// ---------- pre-cadastro no CRM (com numeracao) ----------
 async function criarPreCadastro(lead) {
   // evita duplicatas por telefone
   if (lead.telefone) {
     const existe = await firestoreQuery('clientes', 'telefone', lead.telefone);
     if (existe) return existe.document.name.split('/').pop();
   }
+  const codigo = await proximoCodigoCliente();
+  const codigoFormatado = 'CLI-' + String(codigo).padStart(4, '0');
   return firestoreAdd('clientes', {
-    nome:       { stringValue: lead.nome     || '' },
-    email:      { stringValue: lead.email    || '' },
-    telefone:   { stringValue: lead.telefone || '' },
-    empresa:    { stringValue: lead.empresa  || '' },
-    tipo:       { stringValue: 'pre_cadastro' },
-    origem:     { stringValue: lead.origem   || 'site' },
-    criadoEm:   { timestampValue: new Date().toISOString() },
+    codigo:           { integerValue: String(codigo) },
+    codigoFormatado:  { stringValue: codigoFormatado },
+    nome:             { stringValue: lead.nome     || '' },
+    email:            { stringValue: lead.email    || '' },
+    telefone:         { stringValue: lead.telefone || '' },
+    empresa:          { stringValue: lead.empresa  || '' },
+    tipo:             { stringValue: 'pre_cadastro' },
+    origem:           { stringValue: lead.origem   || 'site' },
+    criadoEm:         { timestampValue: new Date().toISOString() },
   });
 }
 
@@ -68,7 +87,7 @@ export default async function handler(req, res) {
   if (!nome && !telefone) return res.status(400).json({ error: 'Nome ou telefone obrigatorios' });
 
   try {
-    // 1. Pre-cadastro no CRM
+    // 1. Pre-cadastro no CRM (com codigo sequencial CLI-XXXX)
     const clienteId = await criarPreCadastro({ nome, email, telefone, empresa, origem });
 
     // 2. Cria o lead no funil
