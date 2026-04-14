@@ -28,6 +28,7 @@ import { FluxoCaixa } from './pages/FluxoCaixa';
 import { Contabilidade } from './pages/Contabilidade';
 import { PatrimonioVisual } from './pages/PatrimonioVisual';
 import { Leads } from './pages/Leads';
+import { Produtos } from './pages/Produtos';
 import { Configurador } from './components/Configurador';
 import { CheckoutPropostaModal } from './components/CheckoutPropostaModal';
 
@@ -52,9 +53,7 @@ function AppContent() {
   const [project, setProject] = useState<ProjectState>(defaultProject);
   const { user } = useAuth();
 
-  if (!user) {
-    return <Login />;
-  }
+  if (!user) return <Login />;
 
   const handleUpdateProject = (updates: Partial<ProjectState>) => {
     setProject(prev => ({ ...prev, ...updates }));
@@ -62,52 +61,30 @@ function AppContent() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard':
-        return <DashboardBI />;
-      case 'assistente-ia':
-        return <AssistenteIA onTabChange={setActiveTab} />;
-      case 'projetos-3d':
-        return <Configurador project={project} onUpdate={handleUpdateProject} />;
-      case 'crm':
-        return <Clientes />;
-      case 'propostas':
-        return <Propostas />;
-      case 'checkout':
-        return <CheckoutPropostaModal isOpen={true} onClose={() => setActiveTab('dashboard')} />;
-      case 'licitacoes':
-        return <Licitacoes />;
-      case 'locacoes':
-        return <Locacoes />;
-      case 'corte':
-        return <PlanoCorte />;
-      case 'dobra':
-        return <PlanoDobra />;
-      case 'solda':
-        return <PlanoMontagemSolda />;
-      case 'pintura':
-        return <PlanoPintura />;
-      case 'embalagem':
-        return <PlanoEmbalagem />;
-      case 'entrega':
-        return <PlanoEntrega />;
-      case 'pcp-kanban':
-        return <PCPKanban />;
-      case 'faturamento':
-        return <Faturamento />;
-      case 'estoque':
-        return <EstoqueInteligente />;
-      case 'entrada-inteligente':
-        return <EntradaInteligente />;
-      case 'caixa':
-        return <FluxoCaixa />;
-      case 'contabilidade':
-        return <Contabilidade />;
-      case 'patrimonio':
-        return <PatrimonioVisual />;
-      case 'leads':
-        return <Leads />;
-      default:
-        return <DashboardBI />;
+      case 'dashboard':         return <DashboardBI />;
+      case 'assistente-ia':     return <AssistenteIA onTabChange={setActiveTab} />;
+      case 'projetos-3d':       return <Configurador project={project} onUpdate={handleUpdateProject} />;
+      case 'crm':               return <Clientes />;
+      case 'leads':             return <Leads />;
+      case 'produtos':          return <Produtos />;
+      case 'propostas':         return <Propostas />;
+      case 'checkout':          return <CheckoutPropostaModal isOpen={true} onClose={() => setActiveTab('dashboard')} />;
+      case 'licitacoes':        return <Licitacoes />;
+      case 'locacoes':          return <Locacoes />;
+      case 'corte':             return <PlanoCorte />;
+      case 'dobra':             return <PlanoDobra />;
+      case 'solda':             return <PlanoMontagemSolda />;
+      case 'pintura':           return <PlanoPintura />;
+      case 'embalagem':         return <PlanoEmbalagem />;
+      case 'entrega':           return <PlanoEntrega />;
+      case 'pcp-kanban':        return <PCPKanban />;
+      case 'faturamento':       return <Faturamento />;
+      case 'estoque':           return <EstoqueInteligente />;
+      case 'entrada-inteligente': return <EntradaInteligente />;
+      case 'caixa':             return <FluxoCaixa />;
+      case 'contabilidade':     return <Contabilidade />;
+      case 'patrimonio':        return <PatrimonioVisual />;
+      default:                  return <DashboardBI />;
     }
   };
 
