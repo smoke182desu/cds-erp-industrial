@@ -1,4 +1,4 @@
-import axios from 'axios';
+çimport axios from 'axios';
 import { GoogleGenAI } from '@google/genai';
 
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'cds-erp-industrial';
@@ -28,27 +28,39 @@ async function buscarMensagens(telefone) {
 
 async function analisarConversa(mensagens, lead) {
   if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY não configurada no servidor');
-  const conversaStr = mensagens.length > 0 ? mensagens.slice(-80).map(m => `[${m.tipo === 'saida' ? 'VENDEDOR' : 'CLIENTE'}]: ${m.texto}`).join('\n') : 'Sem mensagens ainda — possível primeiro contato ou lead recém-captado.';
+  const conversaStr = mensagens.length > 0 ? mensagens.slice(-80).map(m => `[${m.tipo === 'saida' ? 'VENDEDOR' : 'CLIENTE'}]: ${m.texto}`).join('\n') : 'Sem mensagens ainda.';
   const etapaAtualLabel = ETAPAS_LABEL[lead.etapa] || lead.etapa;
-  const prompt = `Você é um especialista sênior em vendas B2B industrial com domínio em VendaC, V4 Company, SPIN Selling, BANT e Challenger Sale.
 
-LEAD: ${lead.nome || 'Cliente'} | Empresa: ${lead.empresa || 'não informada'} | Tel: ${lead.telefone || 'sem telefone'} | Etapa: ${etapaAtualLabel}
+  const prompt = `Você é coach sênior de vendas B2B industrial. Analise o lead e retorne JSON estruturado.
+
+LEAD: ${lead.nome || 'Cliente'} | Empresa: ${lead.empresa || 'não informada'} | Etapa CRM: ${etapaAtualLabel}
 
 CONVERSA:
 ${conversaStr}
-FIM DA CONVERSA
 
-Retorne APENAS JSON puro sem nenhum texto extra, sem markdown, sem bloco de código, começando diretamente com { e terminando com }:
-{"etapaDetectada":"lead_novo|contato_feito|qualificado|proposta_enviada|negociacao|fechado_ganho|fechado_perdido","deveAvancarEtapa":true,"motivoAvanco":"motivo","sentimento":"Interessado|Hesitante|Resistente|Animado|Neutro|Frio|Urgente","parecer":"análise em 2-3 frases","tecnicaRecomendada":"técnica + justificativa","sinaisPositivos":["sinal"],"objeccoes":["objeção"],"proximoPasso":"instrução direta","sugestoes":[{"label":"rótulo","mensagem":"texto whatsapp informal"}]}`;
+Use VendaC (Conectar→Descobrir→Demonstrar→Comprometer), SPIN Selling, BANT, Challenger Sale e gatilhos mentais.
+
+Retorne um objeto JSON com os campos: etapaDetectada (string: lead_novo/contato_feito/qualificado/proposta_enviada/negociacao/fechado_ganho/fechado_perdido), deveAvancarEtapa (boolean), motivoAvanco (string), sentimento (string: Interessado/Hesitante/Resistente/Animado/Neutro/Frio/Urgente), parecer (string 2-3 frases), tecnicaRecomendada (string), sinaisPositivos (array de strings), objeccoes (array de strings), proximoPasso (string imperativa), sugestoes (array de 3-4 objetos com label e mensagem para WhatsApp, tom informal).`;
 
   const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-  const result = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { temperature: 0.1, maxOutputTokens: 2048 } });
+  const result = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+    config: {
+      temperature: 0.1,
+      maxOutputTokens: 2048,
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+
   const raw = result?.text || '';
-  const clean = raw.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  try { return JSON.parse(clean); } catch {
-    const match = clean.match(/\{[\s\S]*\}/);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
     if (match) { try { return JSON.parse(match[0]); } catch {} }
-    throw new Error('Resposta da IA inválida (JSON malformado): ' + clean.substring(0, 200));
+    throw new Error('JSON invalido: ' + raw.substring(0, 300));
   }
 }
 
