@@ -1,134 +1,69 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Lead, EtapaFunil, LeadOrigem,
+  Lead, EtapaFunil,
   ETAPAS_FUNIL, ORIGEM_LABELS,
-  subscribeLeads, adicionarLead, atualizarLead, moverEtapa,
+  subscribeLeads, adicionarLead, atualizarLead,
 } from '../services/leadsService';
 import {
-  Mensagem, buscarMensagens, enviarMensagem, formatarConversaParaCopiar,
+  Mensagem, buscarMensagens, enviarMensagem,
 } from '../services/conversasService';
 import {
   PropostaDados, ItemProposta,
   proximoNumeroProposta, abrirProposta,
 } from '../services/propostaService';
 
-// ---------- cores por etapa ----------
 const ETAPA_COR: Record<EtapaFunil, string> = {
-  lead_novo: 'border-indigo-400', contato_feito: 'border-sky-400',
-  qualificado: 'border-amber-400', proposta_enviada: 'border-violet-400',
-  negociacao: 'border-pink-400', fechado_ganho: 'border-emerald-400', fechado_perdido: 'border-red-400',
+  lead_novo: '#6366f1', contato_feito: '#0ea5e9', qualificado: '#f59e0b',
+  proposta_enviada: '#8b5cf6', negociacao: '#ec4899',
+  fechado_ganho: '#10b981', fechado_perdido: '#ef4444',
 };
-const ETAPA_BG: Record<EtapaFunil, string> = {
-  lead_novo: 'bg-indigo-50', contato_feito: 'bg-sky-50', qualificado: 'bg-amber-50',
-  proposta_enviada: 'bg-violet-50', negociacao: 'bg-pink-50',
-  fechado_ganho: 'bg-emerald-50', fechado_perdido: 'bg-red-50',
-};
-const ETAPA_HDR: Record<EtapaFunil, string> = {
-  lead_novo: 'bg-indigo-500', contato_feito: 'bg-sky-500', qualificado: 'bg-amber-500',
-  proposta_enviada: 'bg-violet-500', negociacao: 'bg-pink-500',
-  fechado_ganho: 'bg-emerald-500', fechado_perdido: 'bg-red-500',
-};
-const ORIGEM_ICONS: Record<string, string> = {
-  site: '🌐', whatsapp: '💬', woocommerce: '🛒', calculadora: '📐', manual: '✏️',
+const ETAPA_BADGE: Record<EtapaFunil, string> = {
+  lead_novo:        'bg-indigo-100 text-indigo-700',
+  contato_feito:    'bg-sky-100 text-sky-700',
+  qualificado:      'bg-amber-100 text-amber-700',
+  proposta_enviada: 'bg-violet-100 text-violet-700',
+  negociacao:       'bg-pink-100 text-pink-700',
+  fechado_ganho:    'bg-emerald-100 text-emerald-700',
+  fechado_perdido:  'bg-red-100 text-red-700',
 };
 
 function fmt(v?: number) {
-  if (!v) return '';
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return v ? `R$ ${v.toLocaleString('pt-BR')}` : '';
 }
-function timeAgo(iso?: string) {
+function horaMsg(iso: string) {
   if (!iso) return '';
-  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (m < 1) return 'agora'; if (m < 60) return m + 'min';
-  const h = Math.floor(m / 60);
-  return h < 24 ? h + 'h' : Math.floor(h / 24) + 'd';
+  const d = new Date(iso);
+  const hoje = new Date();
+  if (d.toDateString() === hoje.toDateString()) {
+    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-// ============================================================
-// Lead Card
-// ============================================================
-function LeadCard({ lead, onClick, onDragStart }: {
-  lead: Lead; onClick: () => void; onDragStart: (e: React.DragEvent) => void;
+function ConversaPanel({ lead, onEtapaChange }: {
+  lead: Lead;
+  onEtapaChange: (etapa: EtapaFunil) => void;
 }) {
-  return (
-    <div draggable onDragStart={onDragStart} onClick={onClick}
-      className={'cursor-pointer rounded-lg border-l-4 bg-white shadow-sm hover:shadow-md transition-shadow p-3 ' + ETAPA_COR[lead.etapa]}>
-      <div className="flex items-start justify-between gap-2">
-        <p className="font-semibold text-gray-800 text-sm leading-tight truncate flex-1">{lead.nome || '—'}</p>
-        <span className="text-xs text-gray-400 shrink-0">{timeAgo(lead.criadoEm)}</span>
-      </div>
-      {lead.empresa && <p className="text-xs text-gray-500 truncate mt-0.5">{lead.empresa}</p>}
-      <div className="flex items-center gap-2 mt-2 flex-wrap">
-        {lead.telefone && (
-          <a href={'https://wa.me/' + lead.telefone.replace(/\D/g,'')}
-            target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-            className="text-xs bg-green-100 text-green-700 rounded px-1.5 py-0.5 hover:bg-green-200">
-            📱 {lead.telefone}
-          </a>
-        )}
-        <span className="text-xs bg-gray-100 text-gray-600 rounded px-1.5 py-0.5">
-          {ORIGEM_ICONS[lead.origem] || '•'} {ORIGEM_LABELS[lead.origem as LeadOrigem] || lead.origem}
-        </span>
-        {lead.valor ? <span className="text-xs bg-blue-100 text-blue-700 rounded px-1.5 py-0.5">{fmt(lead.valor)}</span> : null}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// Kanban Column
-// ============================================================
-function KanbanColuna({ etapa, leads, onCardClick, onDrop }: {
-  etapa: typeof ETAPAS_FUNIL[0]; leads: Lead[];
-  onCardClick: (l: Lead) => void; onDrop: (e: EtapaFunil) => void;
-}) {
-  const [over, setOver] = useState(false);
-  const total = leads.reduce((s, l) => s + (l.valor || 0), 0);
-  return (
-    <div className={'flex flex-col rounded-xl min-h-[400px] w-64 shrink-0 ' + ETAPA_BG[etapa.id] + ' border ' + (over ? 'border-dashed border-2 border-gray-400' : 'border-transparent')}
-      onDragOver={e => { e.preventDefault(); setOver(true); }}
-      onDragLeave={() => setOver(false)}
-      onDrop={e => { e.preventDefault(); setOver(false); onDrop(etapa.id); }}>
-      <div className={'rounded-t-xl px-3 py-2 ' + ETAPA_HDR[etapa.id] + ' text-white'}>
-        <div className="flex items-center justify-between">
-          <span className="font-semibold text-sm">{etapa.label}</span>
-          <span className="bg-white/20 rounded-full px-2 py-0.5 text-xs font-bold">{leads.length}</span>
-        </div>
-        {total > 0 && <p className="text-xs text-white/80 mt-0.5">{fmt(total)}</p>}
-      </div>
-      <div className="flex flex-col gap-2 p-2 flex-1 overflow-y-auto max-h-[calc(100vh-260px)]">
-        {leads.map(l => (
-          <LeadCard key={l.id} lead={l} onClick={() => onCardClick(l)}
-            onDragStart={e => e.dataTransfer.setData('leadId', l.id)} />
-        ))}
-        {leads.length === 0 && <div className="flex-1 flex items-center justify-center text-gray-400 text-xs italic pt-8">Nenhum lead</div>}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// Painel de Conversa
-// ============================================================
-function ConversaPanel({ lead, onCriarProposta }: { lead: Lead; onCriarProposta: () => void }) {
   const [msgs, setMsgs] = useState<Mensagem[]>([]);
   const [loading, setLoading] = useState(false);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [copiado, setCopiado] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const carregar = useCallback(async () => {
     if (!lead.telefone) return;
     setLoading(true);
-    try { setMsgs(await buscarMensagens(lead.telefone)); } finally { setLoading(false); }
+    try { setMsgs(await buscarMensagens(lead.telefone)); }
+    finally { setLoading(false); }
   }, [lead.telefone]);
 
   useEffect(() => { carregar(); }, [carregar]);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [msgs]);
 
   const enviar = async () => {
-    if (!texto.trim() || !lead.telefone) return;
+    if (!texto.trim() || !lead.telefone || enviando) return;
     setEnviando(true);
     try {
       await enviarMensagem(lead.telefone, texto.trim(), lead.id);
@@ -137,65 +72,58 @@ function ConversaPanel({ lead, onCriarProposta }: { lead: Lead; onCriarProposta:
     } finally { setEnviando(false); }
   };
 
-  const copiar = () => {
-    const txt = formatarConversaParaCopiar(msgs, lead.nome);
-    navigator.clipboard.writeText(txt).then(() => {
-      setCopiado(true); setTimeout(() => setCopiado(false), 2000);
-    });
-  };
+  const etapaAtual = ETAPAS_FUNIL.find(e => e.id === lead.etapa);
 
   return (
     <div className="flex flex-col h-full">
-      {/* action buttons */}
-      <div className="flex gap-2 px-5 pt-4 pb-2">
-        <button onClick={copiar}
-          className="flex-1 text-xs border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50 flex items-center justify-center gap-1">
-          {copiado ? '✅ Copiado!' : '📋 Copiar Conversa'}
-        </button>
-        <button onClick={carregar}
-          className="text-xs border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50">
+      <div className="flex items-center gap-3 px-4 py-3 border-b bg-white">
+        <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+          {(lead.nome || '?')[0].toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-900 truncate">{lead.nome || 'Sem nome'}</p>
+          <p className="text-xs text-gray-500">{lead.telefone || 'Sem telefone'}</p>
+        </div>
+        <span className={`text-xs px-2 py-1 rounded-full font-medium ${ETAPA_BADGE[lead.etapa]}`}>
+          {etapaAtual?.label}
+        </span>
+        <button onClick={carregar} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400">
           🔄
         </button>
-        <button onClick={onCriarProposta}
-          className="flex-1 text-xs bg-indigo-600 text-white rounded-lg px-3 py-2 hover:bg-indigo-700 flex items-center justify-center gap-1 font-semibold">
-          📄 Criar Proposta
-        </button>
       </div>
-
-      {/* messages */}
-      <div className="flex-1 overflow-y-auto px-5 py-2 flex flex-col gap-2 min-h-0" style={{maxHeight:'320px'}}>
-        {loading && <div className="text-center text-xs text-gray-400 py-4">Carregando...</div>}
+      <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2" style={{ background: '#e5ddd5' }}>
+        {loading && <div className="text-center text-xs text-gray-500 py-8">Carregando mensagens...</div>}
         {!loading && msgs.length === 0 && (
-          <div className="text-center text-xs text-gray-400 py-8">
-            {lead.telefone ? 'Nenhuma mensagem registrada ainda.' : 'Lead sem telefone — conversa indisponível.'}
+          <div className="text-center py-12">
+            <div className="text-4xl mb-2">💬</div>
+            <p className="text-sm text-gray-600 font-medium">
+              {lead.telefone ? 'Nenhuma mensagem ainda.' : 'Lead sem telefone cadastrado.'}
+            </p>
+            {lead.telefone && <p className="text-xs text-gray-500 mt-1">Aguardando mensagem do cliente ou envie a primeira mensagem abaixo.</p>}
           </div>
         )}
         {msgs.map(m => (
-          <div key={m.id} className={'flex ' + (m.tipo === 'saida' ? 'justify-end' : 'justify-start')}>
-            <div className={'max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow-sm ' +
-              (m.tipo === 'saida' ? 'bg-indigo-600 text-white rounded-br-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm')}>
-              <p className="whitespace-pre-wrap break-words">{m.texto}</p>
-              <p className={'text-xs mt-1 ' + (m.tipo === 'saida' ? 'text-indigo-200' : 'text-gray-400')}>
-                {m.criadoEm ? new Date(m.criadoEm).toLocaleString('pt-BR', {hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'}) : ''}
-              </p>
+          <div key={m.id} className={`flex ${m.tipo === 'saida' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[75%] rounded-2xl px-3 py-2 shadow-sm ${m.tipo === 'saida' ? 'bg-[#dcf8c6] text-gray-800 rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm'}`}>
+              <p className="text-sm whitespace-pre-wrap break-words">{m.texto}</p>
+              <p className="text-[10px] text-gray-500 mt-1 text-right">{horaMsg(m.criadoEm)}{m.tipo === 'saida' && ' ✓✓'}</p>
             </div>
           </div>
         ))}
         <div ref={bottomRef} />
       </div>
-
-      {/* send input */}
-      <div className="px-5 pb-4 pt-2 border-t">
+      <div className="px-3 py-2 bg-gray-100 border-t">
         {!lead.telefone ? (
-          <p className="text-xs text-red-400 text-center">Adicione um telefone ao lead para enviar mensagens.</p>
+          <p className="text-xs text-center text-red-500 py-2">Adicione um telefone ao lead para enviar mensagens.</p>
         ) : (
-          <div className="flex gap-2">
-            <textarea rows={2} value={texto} onChange={e => setTexto(e.target.value)}
+          <div className="flex gap-2 items-end">
+            <textarea rows={1} value={texto} onChange={e => setTexto(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } }}
-              placeholder="Digite a mensagem... (Enter para enviar)"
-              className="flex-1 border rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              placeholder="Digite uma mensagem..."
+              className="flex-1 border-0 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
+              style={{ maxHeight: '100px' }} />
             <button onClick={enviar} disabled={enviando || !texto.trim()}
-              className="bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white rounded-xl px-4 font-bold text-lg">
+              className="w-10 h-10 bg-green-500 hover:bg-green-600 disabled:opacity-40 text-white rounded-full flex items-center justify-center flex-shrink-0 transition-colors">
               {enviando ? '⏳' : '➤'}
             </button>
           </div>
@@ -205,9 +133,147 @@ function ConversaPanel({ lead, onCriarProposta }: { lead: Lead; onCriarProposta:
   );
 }
 
-// ============================================================
-// Modal Criar Proposta
-// ============================================================
+function DetalhesPanel({ lead, onUpdate, onCriarProposta }: {
+  lead: Lead; onUpdate: (l: Lead) => void; onCriarProposta: () => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [form, setForm] = useState({ ...lead });
+  useEffect(() => { setForm({ ...lead }); setEditando(false); }, [lead.id]);
+  const salvar = async () => { await atualizarLead(lead.id, form); onUpdate({ ...lead, ...form }); setEditando(false); };
+  const mudarEtapa = async (etapa: EtapaFunil) => { await atualizarLead(lead.id, { etapa }); onUpdate({ ...lead, etapa }); };
+
+  return (
+    <div className="flex flex-col h-full overflow-y-auto">
+      <div className="p-4 border-b text-center">
+        <div className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-2xl mx-auto mb-2">
+          {(lead.nome || '?')[0].toUpperCase()}
+        </div>
+        <p className="font-bold text-gray-900 text-sm">{lead.nome}</p>
+        <p className="text-xs text-gray-500">{lead.empresa || ''}</p>
+        {lead.valor && <p className="text-sm font-semibold text-indigo-600 mt-1">{fmt(lead.valor)}</p>}
+        <span className={`mt-2 inline-block text-xs px-2 py-1 rounded-full font-medium ${ETAPA_BADGE[lead.etapa]}`}>
+          {ETAPAS_FUNIL.find(e => e.id === lead.etapa)?.label}
+        </span>
+      </div>
+      <div className="p-3 border-b">
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Funil de Vendas</p>
+        <div className="flex flex-col gap-1">
+          {ETAPAS_FUNIL.map(etapa => (
+            <button key={etapa.id} onClick={() => mudarEtapa(etapa.id)}
+              className={`text-left text-xs px-3 py-2 rounded-lg transition-all font-medium flex items-center gap-2 ${lead.etapa === etapa.id ? 'text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              style={lead.etapa === etapa.id ? { backgroundColor: ETAPA_COR[etapa.id] } : {}}>
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: ETAPA_COR[etapa.id] }} />
+              {etapa.label}
+              {lead.etapa === etapa.id && <span className="ml-auto">✓</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="p-3 border-b">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Dados</p>
+          <button onClick={() => editando ? salvar() : setEditando(true)} className="text-xs text-indigo-600 font-medium hover:underline">
+            {editando ? '💾 Salvar' : '✏️ Editar'}
+          </button>
+        </div>
+        {editando ? (
+          <div className="flex flex-col gap-2">
+            {[['Nome','nome','text'],['Empresa','empresa','text'],['Telefone','telefone','tel'],['E-mail','email','email'],['Valor (R$)','valor','number']].map(([label,key,type]) => (
+              <div key={key}>
+                <label className="text-xs text-gray-500">{label}</label>
+                <input type={type} value={(form as any)[key] || ''} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  className="w-full text-xs border rounded px-2 py-1 mt-0.5" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5 text-xs text-gray-700">
+            {lead.telefone && <div><span className="text-gray-400">📱 </span>{lead.telefone}</div>}
+            {lead.email    && <div><span className="text-gray-400">✉️ </span>{lead.email}</div>}
+            {lead.empresa  && <div><span className="text-gray-400">🏢 </span>{lead.empresa}</div>}
+            {lead.origem   && <div><span className="text-gray-400">🔗 </span>{ORIGEM_LABELS[lead.origem]}</div>}
+            {lead.criadoEm && <div><span className="text-gray-400">📅 </span>{new Date(lead.criadoEm).toLocaleDateString('pt-BR')}</div>}
+          </div>
+        )}
+      </div>
+      <div className="p-3">
+        <button onClick={onCriarProposta} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold py-2.5 rounded-xl transition-colors">
+          📄 Criar Proposta
+        </button>
+        {lead.telefone && (
+          <a href={`https://wa.me/${lead.telefone.replace(/\D/g,'')}`} target="_blank" rel="noopener noreferrer"
+            className="mt-2 block w-full text-center bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-2.5 rounded-xl transition-colors">
+            📲 Abrir no WhatsApp
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LeadItem({ lead, ativo, onClick }: {
+  lead: Lead & { ultimaMensagem?: string; ultimaHora?: string };
+  ativo: boolean; onClick: () => void;
+}) {
+  const etapa = ETAPAS_FUNIL.find(e => e.id === lead.etapa);
+  const inicial = (lead.nome || lead.telefone || '?')[0].toUpperCase();
+  return (
+    <button onClick={onClick}
+      className={`w-full text-left px-3 py-3 border-b flex gap-3 items-start hover:bg-gray-50 transition-colors ${ativo ? 'bg-indigo-50 border-l-4 border-l-indigo-500' : 'border-l-4 border-l-transparent'}`}>
+      <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-base flex-shrink-0"
+        style={{ backgroundColor: ETAPA_COR[lead.etapa] }}>
+        {inicial}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-1">
+          <p className="font-semibold text-sm text-gray-900 truncate">{lead.nome || lead.telefone || 'Lead'}</p>
+          <span className="text-[10px] text-gray-400 flex-shrink-0 mt-0.5">{lead.ultimaHora || ''}</span>
+        </div>
+        <p className="text-xs text-gray-500 truncate mt-0.5">{lead.ultimaMensagem || lead.empresa || lead.email || 'Sem mensagens ainda'}</p>
+        <span className={`mt-1 inline-block text-[10px] px-1.5 py-0.5 rounded-full ${ETAPA_BADGE[lead.etapa]}`}>{etapa?.label}</span>
+      </div>
+    </button>
+  );
+}
+
+function NovoLeadModal({ onClose, onSave }: { onClose: () => void; onSave: (l: Omit<Lead,'id'|'criadoEm'>) => void }) {
+  const [form, setForm] = useState({ nome: '', empresa: '', email: '', telefone: '', observacoes: '', etapa: 'lead_novo' as EtapaFunil, origem: 'manual' as const, valor: '' });
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <div className="bg-indigo-600 text-white px-5 py-4 rounded-t-2xl"><h2 className="font-bold text-lg">+ Novo Lead</h2></div>
+        <div className="p-5 flex flex-col gap-3">
+          {([['nome','Nome *','text'],['empresa','Empresa','text'],['email','E-mail','email'],['telefone','Telefone','tel']] as [string,string,string][]).map(([k,label,type]) => (
+            <div key={k}>
+              <label className="text-xs text-gray-600 font-medium">{label}</label>
+              <input type={type} value={(form as any)[k]} onChange={e => set(k, e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+            </div>
+          ))}
+          <div>
+            <label className="text-xs text-gray-600 font-medium">Etapa</label>
+            <select value={form.etapa} onChange={e => set('etapa', e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+              {ETAPAS_FUNIL.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 font-medium">Valor estimado (R$)</label>
+            <input type="number" value={form.valor} onChange={e => set('valor', e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+        </div>
+        <div className="flex gap-2 px-5 pb-5">
+          <button onClick={onClose} className="flex-1 border border-gray-300 rounded-xl py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancelar</button>
+          <button onClick={() => { if (!form.nome.trim()) return; onSave({ ...form, valor: parseFloat(form.valor) || undefined, etapa: form.etapa as EtapaFunil, origem: 'manual' }); }}
+            className="flex-1 bg-indigo-600 text-white rounded-xl py-2 text-sm font-bold hover:bg-indigo-700">Criar Lead</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PropostaModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const [dados, setDados] = useState<Omit<PropostaDados,'itens'>>({
     empresa: lead.empresa || lead.nome || '',
@@ -217,368 +283,200 @@ function PropostaModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
     vendedor: 'Jean',
     frete: 'À combinar',
     validade: '7 dias corridos',
-    pagamento: 'A definir em comum acordo.',
-    prazoEntrega: 'A confirmar após aceite formal da proposta.',
-    intro: '',
+    pagamento: '50% de entrada e 50% na entrega',
   });
   const [itens, setItens] = useState<ItemProposta[]>([{ nome: '', descricao: '', qtd: 1, valorUnitario: 0 }]);
-  const [gerando, setGerando] = useState(false);
+  const [gerandoIA, setGerandoIA] = useState(false);
+  const [erroIA, setErroIA] = useState('');
+  const [iaOk, setIaOk] = useState(false);
 
-  const setD = (k: string, v: string) => setDados(p => ({ ...p, [k]: v }));
+  const set = (k: string, v: string) => setDados(d => ({ ...d, [k]: v }));
   const setItem = (i: number, k: keyof ItemProposta, v: string | number) =>
-    setItens(p => p.map((it, idx) => idx === i ? { ...it, [k]: v } : it));
+    setItens(prev => prev.map((it, idx) => idx === i ? { ...it, [k]: v } : it));
   const addItem = () => setItens(p => [...p, { nome: '', descricao: '', qtd: 1, valorUnitario: 0 }]);
-  const rmItem = (i: number) => setItens(p => p.filter((_, idx) => idx !== i));
+  const remItem = (i: number) => setItens(p => p.filter((_, idx) => idx !== i));
 
-  const subtotal = itens.reduce((s, it) => s + it.qtd * it.valorUnitario, 0);
+  const gerarComIA = async () => {
+    if (!lead.telefone) { setErroIA('Este lead não tem telefone — necessário para buscar a conversa.'); return; }
+    setGerandoIA(true); setErroIA(''); setIaOk(false);
+    try {
+      const res = await fetch('/api/proposta-ia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erro desconhecido');
+      const p = json.proposta;
+      setDados({
+        empresa: p.empresa || dados.empresa, ac: p.ac || '',
+        telefone: p.telefone || dados.telefone, email: p.email || dados.email,
+        cidade: p.cidade || '', vendedor: p.vendedor || 'Jean',
+        frete: p.frete || 'À combinar', validade: p.validade || '7 dias corridos',
+        pagamento: p.pagamento || '50% de entrada e 50% na entrega',
+        prazoEntrega: p.prazoEntrega || 'A confirmar após aceite formal',
+        intro: p.intro || '',
+      });
+      if (p.itens && p.itens.length > 0) {
+        setItens(p.itens.map((it: any) => ({
+          nome: it.nome || '', descricao: it.descricao || '',
+          qtd: Number(it.qtd) || 1, valorUnitario: Number(it.valorUnitario) || 0,
+        })));
+      }
+      setIaOk(true);
+    } catch (e: any) { setErroIA(e.message || 'Erro ao chamar IA'); }
+    finally { setGerandoIA(false); }
+  };
 
   const gerar = async () => {
-    if (!dados.empresa || itens.some(it => !it.nome)) {
-      alert('Preencha empresa e nome de todos os itens.');
-      return;
-    }
-    setGerando(true);
-    try {
-      const num = await proximoNumeroProposta();
-      abrirProposta({ ...dados, itens, numero: num });
-    } finally { setGerando(false); }
+    const num = await proximoNumeroProposta();
+    abrirProposta({ ...dados, numero: num, itens } as PropostaDados);
+    onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto"
-      onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-4" onClick={e => e.stopPropagation()}>
-        <div className="bg-indigo-700 rounded-t-2xl px-6 py-4 flex items-center justify-between text-white">
-          <div>
-            <h2 className="font-bold text-lg">📄 Criar Proposta Comercial</h2>
-            <p className="text-xs text-indigo-200">Numeração automática · 2 páginas A4 · Pronto para imprimir</p>
-          </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white text-2xl">&times;</button>
-        </div>
-
-        <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
-          {/* Cliente */}
-          <div>
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Cliente</p>
-            <div className="grid grid-cols-2 gap-3">
-              {([['empresa','Empresa *','text'],['cnpj','CNPJ/CPF','text'],['email','E-mail','email'],
-                ['telefone','Telefone','tel'],['endereco','Endereço','text'],['cidade','Cidade/UF','text'],
-                ['cep','CEP','text'],['ac','A/C (atenção)','text']] as [string,string,string][]).map(([k,label,type]) => (
-                <div key={k} className={k==='empresa'||k==='endereco'?'col-span-2':''}>
-                  <label className="text-xs text-gray-500 block mb-1">{label}</label>
-                  <input type={type} value={(dados as any)[k]||''} onChange={e => setD(k,e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Projeto */}
-          <div>
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Projeto</p>
-            <div className="grid grid-cols-3 gap-3">
-              {([['vendedor','Vendedor'],['validade','Validade'],['frete','Frete'],
-                ['contato','Contato'],['local','Local / Obra'],['pagamento','Pagamento']] as [string,string][]).map(([k,label]) => (
-                <div key={k} className={k==='local'||k==='pagamento'?'col-span-2':''}>
-                  <label className="text-xs text-gray-500 block mb-1">{label}</label>
-                  <input type="text" value={(dados as any)[k]||''} onChange={e => setD(k,e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                </div>
-              ))}
-            </div>
-            <div className="mt-3">
-              <label className="text-xs text-gray-500 block mb-1">Texto de introdução (opcional)</label>
-              <textarea rows={2} value={dados.intro||''} onChange={e => setD('intro',e.target.value)}
-                placeholder="Prezado(a), Em atendimento ao contato... (deixe em branco para usar o padrão)"
-                className="w-full border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-            </div>
-          </div>
-
-          {/* Itens */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Itens</p>
-              <button onClick={addItem} className="text-xs bg-indigo-100 text-indigo-700 rounded px-2 py-1 hover:bg-indigo-200">+ Adicionar item</button>
-            </div>
-            <div className="space-y-3">
-              {itens.map((it, i) => (
-                <div key={i} className="border rounded-xl p-3 bg-gray-50">
-                  <div className="grid grid-cols-12 gap-2 mb-2">
-                    <div className="col-span-5">
-                      <label className="text-xs text-gray-400">Nome do item *</label>
-                      <input value={it.nome} onChange={e => setItem(i,'nome',e.target.value)}
-                        className="w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-300" />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-400">Qtd</label>
-                      <input type="number" min="1" value={it.qtd} onChange={e => setItem(i,'qtd',parseInt(e.target.value)||1)}
-                        className="w-full border rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-1 focus:ring-indigo-300" />
-                    </div>
-                    <div className="col-span-4">
-                      <label className="text-xs text-gray-400">Valor Unit. (R$)</label>
-                      <input type="number" min="0" step="0.01" value={it.valorUnitario||''}
-                        onChange={e => setItem(i,'valorUnitario',parseFloat(e.target.value)||0)}
-                        className="w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-300" />
-                    </div>
-                    <div className="col-span-1 flex items-end">
-                      {itens.length > 1 &&
-                        <button onClick={() => rmItem(i)} className="text-red-400 hover:text-red-600 text-lg font-bold w-full">×</button>}
-                    </div>
-                  </div>
-                  <textarea rows={2} value={it.descricao||''} onChange={e => setItem(i,'descricao',e.target.value)}
-                    placeholder="Descrição técnica do item..."
-                    className="w-full border rounded-lg px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-indigo-300" />
-                  <p className="text-right text-xs text-gray-500 mt-1">Subtotal: {fmt(it.qtd * it.valorUnitario)}</p>
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-end mt-2 gap-4 text-sm font-bold text-indigo-700">
-              <span>TOTAL: {fmt(subtotal)}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-6 py-4 border-t flex gap-3 justify-end bg-gray-50 rounded-b-2xl">
-          <button onClick={onClose} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-100 text-sm">Cancelar</button>
-          <button onClick={gerar} disabled={gerando}
-            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg text-sm font-semibold flex items-center gap-2">
-            {gerando ? '⏳ Gerando...' : '📄 Gerar Proposta'}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="bg-indigo-600 text-white px-5 py-4 rounded-t-2xl flex items-center justify-between">
+          <h2 className="font-bold text-lg">📄 Nova Proposta — {lead.nome}</h2>
+          <button onClick={gerarComIA} disabled={gerandoIA}
+            className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
+            {gerandoIA ? '⏳ Analisando conversa...' : '✨ Gerar com IA'}
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// Modal Lead (detalhes + conversa)
-// ============================================================
-function LeadModal({ lead, onClose, onSave }: {
-  lead: Lead; onClose: () => void; onSave: (data: Partial<Lead>) => void;
-}) {
-  const [tab, setTab] = useState<'dados'|'conversa'>('dados');
-  const [form, setForm] = useState<Partial<Lead>>({ ...lead });
-  const [showProposta, setShowProposta] = useState(false);
-  const set = (k: keyof Lead, v: string|number) => setForm(p => ({ ...p, [k]: v }));
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col" style={{maxHeight:'90vh'}} onClick={e => e.stopPropagation()}>
-          {/* header */}
-          <div className={'rounded-t-2xl px-5 py-4 text-white flex items-center justify-between ' + (ETAPA_HDR[form.etapa as EtapaFunil || 'lead_novo'])}>
-            <div>
-              <h2 className="font-bold text-lg">{form.nome || 'Lead'}</h2>
-              {form.empresa && <p className="text-xs text-white/80">{form.empresa}</p>}
+        {iaOk && <div className="mx-5 mt-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-3 py-2 rounded-lg">✅ Proposta gerada pela IA com base na conversa do WhatsApp. Revise os itens e valores antes de gerar o PDF.</div>}
+        {erroIA && <div className="mx-5 mt-4 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">⚠️ {erroIA}</div>}
+        <div className="p-5 grid grid-cols-2 gap-3">
+          {([['empresa','Empresa'],['ac','A/C (contato)'],['telefone','Telefone'],['email','E-mail'],['cidade','Cidade/UF'],['vendedor','Vendedor'],['validade','Validade'],['frete','Frete'],['prazoEntrega','Prazo de Entrega'],['pagamento','Pagamento']] as [string,string][]).map(([k,label]) => (
+            <div key={k} className={k === 'pagamento' || k === 'intro' ? 'col-span-2' : ''}>
+              <label className="text-xs text-gray-600 font-medium">{label}</label>
+              <input value={(dados as any)[k] || ''} onChange={e => set(k, e.target.value)}
+                className="w-full border rounded-lg px-3 py-1.5 text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
-            <button onClick={onClose} className="text-white/70 hover:text-white text-2xl">&times;</button>
-          </div>
-
-          {/* tabs */}
-          <div className="flex border-b">
-            {(['dados','conversa'] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className={'flex-1 py-2.5 text-sm font-medium transition-colors ' +
-                  (tab === t ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700')}>
-                {t === 'dados' ? '📋 Dados' : '💬 Conversa'}
-              </button>
-            ))}
-          </div>
-
-          {/* content */}
-          <div className="flex-1 overflow-y-auto min-h-0">
-            {tab === 'dados' ? (
-              <div className="p-5 grid grid-cols-2 gap-3">
-                {([['nome','Nome','text'],['empresa','Empresa','text'],['email','E-mail','email'],
-                  ['telefone','Telefone','tel']] as [keyof Lead,string,string][]).map(([k,label,type]) => (
-                  <div key={k as string} className={k==='nome'?'col-span-2':''}>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">{label}</label>
-                    <input type={type} value={String(form[k]||'')} onChange={e => set(k,e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                  </div>
-                ))}
-                <div>
-                  <label className="text-xs font-medium text-gray-500 block mb-1">Etapa</label>
-                  <select value={form.etapa||'lead_novo'} onChange={e => set('etapa',e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                    {ETAPAS_FUNIL.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 block mb-1">Valor (R$)</label>
-                  <input type="number" value={form.valor||''} onChange={e => set('valor',parseFloat(e.target.value)||0)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs font-medium text-gray-500 block mb-1">Observações</label>
-                  <textarea rows={3} value={form.observacoes||''} onChange={e => set('observacoes',e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
-                </div>
-                {lead.pedidoId && <div className="col-span-2 text-xs text-gray-400">Pedido WC: #{lead.pedidoId}</div>}
-              </div>
-            ) : (
-              <ConversaPanel lead={lead} onCriarProposta={() => setShowProposta(true)} />
-            )}
-          </div>
-
-          {/* footer buttons (only on dados tab) */}
-          {tab === 'dados' && (
-            <div className="px-5 py-4 border-t flex gap-3 justify-end">
-              <button onClick={onClose} className="px-4 py-2 rounded-lg border text-gray-600 hover:bg-gray-50 text-sm">Cancelar</button>
-              <button onClick={() => onSave(form)} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-semibold">Salvar</button>
+          ))}
+          {(dados as any).intro && (
+            <div className="col-span-2">
+              <label className="text-xs text-gray-600 font-medium">Introdução (gerada pela IA)</label>
+              <textarea value={(dados as any).intro || ''} onChange={e => set('intro', e.target.value)} rows={3}
+                className="w-full border rounded-lg px-3 py-1.5 text-sm mt-0.5 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
           )}
         </div>
-      </div>
-      {showProposta && <PropostaModal lead={lead} onClose={() => setShowProposta(false)} />}
-    </>
-  );
-}
-
-// ============================================================
-// Modal Novo Lead
-// ============================================================
-function NovoLeadModal({ onClose, onSave }: { onClose: () => void; onSave: (d: Omit<Lead,'id'|'criadoEm'>) => void }) {
-  const [form, setForm] = useState({ nome:'',email:'',telefone:'',empresa:'',mensagem:'',
-    valor:'', origem:'manual' as LeadOrigem, etapa:'lead_novo' as EtapaFunil });
-  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="bg-indigo-600 rounded-t-2xl px-5 py-4 text-white flex items-center justify-between">
-          <h2 className="font-bold text-lg">+ Novo Lead</h2>
-          <button onClick={onClose} className="text-white/70 hover:text-white text-2xl">&times;</button>
-        </div>
-        <div className="p-5 grid grid-cols-2 gap-3">
-          {([['nome','Nome *','text'],['empresa','Empresa','text'],['email','E-mail','email'],['telefone','Telefone','tel']] as [string,string,string][]).map(([k,label,type]) => (
-            <div key={k} className={k==='nome'?'col-span-2':''}>
-              <label className="text-xs font-medium text-gray-500 block mb-1">{label}</label>
-              <input type={type} value={(form as any)[k]} onChange={e => set(k,e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        <div className="px-5 pb-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-bold text-gray-700">Itens da Proposta</p>
+            <button onClick={addItem} className="text-xs text-indigo-600 font-medium hover:underline">+ Adicionar item</button>
+          </div>
+          <div className="text-[10px] text-gray-400 grid grid-cols-12 gap-1 mb-1 px-1">
+            <span className="col-span-4">Produto / Serviço</span>
+            <span className="col-span-4">Descrição / Especificação</span>
+            <span className="col-span-1 text-center">Qtd</span>
+            <span className="col-span-2 text-right">R$ Unit.</span>
+            <span className="col-span-1"></span>
+          </div>
+          {itens.map((it, i) => (
+            <div key={i} className="grid grid-cols-12 gap-1 mb-1.5 items-center">
+              <input placeholder="Nome do item" value={it.nome || ''} onChange={e => setItem(i, 'nome', e.target.value)}
+                className="col-span-4 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300" />
+              <input placeholder="Especificação técnica" value={it.descricao || ''} onChange={e => setItem(i, 'descricao', e.target.value)}
+                className="col-span-4 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300" />
+              <input type="number" min="1" value={it.qtd} onChange={e => setItem(i, 'qtd', +e.target.value)}
+                className="col-span-1 border rounded px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-indigo-300" />
+              <input type="number" min="0" step="0.01" placeholder="0,00" value={it.valorUnitario || ''} onChange={e => setItem(i, 'valorUnitario', +e.target.value)}
+                className="col-span-2 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-300" />
+              <button onClick={() => remItem(i)} className="col-span-1 text-red-400 hover:text-red-600 text-sm text-center" title="Remover item">✕</button>
             </div>
           ))}
-          <div>
-            <label className="text-xs font-medium text-gray-500 block mb-1">Etapa</label>
-            <select value={form.etapa} onChange={e => set('etapa',e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-              {ETAPAS_FUNIL.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-500 block mb-1">Valor (R$)</label>
-            <input type="number" value={form.valor} onChange={e => set('valor',e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
-          </div>
-          <div className="col-span-2">
-            <label className="text-xs font-medium text-gray-500 block mb-1">Mensagem</label>
-            <textarea rows={2} value={form.mensagem} onChange={e => set('mensagem',e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          <div className="flex justify-end mt-3 pr-6">
+            <div className="text-sm font-bold text-indigo-700">
+              Total: R$ {itens.reduce((s, it) => s + (it.qtd || 1) * (it.valorUnitario || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </div>
           </div>
         </div>
-        <div className="px-5 pb-5 flex gap-3 justify-end">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border text-gray-600 hover:bg-gray-50 text-sm">Cancelar</button>
-          <button onClick={() => { if (!form.nome.trim()) return; onSave({...form,valor:parseFloat(form.valor)||undefined,observacoes:form.mensagem}); }}
-            className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-semibold">Criar Lead</button>
+        <div className="flex gap-2 px-5 pb-5 pt-2">
+          <button onClick={onClose} className="flex-1 border border-gray-300 rounded-xl py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancelar</button>
+          <button onClick={gerar} className="flex-1 bg-indigo-600 text-white rounded-xl py-2 text-sm font-bold hover:bg-indigo-700">📄 Gerar PDF</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ============================================================
-// COMPONENTE PRINCIPAL
-// ============================================================
 export function Leads() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
-  const [filtroOrigem, setFiltroOrigem] = useState('todos');
-  const [leadSel, setLeadSel] = useState<Lead|null>(null);
-  const [showNovo, setShowNovo] = useState(false);
-  const dragId = useRef<string|null>(null);
+  const [leadAtivo, setLeadAtivo] = useState<Lead | null>(null);
+  const [novoModalOpen, setNovoModalOpen] = useState(false);
+  const [propostaLead, setPropostaLead] = useState<Lead | null>(null);
 
-  useEffect(() => {
-    return subscribeLeads(data => { setLeads(data); setLoading(false); });
-  }, []);
+  useEffect(() => { return subscribeLeads(data => { setLeads(data); setLoading(false); }); }, []);
+  useEffect(() => { if (leadAtivo) { const atualizado = leads.find(l => l.id === leadAtivo.id); if (atualizado) setLeadAtivo(atualizado); } }, [leads]);
 
-  const filtrados = leads.filter(l => {
-    const ok = !busca || [l.nome,l.email,l.telefone,l.empresa].some(v => v?.toLowerCase().includes(busca.toLowerCase()));
-    const orig = filtroOrigem === 'todos' || l.origem === filtroOrigem;
-    return ok && orig;
-  });
+  const handleAdicionarLead = async (dados: Omit<Lead,'id'|'criadoEm'>) => { await adicionarLead(dados); setNovoModalOpen(false); };
+  const handleUpdateLead = (lead: Lead) => { setLeads(prev => prev.map(l => l.id === lead.id ? lead : l)); setLeadAtivo(lead); };
 
-  const deEtapa = (e: EtapaFunil) => filtrados.filter(l => l.etapa === e);
-
-  const handleDrop = async (etapa: EtapaFunil) => {
-    if (!dragId.current) return;
-    await moverEtapa(dragId.current, etapa);
-    dragId.current = null;
-  };
-  const handleSalvar = async (data: Partial<Lead>) => {
-    if (!leadSel) return;
-    await atualizarLead(leadSel.id, data);
-    setLeadSel(null);
-  };
-  const handleNovo = async (data: Omit<Lead,'id'|'criadoEm'>) => {
-    await adicionarLead(data); setShowNovo(false);
-  };
-
+  const filtrados = leads.filter(l => { if (!busca) return true; const q = busca.toLowerCase(); return [l.nome, l.email, l.telefone, l.empresa].some(v => v?.toLowerCase().includes(q)); });
   const totalVal = leads.filter(l => l.etapa !== 'fechado_perdido').reduce((s,l) => s+(l.valor||0), 0);
-  const ganhos  = leads.filter(l => l.etapa === 'fechado_ganho').length;
-  const taxa    = leads.length ? Math.round((ganhos/leads.length)*100) : 0;
+  const ganhos   = leads.filter(l => l.etapa === 'fechado_ganho').length;
+  const taxa     = leads.length ? Math.round((ganhos/leads.length)*100) : 0;
 
   return (
-    <div className="flex flex-col h-full bg-gray-100">
-      {/* topo */}
-      <div className="bg-white border-b px-6 py-4 flex flex-wrap items-center gap-4">
+    <div className="flex flex-col h-full bg-gray-50" style={{ height: 'calc(100vh - 56px)' }}>
+      <div className="flex items-center gap-4 px-4 py-3 bg-white border-b flex-shrink-0">
         <div>
-          <h1 className="text-xl font-bold text-gray-800">Funil de Vendas</h1>
-          <p className="text-xs text-gray-500">CRM • Leads em tempo real · clique para detalhes e conversa</p>
+          <h1 className="text-lg font-bold text-gray-900">WhatsApp CRM</h1>
+          <p className="text-xs text-gray-500">Conversas em tempo real • {leads.length} leads</p>
         </div>
-        <div className="flex gap-3 ml-4 flex-wrap">
-          {[['Total',leads.length,'text-indigo-600'],['Pipeline',fmt(totalVal)||'R$ 0','text-violet-600'],
-            ['Fechados',ganhos,'text-emerald-600'],['Conversão',taxa+'%','text-amber-600']].map(([l,v,c]) => (
-            <div key={l as string} className="bg-gray-50 rounded-lg px-3 py-1.5 text-center min-w-[76px]">
-              <p className={'font-bold text-base ' + c}>{v}</p>
-              <p className="text-xs text-gray-400">{l}</p>
-            </div>
-          ))}
+        <div className="flex gap-4 ml-4 text-xs">
+          <div><span className="font-bold text-violet-600">{totalVal ? `R$ ${(totalVal/1000).toFixed(0)}k` : 'R$ 0'}</span><span className="text-gray-500 ml-1">pipeline</span></div>
+          <div><span className="font-bold text-emerald-600">{ganhos}</span><span className="text-gray-500 ml-1">ganhos</span></div>
+          <div><span className="font-bold text-indigo-600">{taxa}%</span><span className="text-gray-500 ml-1">conversão</span></div>
         </div>
-        <div className="flex-1" />
-        <div className="flex gap-2 flex-wrap">
-          <input type="search" placeholder="Buscar..." value={busca} onChange={e => setBusca(e.target.value)}
-            className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 w-44" />
-          <select value={filtroOrigem} onChange={e => setFiltroOrigem(e.target.value)}
-            className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-            <option value="todos">Todas origens</option>
-            {Object.entries(ORIGEM_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-          <button onClick={() => setShowNovo(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-1.5 rounded-lg">
-            + Novo Lead
-          </button>
+        <div className="ml-auto">
+          <button onClick={() => setNovoModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-xl">+ Novo Lead</button>
         </div>
       </div>
-
-      {/* kanban */}
-      {loading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600" />
-        </div>
-      ) : (
-        <div className="flex-1 overflow-x-auto p-4">
-          <div className="flex gap-3 h-full" style={{minWidth:'max-content'}}>
-            {ETAPAS_FUNIL.map(etapa => (
-              <KanbanColuna key={etapa.id} etapa={etapa} leads={deEtapa(etapa.id)}
-                onCardClick={l => setLeadSel(l)}
-                onDrop={e => { dragId.current = e as any; handleDrop(etapa.id); }} />
+      <div className="flex flex-1 overflow-hidden">
+        <div className="w-72 flex-shrink-0 border-r bg-white flex flex-col overflow-hidden">
+          <div className="p-2 border-b">
+            <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar lead..."
+              className="w-full text-sm border rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {loading && <div className="text-center text-xs text-gray-400 py-8">Carregando...</div>}
+            {!loading && filtrados.length === 0 && (
+              <div className="text-center py-12 px-4">
+                <div className="text-3xl mb-2">📭</div>
+                <p className="text-sm text-gray-500 font-medium">Nenhum lead ainda</p>
+                <p className="text-xs text-gray-400 mt-1">Quando clientes enviarem mensagens pelo WhatsApp, eles aparecerão aqui automaticamente.</p>
+              </div>
+            )}
+            {filtrados.map(lead => (
+              <LeadItem key={lead.id} lead={lead as any} ativo={leadAtivo?.id === lead.id} onClick={() => setLeadAtivo(lead)} />
             ))}
           </div>
         </div>
-      )}
-
-      {leadSel && <LeadModal lead={leadSel} onClose={() => setLeadSel(null)} onSave={handleSalvar} />}
-      {showNovo && <NovoLeadModal onClose={() => setShowNovo(false)} onSave={handleNovo} />}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {leadAtivo ? (
+            <ConversaPanel lead={leadAtivo} onEtapaChange={async etapa => { await atualizarLead(leadAtivo.id, { etapa }); setLeadAtivo(l => l ? { ...l, etapa } : l); }} />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-8" style={{ background: '#e5ddd5' }}>
+              <div className="text-6xl mb-4">💬</div>
+              <h2 className="text-xl font-bold text-gray-700 mb-2">WhatsApp CRM</h2>
+              <p className="text-sm text-gray-600 max-w-xs">Selecione uma conversa à esquerda para ver as mensagens e responder ao cliente.</p>
+              <p className="text-xs text-gray-500 mt-3">Novas mensagens recebidas pelo WhatsApp <strong>(61) 99308-1396</strong> criam leads automaticamente.</p>
+            </div>
+          )}
+        </div>
+        {leadAtivo && (
+          <div className="w-64 flex-shrink-0 border-l bg-white overflow-hidden">
+            <DetalhesPanel lead={leadAtivo} onUpdate={handleUpdateLead} onCriarProposta={() => setPropostaLead(leadAtivo)} />
+          </div>
+        )}
+      </div>
+      {novoModalOpen && <NovoLeadModal onClose={() => setNovoModalOpen(false)} onSave={handleAdicionarLead} />}
+      {propostaLead && <PropostaModal lead={propostaLead} onClose={() => setPropostaLead(null)} />}
     </div>
   );
-            }
+}
