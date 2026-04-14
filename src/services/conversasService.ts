@@ -18,7 +18,7 @@ export async function buscarMensagens(telefone: string): Promise<Mensagem[]> {
   const tel = telefone.replace(/\D/g, '');
   const res = await fetch(`${API_BASE}/mensagem?telefone=${tel}`);
   const data = await res.json();
-  return (data.mensagens || []) as Mensagem[];
+  return (Array.isArray(data) ? data : []) as Mensagem[];
 }
 
 // ---------- enviar mensagem via WhatsApp ----------
