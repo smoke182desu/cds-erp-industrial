@@ -8,6 +8,8 @@ import {
   orderBy,
   where,
   onSnapshot,
+  getDoc,
+  setDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -84,10 +86,56 @@ export async function buscarLeadsPorEtapa(etapa: EtapaFunil): Promise<Lead[]> {
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Lead, 'id'>) }));
 }
 
-// ---------- adicionar lead ----------
+// ---------- próximo código de cliente (sequencial) ----------
+async function proximoCodigoCliente(): Promise<number> {
+  const ref = doc(db, 'config', 'cliente_counter');
+  const snap = await getDoc(ref);
+  const atual = snap.exists() ? (snap.data().numero as number) : 0;
+  const proximo = atual + 1;
+  await setDoc(ref, { numero: proximo });
+  return proximo;
+}
+
+// ---------- criar ou retornar cliente ----------
+export async function salvarCliente(lead: Partial<Lead>): Promise<string> {
+  if (!lead.telefone) return '';
+  // Evita duplicatas por telefone
+  const q = query(collection(db, 'clientes'), where('telefone', '==', lead.telefone));
+  const snap = await getDocs(q);
+  if (!snap.empty) {
+    const existente = snap.docs[0];
+    await updateDoc(existente.ref, {
+      nome: lead.nome || existente.data().nome || '',
+      empresa: lead.empresa || existente.data().empresa || '',
+      email: lead.email || existente.data().email || '',
+      atualizadoEm: new Date().toISOString(),
+    });
+    return existente.id;
+  }
+  // Novo cliente com número sequencial
+  const codigo = await proximoCodigoCliente();
+  const codigoFormatado = `CLI-${String(codigo).padStart(4, '0')}`;
+  const ref = await addDoc(collection(db, 'clientes'), {
+    codigo,
+    codigoFormatado,
+    nome:      lead.nome      || '',
+    email:     lead.email     || '',
+    telefone:  lead.telefone,
+    empresa:   lead.empresa   || '',
+    tipo:      'pre_cadastro',
+    origem:    lead.origem    || 'manual',
+    criadoEm:  new Date().toISOString(),
+  });
+  return ref.id;
+}
+
+// ---------- adicionar lead (e salvar cliente automaticamente) ----------
 export async function adicionarLead(data: Omit<Lead, 'id' | 'criadoEm'>): Promise<string> {
+  // Salva/atualiza cliente automaticamente
+  const clienteId = await salvarCliente(data);
   const ref = await addDoc(collection(db, 'leads'), {
     ...data,
+    clienteId,
     etapa: data.etapa || 'lead_novo',
     criadoEm: new Date().toISOString(),
     atualizadoEm: new Date().toISOString(),
