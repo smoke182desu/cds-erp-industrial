@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { GoogleGenAI } from '@google/genai';
 
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'cds-erp-industrial';
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
@@ -85,7 +86,7 @@ CONVERSA COMPLETA:
 ${conversaStr}
 FIM DA CONVERSA
 
-Analise esta conversa com olhar clínico de especialista em vendas B2B industrial. Retorne APENAS um JSON válido (sem markdown, sem json, sem texto extra) com esta estrutura:
+Analise esta conversa com olhar clínico de especialista em vendas B2B industrial. Retorne APENAS um JSON válido (sem markdown, sem \`\`\`json, sem texto extra) com esta estrutura:
 {
   "etapaDetectada": "lead_novo|contato_feito|qualificado|proposta_enviada|negociacao|fechado_ganho|fechado_perdido",
   "deveAvancarEtapa": true ou false,
@@ -98,23 +99,22 @@ Analise esta conversa com olhar clínico de especialista em vendas B2B industria
   "proximoPasso": "A ação comercial mais importante e urgente agora, escrita como instrução direta ao vendedor (1 frase imperativa)",
   "sugestoes": [
     {
-      "label": "Rótulo curto descrevendo a abordagem",
-      "mensagem": "Texto exato para enviar no WhatsApp. Tom informal e natural, como uma pessoa real escreveria."
+      "label": "Rótulo curto descrevendo a abordagem (ex: Quebrar objeção de preço)",
+      "mensagem": "Texto exato para enviar no WhatsApp. Tom informal e natural, como uma pessoa real escreveria — sem robotismo, sem formalidade excessiva. Personalize com o nome do cliente quando fizer sentido. Seja específico ao contexto desta conversa."
     }
   ]
 }
 
-Forneça 3 a 4 sugestões de mensagem cobrindo diferentes ângulos táticos. As mensagens devem ser cirúrgicas e específicas para este momento.`;
+Forneça 3 a 4 sugestões de mensagem cobrindo diferentes ângulos táticos (ex: uma para criar urgência, uma para superar objeção, uma para avançar para próxima etapa, etc). As mensagens devem ser cirúrgicas e específicas para este momento.`;
 
-  const response = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
-    }
-  );
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  const result = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+    config: { temperature: 0.2, maxOutputTokens: 2048 },
+  });
 
-  const raw = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const raw = result?.text || '';
   const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
   try {
