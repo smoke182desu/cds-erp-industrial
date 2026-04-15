@@ -72,7 +72,7 @@ interface ERPContextType {
   limparCarrinho: () => void;
   totalCarrinho: number;
   validarConciliacao: (pedidoId: string, itensConciliados: { itemId: string; qtd: number; preco: number }[]) => void;
-  adicionarCliente: (cliente: Cliente) => void;
+  adicionarCliente: (cliente: Cliente) => void;   atualizarCliente: (id: string, patch: Partial<Cliente>) => void;   adicionarPropostaDireta: (proposta: Proposta) => void;
   darEntradaEstoque: (itemId: string, quantidade: number, novoCusto: number) => void;
   registrarTransacao: (transacao: TransacaoFinanceira) => void;
   atualizarStatusTransacao: (id: string) => void;
@@ -690,7 +690,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const registrarTransacao = (transacao: TransacaoFinanceira) => {
+  const atualizarCliente = (id: string, patch: Partial<Cliente>) => { setState(prev => ({ ...prev, clientes: prev.clientes.map(c => c.id === id ? { ...c, ...patch } : c) })); }; const adicionarPropostaDireta = (proposta: Proposta) => { setState(prev => ({ ...prev, propostas: [proposta, ...(prev.propostas || [])] })); }; const registrarTransacao = (transacao: TransacaoFinanceira) => { => {
     setState(prev => ({
       ...prev,
       transacoesFinanceiras: [...prev.transacoesFinanceiras, transacao]
@@ -789,7 +789,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   return (
-    <ERPContext.Provider value={{ state, adicionarAoCarrinho, removerDoCarrinho, fecharProposta, aprovarVenda, salvarRascunho, gerarOS, moverEtapaOS, updateInventory, calculateBOM, moverEtapaProjeto, totalCarrinho, validarConciliacao, limparCarrinho, adicionarCliente, darEntradaEstoque, registrarTransacao, atualizarStatusTransacao, enviarMensagemAoAgente }}>
+    <ERPContext.Provider value={{ state, adicionarAoCarrinho, removerDoCarrinho, fecharProposta, aprovarVenda, salvarRascunho, gerarOS, moverEtapaOS, updateInventory, calculateBOM, moverEtapaProjeto, totalCarrinho, validarConciliacao, limparCarrinho, adicionarCliente, atualizarCliente, adicionarPropostaDireta, darEntradaEstoque, registrarTransacao, atualizarStatusTransacao, enviarMensagemAoAgente }}>
       {children}
     </ERPContext.Provider>
   );
