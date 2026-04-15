@@ -1,88 +1,67 @@
 import axios from 'axios';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
 export const config = { maxDuration: 60 };
 
-const FIREBASE_API_KEY = 'AIzaSyCr_o3dEiSExaafhkP57SpTf1wTLQSIiMs';
-const PROJECT_ID = 'gen-lang-client-0908948294';
-const DATABASE_ID = 'ai-studio-eb49ab80-1528-409e-b7d5-b3e84e7a358d';
-const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents`;
+function getDb() {
+  if (!getApps().length) {
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (!raw) throw new Error('FIREBASE_SERVICE_ACCOUNT nao configurado no Vercel.');
+    const serviceAccount = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    initializeApp({
+      credential: cert(serviceAccount),
+      projectId: serviceAccount.project_id,
+    });
+  }
+  const databaseId = process.env.FIRESTORE_DATABASE_ID || 'ai-studio-eb49ab80-1528-409e-b7d5-b3e84e7a358d';
+  return getFirestore(undefined, databaseId);
+}
 
 const WC_URL = process.env.WC_URL || '';
 const WC_KEY = process.env.WC_KEY || '';
 const WC_SECRET = process.env.WC_SECRET || '';
 
-// Batch pequeno + delay + retry respeita quota da Firebase API key
-const BATCH_SIZE = 5;
-const BATCH_DELAY_MS = 300;
-const MAX_RETRIES = 3;
+const BATCH_SIZE = 400;
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function str(v) { return { stringValue: String(v || '') }; }
-function num(v) { return { doubleValue: Number(v || 0) }; }
-function bool(v) { return { booleanValue: Boolean(v) }; }
-function ts() { return { timestampValue: new Date().toISOString() }; }
-
-// Retry com backoff exponencial em caso de 429 (RESOURCE_EXHAUSTED)
-async function firestoreSet(docId, fields) {
-  let attempt = 0;
-  while (true) {
-    try {
-      await axios.patch(`${BASE_URL}/produtos/${docId}?key=${FIREBASE_API_KEY}`, { fields }, { timeout: 8000 });
-      return;
-    } catch (err) {
-      const status = err?.response?.status;
-      if (status === 429 && attempt < MAX_RETRIES) {
-        const wait = 500 * Math.pow(2, attempt);
-        console.log(`[produtos] 429 retry em ${wait}ms (tentativa ${attempt + 1})`);
-        await sleep(wait);
-        attempt++;
-        continue;
-      }
-      throw err;
-    }
-  }
+function clean(v) {
+  if (v === null || v === undefined) return '';
+  return v;
 }
 
 async function firestoreGetAll() {
-  const res = await axios.get(`${BASE_URL}/produtos?pageSize=200&key=${FIREBASE_API_KEY}`, { timeout: 8000 });
-  return (res.data.documents || []).map(d => {
-    const f = d.fields || {};
-    const id = d.name.split('/').pop();
-    const get = (k, fallback = '') =>
-      f[k]?.stringValue ?? f[k]?.doubleValue ?? f[k]?.booleanValue ?? fallback;
-    return {
-      id, wcId: get('wcId'), nome: get('nome'), sku: get('sku'),
-      preco: get('preco', 0), precoRegular: get('precoRegular', 0),
-      estoque: get('estoque', 0), status: get('status'),
-      categoria: get('categoria'), imagem: get('imagem'),
-      descricao: get('descricao'), permalink: get('permalink'),
-      sincronizadoEm: get('sincronizadoEm'),
-    };
-  });
+  const db = getDb();
+  const snap = await db.collection('produtos').limit(500).get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 async function writeBatch(products) {
+  const db = getDb();
   for (let i = 0; i < products.length; i += BATCH_SIZE) {
     const slice = products.slice(i, i + BATCH_SIZE);
-    await Promise.all(slice.map(p => firestoreSet(`wc_${p.id}`, {
-      wcId: str(String(p.id)), nome: str(p.name), sku: str(p.sku || ''),
-      preco: num(parseFloat(p.price || '0')),
-      precoRegular: num(parseFloat(p.regular_price || '0')),
-      precoPromocional: num(parseFloat(p.sale_price || '0')),
-      estoque: num(p.stock_quantity || 0),
-      gerenciarEstoque: bool(p.manage_stock),
-      emEstoque: bool(p.in_stock),
-      status: str(p.status),
-      categoria: str(p.categories?.[0]?.name || ''),
-      imagem: str(p.images?.[0]?.src || ''),
-      descricao: str((p.short_description || '').replace(/<[^>]+>/g, '')),
-      permalink: str(p.permalink || ''),
-      tipo: str(p.type || 'simple'),
-      sincronizadoEm: ts(),
-    })));
-    if (i + BATCH_SIZE < products.length) {
-      await sleep(BATCH_DELAY_MS);
+    const batch = db.batch();
+    for (const p of slice) {
+      const ref = db.collection('produtos').doc(`wc_${p.id}`);
+      batch.set(ref, {
+        wcId: String(p.id || ''),
+        nome: clean(p.name),
+        sku: clean(p.sku),
+        preco: parseFloat(p.price || '0') || 0,
+        precoRegular: parseFloat(p.regular_price || '0') || 0,
+        precoPromocional: parseFloat(p.sale_price || '0') || 0,
+        estoque: p.stock_quantity || 0,
+        gerenciarEstoque: !!p.manage_stock,
+        emEstoque: !!p.in_stock,
+        status: clean(p.status),
+        categoria: clean(p.categories?.[0]?.name),
+        imagem: clean(p.images?.[0]?.src),
+        descricao: (p.short_description || '').replace(/<[^>]+>/g, ''),
+        permalink: clean(p.permalink),
+        tipo: clean(p.type) || 'simple',
+        sincronizadoEm: new Date().toISOString(),
+      }, { merge: true });
     }
+    await batch.commit();
   }
 }
 
@@ -112,9 +91,8 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
-
-  if (req.method === 'GET') {
-    try {
+  try {
+    if (req.method === 'GET') {
       if (req.query.sync === '1') {
         const total = await sincronizarWooCommerce();
         const produtos = await firestoreGetAll();
@@ -122,21 +100,14 @@ export default async function handler(req, res) {
       }
       const produtos = await firestoreGetAll();
       return res.status(200).json({ ok: true, produtos, total: produtos.length });
-    } catch (err) {
-      console.error('[produtos] erro:', err?.response?.status, err?.response?.data || err.message);
-      return res.status(500).json({ error: err.message, detail: err?.response?.data });
     }
-  }
-
-  if (req.method === 'POST') {
-    try {
+    if (req.method === 'POST') {
       const total = await sincronizarWooCommerce();
       return res.status(200).json({ ok: true, sincronizados: total });
-    } catch (err) {
-      console.error('[produtos] erro:', err?.response?.status, err?.response?.data || err.message);
-      return res.status(500).json({ error: err.message, detail: err?.response?.data });
     }
+    return res.status(405).json({ error: 'Method not allowed' });
+  } catch (err) {
+    console.error('[produtos] erro:', err?.response?.status, err?.response?.data || err.message, err.stack);
+    return res.status(500).json({ error: err.message, detail: err?.response?.data });
   }
-
-  return res.status(405).json({ error: 'Method not allowed' });
 }
