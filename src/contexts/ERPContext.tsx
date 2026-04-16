@@ -38,7 +38,7 @@ interface ERPState {
   };
   carrinhoAtual: any[];
   inventory: {
-    [key: string]: number; // ID do item -> quantidade
+    [key: string]: number;
   };
   inventoryItems: InventoryItem[];
   bom: BOMItem[];
@@ -72,7 +72,8 @@ interface ERPContextType {
   limparCarrinho: () => void;
   totalCarrinho: number;
   validarConciliacao: (pedidoId: string, itensConciliados: { itemId: string; qtd: number; preco: number }[]) => void;
-  adicionarCliente: (cliente: Cliente) => void;   atualizarCliente: (id: string, patch: Partial<Cliente>) => void;   adicionarPropostaDireta: (proposta: Proposta) => void;
+  adicionarCliente: (cliente: Cliente) => void;
+  adicionarProposta: (proposta: Proposta) => void;
   darEntradaEstoque: (itemId: string, quantidade: number, novoCusto: number) => void;
   registrarTransacao: (transacao: TransacaoFinanceira) => void;
   atualizarStatusTransacao: (id: string) => void;
@@ -91,7 +92,6 @@ const estoqueInicial: InventoryItem[] = [
   { id: '6', codigo: 'AC006', nome: 'Ferro Chato 1" x 1/8" (Barra 6m)', categoria: 'Aço', unidade: 'barra', custo: 40.00, precoVenda: 52.00, quantidadeEstoque: 150, estoqueMinimo: 50 },
   { id: '7', codigo: 'AC007', nome: 'Perfil U Enrijecido 100x50x17x2mm (Barra 6m)', categoria: 'Aço', unidade: 'barra', custo: 150.00, precoVenda: 195.00, quantidadeEstoque: 100, estoqueMinimo: 30 },
   { id: '101', codigo: 'AC011', nome: 'Tubo Redondo Reforçado 2" x 2.0mm (Barra 6m)', categoria: 'Aço', unidade: 'barra', custo: 180.00, precoVenda: 234.00, quantidadeEstoque: 50, estoqueMinimo: 10 },
-
   // 🔲 CHAPAS
   { id: '8', codigo: 'CH001', nome: 'Chapa Lisa Preta 18 (1.2mm) 2x1m', categoria: 'Aço', unidade: 'chapa', custo: 210.00, precoVenda: 273.00, quantidadeEstoque: 40, estoqueMinimo: 10 },
   { id: '9', codigo: 'CH002', nome: 'Chapa Expandida 3mm Malha 50x25 (2x1m)', categoria: 'Aço', unidade: 'chapa', custo: 180.00, precoVenda: 234.00, quantidadeEstoque: 30, estoqueMinimo: 10 },
@@ -99,32 +99,27 @@ const estoqueInicial: InventoryItem[] = [
   { id: '102', codigo: 'CH004', nome: 'Chapa de Alumínio Antiderrapante 3mm (2x1m)', categoria: 'Alumínio', unidade: 'chapa', custo: 650.00, precoVenda: 845.00, quantidadeEstoque: 20, estoqueMinimo: 5 },
   { id: '103', codigo: 'AC012', nome: 'Sapata Flangeada Reforçada 150x150x1/2" (Un)', categoria: 'Aço', unidade: 'un', custo: 45.00, precoVenda: 58.50, quantidadeEstoque: 100, estoqueMinimo: 20 },
   { id: '104', codigo: 'FI008', nome: 'Chumbador Parabolt Reforçado 1/2" x 4" (Un)', categoria: 'Fixação', unidade: 'un', custo: 8.50, precoVenda: 11.05, quantidadeEstoque: 200, estoqueMinimo: 50 },
-
-  // 🚪 FERRAGENS PARA PORTÕES E ESQUADRIAS
+  // 🚪 FERRAGENS
   { id: '11', codigo: 'FE001', nome: 'Gonzo Torneado 5/8" c/ Aba (Par)', categoria: 'Ferragens', unidade: 'par', custo: 8.00, precoVenda: 10.40, quantidadeEstoque: 200, estoqueMinimo: 50 },
   { id: '12', codigo: 'FE002', nome: 'Dobradiça Pino Bola 3" (Un)', categoria: 'Ferragens', unidade: 'un', custo: 12.00, precoVenda: 15.60, quantidadeEstoque: 150, estoqueMinimo: 40 },
   { id: '13', codigo: 'FE003', nome: 'Fechadura Bico de Papagaio (Portão Correr)', categoria: 'Ferragens', unidade: 'un', custo: 45.00, precoVenda: 58.50, quantidadeEstoque: 40, estoqueMinimo: 10 },
   { id: '14', codigo: 'FE004', nome: 'Fechadura Sobrepor Stam (Portão Abrir)', categoria: 'Ferragens', unidade: 'un', custo: 55.00, precoVenda: 71.50, quantidadeEstoque: 30, estoqueMinimo: 10 },
   { id: '15', codigo: 'FE005', nome: 'Orelha para Cadeado (Porta Cadeado) 2.5mm', categoria: 'Ferragens', unidade: 'un', custo: 2.00, precoVenda: 2.60, quantidadeEstoque: 300, estoqueMinimo: 100 },
   { id: '16', codigo: 'FE006', nome: 'Trinco Ferrolho Chato 4"', categoria: 'Ferragens', unidade: 'un', custo: 15.00, precoVenda: 19.50, quantidadeEstoque: 100, estoqueMinimo: 30 },
-
-  // 🛞 MOVIMENTAÇÃO (RODAS E RODÍZIOS)
+  // 🛞 MOVIMENTAÇÃO
   { id: '17', codigo: 'RO001', nome: 'Roda de Portão Canal V 2.1/2" c/ Rolamento', categoria: 'Movimentação', unidade: 'un', custo: 28.00, precoVenda: 36.40, quantidadeEstoque: 80, estoqueMinimo: 20 },
   { id: '18', codigo: 'RO002', nome: 'Rodízio Giratório 4" Borracha Laranja c/ Freio', categoria: 'Movimentação', unidade: 'un', custo: 38.00, precoVenda: 49.40, quantidadeEstoque: 60, estoqueMinimo: 16 },
   { id: '19', codigo: 'RO003', nome: 'Pneu 3.50-8 c/ Roda Chapa (Carrinhos/Lixeiras)', categoria: 'Movimentação', unidade: 'un', custo: 55.00, precoVenda: 71.50, quantidadeEstoque: 40, estoqueMinimo: 10 },
   { id: '20', codigo: 'RO004', nome: 'Câmara de Ar 3.50-8', categoria: 'Movimentação', unidade: 'un', custo: 22.00, precoVenda: 28.60, quantidadeEstoque: 50, estoqueMinimo: 15 },
   { id: '21', codigo: 'RO005', nome: 'Rodízio Fixo 4" Poliuretano (Pesado)', categoria: 'Movimentação', unidade: 'un', custo: 45.00, precoVenda: 58.50, quantidadeEstoque: 40, estoqueMinimo: 12 },
-
-  // 🔩 FIXAÇÃO E ACABAMENTOS PLÁSTICOS
+  // 🔩 FIXAÇÃO
   { id: '22', codigo: 'FI001', nome: 'Parafuso Autobrocante para Telha 12x14 (Cento)', categoria: 'Fixação', unidade: 'cento', custo: 45.00, precoVenda: 58.50, quantidadeEstoque: 50, estoqueMinimo: 15 },
   { id: '23', codigo: 'FI002', nome: 'Chumbador de Expansão Parabolt 3/8" x 3"', categoria: 'Fixação', unidade: 'un', custo: 4.50, precoVenda: 5.85, quantidadeEstoque: 400, estoqueMinimo: 100 },
   { id: '24', codigo: 'FI003', nome: 'Ponteira Plástica Interna Quadrada 30x30mm (Cento)', categoria: 'Acessórios', unidade: 'cento', custo: 25.00, precoVenda: 32.50, quantidadeEstoque: 30, estoqueMinimo: 10 },
   { id: '25', codigo: 'FI004', nome: 'Ponteira Plástica Interna Redonda 2" (Un)', categoria: 'Acessórios', unidade: 'un', custo: 1.50, precoVenda: 1.95, quantidadeEstoque: 200, estoqueMinimo: 50 },
-
-  // 🏠 COBERTURA E TELHAS
+  // 🏠 COBERTURA
   { id: '26', codigo: 'CO001', nome: 'Telha Trapezoidal Galvalume 0.43mm (Metro)', categoria: 'Cobertura', unidade: 'm', custo: 35.00, precoVenda: 45.50, quantidadeEstoque: 500, estoqueMinimo: 100 },
   { id: '27', codigo: 'CO002', nome: 'Cumeeira Trapezoidal Galvalume (Metro)', categoria: 'Cobertura', unidade: 'm', custo: 40.00, precoVenda: 52.00, quantidadeEstoque: 60, estoqueMinimo: 20 },
-
   // ⚡ SOLDA E ABRASIVOS
   { id: '28', codigo: 'SO001', nome: 'Arame MIG 0.8mm (Rolo 15kg)', categoria: 'Solda', unidade: 'rolo', custo: 220.00, precoVenda: 286.00, quantidadeEstoque: 20, estoqueMinimo: 5 },
   { id: '29', codigo: 'SO002', nome: 'Eletrodo Revestido E6013 2.5mm (Caixa 5kg)', categoria: 'Solda', unidade: 'caixa', custo: 110.00, precoVenda: 143.00, quantidadeEstoque: 30, estoqueMinimo: 10 },
@@ -132,43 +127,36 @@ const estoqueInicial: InventoryItem[] = [
   { id: '31', codigo: 'AB002', nome: 'Disco de Desbaste 4.1/2"', categoria: 'Abrasivo', unidade: 'un', custo: 8.00, precoVenda: 10.40, quantidadeEstoque: 150, estoqueMinimo: 50 },
   { id: '32', codigo: 'AB003', nome: 'Disco Flap Grão 40 4.1/2" (Acabamento)', categoria: 'Abrasivo', unidade: 'un', custo: 12.00, precoVenda: 15.60, quantidadeEstoque: 120, estoqueMinimo: 40 },
   { id: '33', codigo: 'AB004', nome: 'Disco Policorte 12" x 1/8"', categoria: 'Abrasivo', unidade: 'un', custo: 25.00, precoVenda: 32.50, quantidadeEstoque: 80, estoqueMinimo: 20 },
-
-  // 🖌️ PINTURA E QUÍMICOS
+  // 🖌️ PINTURA
   { id: '34', codigo: 'PI001', nome: 'Primer Fundo Anticorrosivo Zarcão (Galão 3.6L)', categoria: 'Pintura', unidade: 'galao', custo: 85.00, precoVenda: 110.50, quantidadeEstoque: 30, estoqueMinimo: 10 },
   { id: '35', codigo: 'PI002', nome: 'Fundo Preparador Galvite p/ Galvanizado (Galão 3.6L)', categoria: 'Pintura', unidade: 'galao', custo: 100.00, precoVenda: 130.00, quantidadeEstoque: 20, estoqueMinimo: 8 },
   { id: '36', codigo: 'PI003', nome: 'Esmalte Sintético Preto Brilhante (Galão 3.6L)', categoria: 'Pintura', unidade: 'galao', custo: 120.00, precoVenda: 156.00, quantidadeEstoque: 25, estoqueMinimo: 8 },
   { id: '37', codigo: 'PI004', nome: 'Esmalte Sintético Cinza Escuro (Galão 3.6L)', categoria: 'Pintura', unidade: 'galao', custo: 120.00, precoVenda: 156.00, quantidadeEstoque: 25, estoqueMinimo: 8 },
   { id: '38', codigo: 'PI005', nome: 'Thinner 1100 Limpeza e Diluição (Lata 5L)', categoria: 'Pintura', unidade: 'lata', custo: 70.00, precoVenda: 91.00, quantidadeEstoque: 40, estoqueMinimo: 15 },
-
-  // ⚙️ AUTOMAÇÃO E BASCULANTES (PORTÕES)
+  // ⚙️ AUTOMAÇÃO
   { id: '39', codigo: 'AU001', nome: 'Cremalheira Aço/Nylon para Motor (1,5m)', categoria: 'Automação', unidade: 'barra', custo: 35.00, precoVenda: 45.50, quantidadeEstoque: 40, estoqueMinimo: 10 },
   { id: '40', codigo: 'AU002', nome: 'Roldana Guia de Nylon c/ Parafuso (Portão Correr)', categoria: 'Ferragens', unidade: 'un', custo: 18.00, precoVenda: 23.40, quantidadeEstoque: 60, estoqueMinimo: 20 },
   { id: '41', codigo: 'FE007', nome: 'Fechadura Elétrica de Sobrepor 12V', categoria: 'Ferragens', unidade: 'un', custo: 140.00, precoVenda: 182.00, quantidadeEstoque: 15, estoqueMinimo: 5 },
   { id: '42', codigo: 'AC008', nome: 'Cabo de Aço Galvanizado 1/4" (Metro)', categoria: 'Aço', unidade: 'm', custo: 4.50, precoVenda: 5.85, quantidadeEstoque: 200, estoqueMinimo: 50 },
   { id: '43', codigo: 'FI005', nome: 'Clips/Grampo para Cabo de Aço 1/4"', categoria: 'Fixação', unidade: 'un', custo: 1.50, precoVenda: 1.95, quantidadeEstoque: 150, estoqueMinimo: 30 },
-
-  // 🏠 ACABAMENTOS E VEDAÇÃO DE COBERTURA
+  // 🏠 ACABAMENTOS COBERTURA
   { id: '44', codigo: 'CO003', nome: 'Calha em Chapa Galvanizada 14 (Metro)', categoria: 'Cobertura', unidade: 'm', custo: 50.00, precoVenda: 65.00, quantidadeEstoque: 80, estoqueMinimo: 30 },
   { id: '45', codigo: 'CO004', nome: 'Rufo Pingadeira Galvanizado (Metro)', categoria: 'Cobertura', unidade: 'm', custo: 28.00, precoVenda: 36.40, quantidadeEstoque: 100, estoqueMinimo: 40 },
   { id: '46', codigo: 'QU001', nome: 'Selante PU 40 para Calhas (Tubo 400g)', categoria: 'Químicos', unidade: 'tubo', custo: 22.00, precoVenda: 28.60, quantidadeEstoque: 50, estoqueMinimo: 15 },
   { id: '47', codigo: 'QU002', nome: 'Fita Butílica para Vedação de Telhas (Rolo 10m)', categoria: 'Cobertura', unidade: 'rolo', custo: 35.00, precoVenda: 45.50, quantidadeEstoque: 20, estoqueMinimo: 5 },
-
-  // 🛡️ CERCAMENTOS E SEGURANÇA
+  // 🛡️ CERCAMENTOS
   { id: '48', codigo: 'SE001', nome: 'Lança Perfurante Mandíbula (Barra 1m)', categoria: 'Segurança', unidade: 'm', custo: 18.00, precoVenda: 23.40, quantidadeEstoque: 100, estoqueMinimo: 30 },
   { id: '49', codigo: 'SE002', nome: 'Tela Soldada Galvanizada Malha 5x5cm (m²)', categoria: 'Segurança', unidade: 'm²', custo: 25.00, precoVenda: 32.50, quantidadeEstoque: 200, estoqueMinimo: 50 },
-
-  // 🏗️ ESTRUTURAL PESADO E FUNDAÇÃO
+  // 🏗️ ESTRUTURAL PESADO
   { id: '50', codigo: 'AC009', nome: 'Chapa Grossa 1/2" (12.5mm) - Placa Base (m²)', categoria: 'Aço', unidade: 'm²', custo: 600.00, precoVenda: 780.00, quantidadeEstoque: 5, estoqueMinimo: 2 },
   { id: '51', codigo: 'AC010', nome: 'Barra Roscada Zincada 5/8" (1 Metro)', categoria: 'Fixação', unidade: 'barra', custo: 25.00, precoVenda: 32.50, quantidadeEstoque: 50, estoqueMinimo: 10 },
   { id: '52', codigo: 'QU003', nome: 'Chumbador Químico Ampola (Un)', categoria: 'Fixação', unidade: 'un', custo: 18.00, precoVenda: 23.40, quantidadeEstoque: 80, estoqueMinimo: 20 },
-
-  // 🔩 FIXADORES COMPLEMENTARES E BROCAS
+  // 🔩 FIXADORES E BROCAS
   { id: '53', codigo: 'FI006', nome: 'Parafuso Sextavado Soberbo 1/4" x 50mm (Cento)', categoria: 'Fixação', unidade: 'cento', custo: 25.00, precoVenda: 32.50, quantidadeEstoque: 20, estoqueMinimo: 5 },
   { id: '54', codigo: 'FI007', nome: 'Bucha de Nylon S10 (Cento)', categoria: 'Fixação', unidade: 'cento', custo: 15.00, precoVenda: 19.50, quantidadeEstoque: 30, estoqueMinimo: 10 },
   { id: '55', codigo: 'BR001', nome: 'Broca Aço Rápido 1/4" (Un)', categoria: 'Abrasivo', unidade: 'un', custo: 8.00, precoVenda: 10.40, quantidadeEstoque: 50, estoqueMinimo: 15 },
   { id: '56', codigo: 'BR002', nome: 'Broca SDS Plus para Concreto 10mm (Un)', categoria: 'Abrasivo', unidade: 'un', custo: 18.00, precoVenda: 23.40, quantidadeEstoque: 20, estoqueMinimo: 5 },
-
-  // ⚡ CONSUMÍVEIS DE SOLDA FALTANTES
+  // ⚡ CONSUMÍVEIS DE SOLDA
   { id: '57', codigo: 'SO003', nome: 'Gás Mistura MIG (Recarga Cilindro)', categoria: 'Solda', unidade: 'un', custo: 150.00, precoVenda: 195.00, quantidadeEstoque: 8, estoqueMinimo: 3 },
   { id: '58', codigo: 'QU004', nome: 'Spray Anti-Respingo de Solda sem Silicone', categoria: 'Químicos', unidade: 'un', custo: 16.00, precoVenda: 20.80, quantidadeEstoque: 40, estoqueMinimo: 10 }
 ];
@@ -182,7 +170,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     let inventoryItems = savedInventory ? JSON.parse(savedInventory) : estoqueInicial;
     
-    // Auto-fix for legacy items with (1000mm) instead of (Barra 6m)
     inventoryItems = inventoryItems.map((item: any) => ({
       ...item,
       nome: typeof item.nome === 'string' 
@@ -197,7 +184,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const ordensServico = savedOS ? JSON.parse(savedOS) : [];
     const transacoesFinanceiras = savedTransacoes ? JSON.parse(savedTransacoes) : [];
 
-    // Adiciona propostas iniciais para que apareçam no CRM com valores
     const propostas: Proposta[] = [
       { id: 'P1', clienteId: '1', items: [{ name: 'Galpão 200m²' }], total: 50000, status: 'Rascunho', data: '2026-03-12T10:00:00Z' },
       { id: 'P2', clienteId: '2', items: [{ name: 'Cobertura 500m²' }], total: 120000, status: 'Em Negociação', data: '2026-03-10T14:30:00Z' },
@@ -223,7 +209,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   });
 
-  // Sincronização automática com LocalStorage
   useEffect(() => {
     localStorage.setItem('@cds-inventoryItems', JSON.stringify(state.inventoryItems));
     localStorage.setItem('@cds-clientes', JSON.stringify(state.clientes));
@@ -265,29 +250,25 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const calculateBOM = (projectData: any): BOMItem[] => {
-    // Lógica de cálculo (exemplo simplificado)
     const bom: BOMItem[] = [];
-    // ... lógica baseada em projectData ...
     return bom;
   };
 
   const adicionarAoCarrinho = (produto: any) => {
-    // Se o produto já vem com custos e preço (do Configurador 3D), usamos eles.
-    // Caso contrário, usamos o motor de custeio fallback.
     const material = produto.custos?.material ?? (Math.floor(Math.random() * 500) + 200);
     const insumos = produto.custos?.insumos ?? (Math.floor(Math.random() * 100) + 50);
     const maoDeObra = produto.custos?.maoDeObra ?? (Math.floor(Math.random() * 300) + 150);
     const frete = produto.custos?.frete ?? 120;
     
     const custoTotal = material + insumos + maoDeObra + frete;
-    const margem = 1.3; // 30% de margem
+    const margem = 1.3;
     const precoFinal = produto.preco ?? (custoTotal * margem);
 
     setState(prev => ({
       ...prev,
       carrinhoAtual: [...prev.carrinhoAtual, { 
         ...produto, 
-        inventoryId: produto.id, // Preserva o ID original do estoque caso seja um item direto
+        inventoryId: produto.id,
         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
         ncm: '7308.90.10',
         impostos: 0,
@@ -312,7 +293,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const fecharProposta = () => {
     const novaProposta: Proposta = {
       id: Date.now().toString(),
-      clienteId: '', // Será preenchido no checkout
+      clienteId: '',
       items: state.carrinhoAtual,
       total: totalCarrinho,
       status: 'Em Negociação',
@@ -352,7 +333,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         data: new Date().toISOString()
       };
 
-      // Programação defensiva: extraindo peças/insumos com fallback
       const pecasOS = state.carrinhoAtual.flatMap(item => item?.pecas || item?.insumos || []);
 
       const novaReceita: Receita = {
@@ -375,14 +355,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const novosPedidosCompra = [...(prev.pedidosCompra || [])];
         let houveAutoCompra = false;
         
-        // Atualiza estoque permitindo NEGATIVO (MRP II)
         const necessidades = new Map<string, { nome: string, qtd: number, custo: number }>();
 
         (prev.carrinhoAtual || []).forEach(item => {
           const materiais = item.materiaisNecessarios || [];
           
           if (materiais.length === 0) {
-            // Fallback para itens antigos ou sem materiais
             const itemId = item?.inventoryId || item?.id || 'item-generico';
             const qtdDescontar = item?.qtd || item?.quantidade || 1;
             const nome = item?.nome || item?.name || 'Item Faltante';
@@ -392,7 +370,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             atual.qtd += qtdDescontar;
             necessidades.set(itemId, atual);
           } else {
-            // Nova lógica usando os materiais reais
             materiais.forEach((mat: any) => {
               const itemId = mat.id;
               const atual = necessidades.get(itemId) || { nome: mat.nome, qtd: 0, custo: mat.custo || 100 };
@@ -402,7 +379,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         });
 
-        // Desconta do estoque e gera Pedidos de Compra para o que faltar
         necessidades.forEach((req, itemId) => {
           if (novoEstoque[itemId] === undefined) novoEstoque[itemId] = 0;
           
@@ -411,10 +387,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           let qtdComprar = 0;
           if (estoqueAnterior >= 0 && novoEstoque[itemId] < 0) {
-            // O estoque era positivo ou zero, e agora ficou negativo. Compra a parte que faltou.
             qtdComprar = Math.abs(novoEstoque[itemId]);
           } else if (estoqueAnterior < 0) {
-            // O estoque já estava negativo, então tudo que foi pedido agora é falta.
             qtdComprar = req.qtd;
           }
 
@@ -537,14 +511,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const novosPedidosCompra = [...(prev.pedidosCompra || [])];
         let houveAutoCompra = false;
         
-        // Atualiza estoque permitindo NEGATIVO (MRP II)
         const necessidades = new Map<string, { nome: string, qtd: number, custo: number }>();
 
         (proposta.items || []).forEach(item => {
           const materiais = item.materiaisNecessarios || [];
           
           if (materiais.length === 0) {
-            // Fallback para itens antigos ou sem materiais
             const itemId = item?.inventoryId || item?.id || 'item-generico';
             const qtdDescontar = item?.qtd || item?.quantidade || 1;
             const nome = item?.nome || item?.name || 'Item Faltante';
@@ -554,7 +526,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             atual.qtd += qtdDescontar;
             necessidades.set(itemId, atual);
           } else {
-            // Nova lógica usando os materiais reais
             materiais.forEach((mat: any) => {
               const itemId = mat.id;
               const atual = necessidades.get(itemId) || { nome: mat.nome, qtd: 0, custo: mat.custo || 100 };
@@ -564,7 +535,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         });
 
-        // Desconta do estoque e gera Pedidos de Compra para o que faltar
         necessidades.forEach((req, itemId) => {
           if (novoEstoque[itemId] === undefined) novoEstoque[itemId] = 0;
           
@@ -630,8 +600,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const os = prev.ordensServico.find(o => o.id === osId);
       let novoEstoque = { ...prev.inventory };
       
-      // O estoque já foi descontado na aprovação da venda (MRP).
-      // Apenas alertamos se o estoque estiver baixo ao iniciar a produção.
       if (novaEtapa === 'Corte e Dobra' && os && os.status === 'Fila de Produção') {
         os.itens.forEach(item => {
           const materiais = item.materiaisNecessarios || [];
@@ -690,7 +658,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const atualizarCliente = (id: string, patch: Partial<Cliente>) => { setState(prev => ({ ...prev, clientes: prev.clientes.map(c => c.id === id ? { ...c, ...patch } : c) })); }; const adicionarPropostaDireta = (proposta: Proposta) => { setState(prev => ({ ...prev, propostas: [proposta, ...(prev.propostas || [])] })); }; const registrarTransacao = (transacao: TransacaoFinanceira) => { => {
+  const adicionarProposta = (proposta: Proposta) => {
+    setState(prev => ({
+      ...prev,
+      propostas: [proposta, ...(prev.propostas || [])]
+    }));
+  };
+
+  const registrarTransacao = (transacao: TransacaoFinanceira) => {
     setState(prev => ({
       ...prev,
       transacoesFinanceiras: [...prev.transacoesFinanceiras, transacao]
@@ -745,7 +720,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timestamp: Date.now()
     };
 
-    // Adiciona mensagem do usuário imediatamente
     setState(prev => ({
       ...prev,
       clientes: prev.clientes.map(c => 
@@ -756,7 +730,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     try {
-      // Mock AI response since SalesAgentService was removed
       const result = {
         response: "Olá! Recebi sua mensagem. Como posso ajudar com seu projeto de serralheria hoje?",
         updatedFunnelStage: 'Qualificação' as Cliente['funnelStage'],
@@ -789,7 +762,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   return (
-    <ERPContext.Provider value={{ state, adicionarAoCarrinho, removerDoCarrinho, fecharProposta, aprovarVenda, salvarRascunho, gerarOS, moverEtapaOS, updateInventory, calculateBOM, moverEtapaProjeto, totalCarrinho, validarConciliacao, limparCarrinho, adicionarCliente, atualizarCliente, adicionarPropostaDireta, darEntradaEstoque, registrarTransacao, atualizarStatusTransacao, enviarMensagemAoAgente }}>
+    <ERPContext.Provider value={{ state, adicionarAoCarrinho, removerDoCarrinho, fecharProposta, aprovarVenda, salvarRascunho, gerarOS, moverEtapaOS, updateInventory, calculateBOM, moverEtapaProjeto, totalCarrinho, validarConciliacao, limparCarrinho, adicionarCliente, adicionarProposta, darEntradaEstoque, registrarTransacao, atualizarStatusTransacao, enviarMensagemAoAgente }}>
       {children}
     </ERPContext.Provider>
   );
