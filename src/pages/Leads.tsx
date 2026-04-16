@@ -11,6 +11,8 @@ import {
   PropostaDados, ItemProposta,
   proximoNumeroProposta, abrirProposta,
 } from '../services/propostaService';
+import { useERP } from '../contexts/ERPContext';
+import { Cliente, Proposta } from '../types';
 
 // ─── cores por etapa ─────────────────────────────────────────────────────────
 const ETAPA_COR: Record<EtapaFunil, string> = {
@@ -515,6 +517,7 @@ function PropostaModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const [gerandoIA, setGerandoIA] = useState(false);
   const [erroIA, setErroIA] = useState('');
   const [iaOk, setIaOk] = useState(false);
+  const { state, adicionarCliente, atualizarCliente, adicionarPropostaDireta } = useERP();
 
   const set = (k: string, v: string) => setDados(d => ({ ...d, [k]: v }));
   const setItem = (i: number, k: keyof ItemProposta, v: string | number) =>
@@ -544,7 +547,60 @@ function PropostaModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
     finally { setGerandoIA(false); }
   };
 
-  const gerar = async () => { const num = await proximoNumeroProposta(); abrirProposta({ ...dados, numero: num, itens } as PropostaDados); onClose(); };
+  // Auto-dispara IA ao abrir o modal
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { gerarComIA(); }, []);
+
+  const gerar = async () => {
+    // Registra ou atualiza cliente no ERP
+    const clienteExistente = state.clientes.find(
+      (c: Cliente) => c.telefone === lead.telefone || (lead.email && c.email === lead.email)
+    );
+    const idFinal = `CLI-${Date.now()}`;
+    if (clienteExistente) {
+      atualizarCliente(clienteExistente.id, {
+        nome: lead.nome || clienteExistente.nome,
+        email: lead.email || clienteExistente.email,
+        telefone: lead.telefone || clienteExistente.telefone,
+        cidade: dados.cidade || clienteExistente.cidade,
+      });
+    } else {
+      const novoCliente: Cliente = {
+        id: idFinal,
+        nome: lead.nome || dados.empresa || 'Cliente',
+        email: lead.email || dados.email || '',
+        telefone: lead.telefone || dados.telefone || '',
+        tipo: 'PJ',
+        documento: '',
+        endereco: dados.cidade || '',
+        cep: '', logradouro: '', numero: '', bairro: '',
+        cidade: dados.cidade || '',
+        uf: '',
+        funnelStage: 'Negociação',
+        mensagens: [],
+      };
+      adicionarCliente(novoCliente);
+    }
+    // Salva proposta no ERP
+    const total = itens.reduce((s, it) => s + (it.qtd * it.valorUnitario), 0);
+    const proposta: Proposta = {
+      id: `PROP-${Date.now()}`,
+      clienteId: clienteExistente?.id || idFinal,
+      clienteNome: lead.nome || dados.empresa || 'Cliente',
+      items: itens.map((it, i) => ({
+        id: `it-${i}`,
+        name: it.nome || 'Item',
+        descricao: it.descricao || '',
+        quantidade: it.qtd,
+        price: it.valorUnitario,
+      })),
+      total,
+      status: 'Rascunho',
+      data: new Date().toISOString(),
+    };
+    adicionarPropostaDireta(proposta);
+    // Abre o PDF da proposta
+    const num = await proximoNumeroProposta(); abrirProposta({ ...dados, numero: num, itens } as PropostaDados); onClose(); };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>

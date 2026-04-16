@@ -1,12 +1,12 @@
 import axios from 'axios';
 
-// Cheapest Gemini model available (Flash Lite ~ 1/10 do preco do Flash)
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+// Groq - modelo gratuito (14.400 req/dia) substitui Gemini
+const GROQ_MODEL = 'llama-3.1-8b-instant';
 
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || 'AIzaSyCr_o3dEiSExaafhkP57SpTf1wTLQSIiMs';
 const PROJECT_ID       = process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0908948294';
 const DATABASE_ID      = process.env.FIREBASE_DATABASE_ID || 'ai-studio-eb49ab80-1528-409e-b7d5-b3e84e7a358d';
-const GEMINI_API_KEY   = process.env.GEMINI_API_KEY || '';
+const GROQ_API_KEY     = process.env.GROQ_API_KEY || '';
 
 // Tempo em minutos sem trocar mensagem que consideramos ser "outra conversa anterior".
 const JANELA_CONVERSA_MIN = 180; // 3h sem responder = corta e pega so a conversa atual
@@ -19,7 +19,7 @@ async function buscarMensagens(telefone) {
                   from: [{ collectionId: 'mensagens' }],
                   where: { fieldFilter: { field: { fieldPath: 'telefone' }, op: 'EQUAL', value: { stringValue: telefone } } },
                   orderBy: [{ field: { fieldPath: 'criadoEm' }, direction: 'DESCENDING' }],
-                  limit: 50, // bem menor que antes (150) - so precisamos do fim
+                  limit: 50,
           },
     };
     const res = await axios.post(url, body);
@@ -52,47 +52,54 @@ function recortarConversaAtual(mensagens) {
     return out;
 }
 
-async function gerarPropostaComGemini(mensagens, { nome, email, empresa, telefone }) {
-    if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY nao configurada no servidor');
+async function gerarPropostaComGroq(mensagens, { nome, email, empresa, telefone }) {
+    if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no servidor');
 
   const conversa = recortarConversaAtual(mensagens)
       .map(m => `[${m.tipo === 'saida' ? 'VENDEDOR' : 'CLIENTE'}]: ${m.texto}`)
       .join('\n');
 
   const prompt = `Voce gera propostas comerciais da CDS Industrial (metalurgia / caldeiraria / estruturas).
-  Baseie-se APENAS na conversa abaixo (ignore historico anterior). Se faltar info, use valores estimados razoaveis e marque com "(estimado)".
+Baseie-se APENAS na conversa abaixo (ignore historico anterior). Se faltar info, use valores estimados razoaveis e marque com "(estimado)".
 
-  Lead: ${nome || '-'} | ${empresa || '-'} | ${email || '-'} | ${telefone || '-'}
+Lead: ${nome || '-'} | ${empresa || '-'} | ${email || '-'} | ${telefone || '-'}
 
-  Conversa atual:
-  ${conversa || '(sem mensagens)'}
+Conversa atual:
+${conversa || '(sem mensagens)'}
 
-  Responda SOMENTE um JSON valido, sem texto antes ou depois, no formato:
-  {
-    "titulo": "string curto",
-      "descricao": "string ate 400 caracteres",
-        "itens": [ { "descricao": "string", "quantidade": number, "unidade": "string", "precoUnitario": number } ],
-          "observacoes": "string"
-          }`;
+Responda SOMENTE um JSON valido, sem texto antes ou depois, no formato:
+{
+  "titulo": "string curto",
+  "descricao": "string ate 400 caracteres",
+  "itens": [ { "descricao": "string", "quantidade": number, "unidade": "string", "precoUnitario": number } ],
+  "observacoes": "string"
+}`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-    const response = await axios.post(url, {
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-                  temperature: 0.3,
-                  maxOutputTokens: 900,
-                  responseMimeType: 'application/json',
-          },
-    });
+  const response = await axios.post(
+    'https://api.groq.com/openai/v1/chat/completions',
+    {
+      model: GROQ_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+      max_tokens: 900,
+      response_format: { type: 'json_object' },
+    },
+    {
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
 
-  const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const text = response.data?.choices?.[0]?.message?.content || '';
     const clean = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     try {
           return JSON.parse(clean);
     } catch {
           const match = clean.match(/\{[\s\S]*\}/);
           if (match) return JSON.parse(match[0]);
-          throw new Error('Gemini retornou resposta invalida. Tente novamente.');
+          throw new Error('Groq retornou resposta invalida. Tente novamente.');
     }
 }
 
@@ -111,18 +118,18 @@ export default async function handler(req, res) {
   try {
         const mensagens = await buscarMensagens(tel);
         const conversaAtual = recortarConversaAtual(mensagens);
-        const proposta = await gerarPropostaComGemini(mensagens, { nome, email, empresa, telefone: tel });
+        const proposta = await gerarPropostaComGroq(mensagens, { nome, email, empresa, telefone: tel });
         return res.status(200).json({
                 ok: true,
                 proposta,
                 totalMensagens: mensagens.length,
                 mensagensUsadas: conversaAtual.length,
-                modelo: GEMINI_MODEL,
+                modelo: GROQ_MODEL,
         });
   } catch (err) {
         console.error('Erro proposta-ia:', err.response?.data || err.message);
         const msg = err.message || 'Erro interno';
-        const status = msg.includes('GEMINI_API_KEY') ? 503 : 500;
+        const status = msg.includes('GROQ_API_KEY') ? 503 : 500;
         return res.status(status).json({ error: msg });
   }
 }

@@ -7,7 +7,7 @@ const BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJEC
 
 // Grok (xAI) — API compatível com OpenAI — tier gratuito
 const GROK_BASE_URL = 'https://api.x.ai/v1';
-const GROK_MODEL = 'grok-3-mini'; // Melhor modelo gratuito da xAI
+const GROK_MODEL = 'grok-3-mini';
 
 const ETAPAS_LABEL = {
   lead_novo: 'Lead Novo',
@@ -166,4 +166,4 @@ export default async function handler(req, res) {
     console.error('[assistente-vendas] erro:', e.message);
     return res.status(500).json({ error: e.message || 'Erro interno' });
   }
-      }
+}
