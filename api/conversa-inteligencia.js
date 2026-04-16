@@ -122,12 +122,48 @@ async function consultarCEP(cep) {
   }
 }
 
+// Filtra produtos relevantes com base nas palavras da conversa
+function filtrarProdutosRelevantes(produtos, conversa, maxProdutos = 80) {
+  if (!produtos.length) return [];
+
+  // Palavras de parada (stopwords PT-BR)
+  const stopwords = new Set(['de','a','o','e','que','em','um','uma','para','com','não','do','da','dos','das','se','na','no','por','mais','como','mas','foi','ao','ele','das','tem','à','seu','sua','ou','quando','muito','nos','já','eu','também','só','pelo','pela','até','isso','ela','entre','era','depois','sem','mesmo','aos','seus','quem','nas','me','esse','eles','estão','você','tinha','foram','essa','num','nem','suas','meu','às','minha','numa','pelos','elas','havia','seja','qual','será','nós','tenho','lhe','deles','essas','esses','pelas','este','dele','tu','te','vocês','vos','lhes','meus','minhas','teu','tua','teus','tuas','nosso','nossa','nossos','nossas','dela','delas','esta','estes','estas','aquele','aquela','aqueles','aquelas','isto','aquilo','estou','está','estamos','estão','estive','esteve','estivemos','estiveram','estava','estávamos','estavam','estivera','estivéramos','esteja','estejamos','estejam','estivesse','estivéssemos','estivessem','estiver','estivermos','estiverem']);
+
+  // Extrai palavras-chave da conversa (mínimo 3 chars, sem stopwords)
+  const palavras = conversa
+    .toLowerCase()
+    .replace(/[^a-záéíóúãõâêîôûç\s]/g, ' ')
+    .split(/\s+/)
+    .filter(p => p.length >= 3 && !stopwords.has(p));
+
+  const keywords = [...new Set(palavras)];
+  if (!keywords.length) return produtos.slice(0, maxProdutos);
+
+  // Pontua cada produto pela quantidade de palavras-chave que batem
+  const pontuados = produtos.map(p => {
+    const texto = `${p.nome} ${p.categoria} ${p.descricao}`.toLowerCase();
+    const score = keywords.reduce((acc, kw) => acc + (texto.includes(kw) ? 1 : 0), 0);
+    return { ...p, _score: score };
+  });
+
+  // Ordena por score desc, pega os relevantes primeiro; se poucos, completa com os demais
+  pontuados.sort((a, b) => b._score - a._score);
+  const relevantes = pontuados.filter(p => p._score > 0).slice(0, maxProdutos);
+  if (relevantes.length >= 20) return relevantes;
+
+  // Fallback: completa com primeiros do catálogo até maxProdutos
+  const ids = new Set(relevantes.map(p => p.id));
+  const extras = pontuados.filter(p => !ids.has(p.id)).slice(0, maxProdutos - relevantes.length);
+  return [...relevantes, ...extras];
+}
+
 // Analise progressiva com Groq
 async function analisarConversaComGroq(conversa, produtosPadrao, leadNome = '', leadEmpresa = '') {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no servidor');
 
-  const catalogoResumo = produtosPadrao.length > 0
-    ? produtosPadrao.map(p => `${p.nome}|${p.sku}|R$${p.preco}`).join('\n')
+  const produtosFiltrados = filtrarProdutosRelevantes(produtosPadrao, conversa, 80);
+  const catalogoResumo = produtosFiltrados.length > 0
+    ? produtosFiltrados.map(p => `${p.nome}|${p.sku}|R$${p.preco}`).join('\n')
     : '(catalogo vazio)';
 
   const dadosConhecidos = [];
