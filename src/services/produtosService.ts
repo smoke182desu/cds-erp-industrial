@@ -29,9 +29,9 @@ export async function buscarProdutos(): Promise<Produto[]> {
   return (data.produtos || []) as Produto[];
 }
 
-// ---------- sincronizar WooCommerce → Firestore ----------
-export async function sincronizarProdutos(): Promise<{ ok: boolean; sincronizados?: number; error?: string }> {
-  const res = await fetch(`${API_BASE}/produtos?sync=1`);
+// ---------- sincronizar WooCommerce → Firestore (todos os produtos) ----------
+export async function sincronizarProdutos(): Promise<{ ok: boolean; totalSincronizados?: number; sincronizados?: number; error?: string }> {
+  const res = await fetch(`${API_BASE}/produtos?sync=all`);
   return res.json();
 }
 

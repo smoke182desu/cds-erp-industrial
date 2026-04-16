@@ -32,8 +32,17 @@ function clean(v) {
 
 async function firestoreGetAll() {
   const db = getDb();
-  const snap = await db.collection('produtos').limit(500).get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // Paginação para coleções grandes (>500)
+  const all = [];
+  let last = null;
+  do {
+    let q = db.collection('produtos').orderBy('__name__').limit(500);
+    if (last) q = q.startAfter(last);
+    const snap = await q.get();
+    snap.docs.forEach(d => all.push({ id: d.id, ...d.data() }));
+    last = snap.docs.length === 500 ? snap.docs[snap.docs.length - 1] : null;
+  } while (last);
+  return all;
 }
 
 async function writeProducts(products) {
@@ -116,6 +125,36 @@ async function syncOnePage(requestedPage) {
   };
 }
 
+// Sync COMPLETO — percorre todas as páginas até acabar (respeita maxDuration: 60s)
+async function syncAll() {
+  if (!WC_URL || !WC_KEY) throw new Error('WC_URL e WC_KEY nao configurados.');
+  const db = getDb();
+  const stateRef = db.collection('meta').doc(SYNC_META);
+  let page = 1;
+  let totalSincronizados = 0;
+  let ciclos = 0;
+  const MAX_PAGINAS = 50; // 50 × 100 = 5.000 produtos máximo por chamada
+
+  while (ciclos < MAX_PAGINAS) {
+    const products = await fetchWooPage(page);
+    if (products.length === 0) break;
+    await writeProducts(products);
+    totalSincronizados += products.length;
+    page++;
+    ciclos++;
+    if (products.length < 100) break; // última página
+  }
+
+  await stateRef.set({
+    currentPage: 1,
+    totalSincronizados,
+    lastFullSyncAt: new Date().toISOString(),
+    lastPageSyncedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  return { ok: true, totalSincronizados, paginasProcessadas: ciclos };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -123,6 +162,11 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   try {
     if (req.method === 'GET') {
+      if (req.query.sync === 'all') {
+        // Sync completo de todos os produtos WooCommerce
+        const result = await syncAll();
+        return res.status(200).json(result);
+      }
       if (req.query.sync === '1') {
         const page = req.query.page ? parseInt(req.query.page, 10) : undefined;
         const result = await syncOnePage(page);
@@ -132,6 +176,10 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, produtos, total: produtos.length });
     }
     if (req.method === 'POST') {
+      if (req.body?.syncAll) {
+        const result = await syncAll();
+        return res.status(200).json(result);
+      }
       const page = req.body?.page ? parseInt(req.body.page, 10) : undefined;
       const result = await syncOnePage(page);
       return res.status(200).json(result);
