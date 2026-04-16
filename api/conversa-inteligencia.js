@@ -56,7 +56,7 @@ function recortarConversaAtual(mensagens) {
 // Buscar produtos padrao do Firestore
 async function buscarProdutosPadrao() {
   try {
-    const url = `${BASE_URL}/produtos?pageSize=200&key=${FIREBASE_API_KEY}`;
+    const url = `${BASE_URL}/produtos?pageSize=300&key=${FIREBASE_API_KEY}`;
     const res = await axios.get(url, { timeout: 8000 });
     return (res.data.documents || []).map(d => {
       const f = d.fields || {};
@@ -127,7 +127,7 @@ async function analisarConversaComGroq(conversa, produtosPadrao, leadNome = '', 
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no servidor');
 
   const catalogoResumo = produtosPadrao.length > 0
-    ? produtosPadrao.slice(0, 50).map(p => `- ${p.nome} (SKU: ${p.sku}) R$${p.preco}`).join('\n')
+    ? produtosPadrao.map(p => `${p.nome}|${p.sku}|R$${p.preco}`).join('\n')
     : '(catalogo vazio)';
 
   const dadosConhecidos = [];
