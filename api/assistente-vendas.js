@@ -2,12 +2,12 @@ import axios from 'axios';
 
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'cds-erp-industrial';
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
-const GROK_API_KEY = process.env.GROK_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
-// Grok (xAI) — API compatível com OpenAI — tier gratuito
-const GROK_BASE_URL = 'https://api.x.ai/v1';
-const GROK_MODEL = 'grok-3-mini';
+// Groq — llama-3.1-8b-instant — tier gratuito
+const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
+const GROQ_MODEL = 'llama-3.1-8b-instant';
 
 const ETAPAS_LABEL = {
   lead_novo: 'Lead Novo',
@@ -73,7 +73,7 @@ async function buscarMensagens(telefone) {
 }
 
 async function analisarConversa(mensagens, lead) {
-  if (!GROK_API_KEY) throw new Error('GROK_API_KEY não configurada no servidor');
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY não configurada no servidor');
 
   const ultimas = mensagens.slice(-10);
   const conversaStr = ultimas.length > 0
@@ -117,9 +117,9 @@ Retorne APENAS JSON:
 REGRAS: continuação natural, máx 2 linhas ≤280 chars, tom Jean WhatsApp, citar produto+técnica, 3 ângulos (técnica/urgência/funil), sem emoji no nome.`;
 
   const resp = await axios.post(
-    `${GROK_BASE_URL}/chat/completions`,
+    `${GROQ_BASE_URL}/chat/completions`,
     {
-      model: GROK_MODEL,
+      model: GROQ_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -130,7 +130,7 @@ REGRAS: continuação natural, máx 2 linhas ≤280 chars, tom Jean WhatsApp, ci
     },
     {
       headers: {
-        'Authorization': `Bearer ${GROK_API_KEY}`,
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
         'Content-Type': 'application/json',
       },
       timeout: 30000,
@@ -156,8 +156,8 @@ export default async function handler(req, res) {
 
   try {
     const { telefone, nome, empresa, etapa } = req.body || {};
-    if (!GROK_API_KEY) {
-      return res.status(503).json({ error: 'GROK_API_KEY não configurada no servidor.' });
+    if (!GROQ_API_KEY) {
+      return res.status(503).json({ error: 'GROQ_API_KEY não configurada no servidor.' });
     }
     const mensagens = telefone ? await buscarMensagens(telefone) : [];
     const analise = await analisarConversa(mensagens, { nome, empresa, etapa, telefone });
