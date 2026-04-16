@@ -13,7 +13,6 @@ const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/dat
 const JANELA_CONVERSA_MIN = 180;
 const MAX_MSGS_CONTEXTO   = 30;
 
-// Buscar mensagens do Firestore
 async function buscarMensagens(telefone) {
   const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents:runQuery?key=${FIREBASE_API_KEY}`;
   const body = {
@@ -53,10 +52,9 @@ function recortarConversaAtual(mensagens) {
   return out;
 }
 
-// Buscar produtos padrao do Firestore
 async function buscarProdutosPadrao() {
   try {
-    const url = `${BASE_URL}/produtos?pageSize=300&key=${FIREBASE_API_KEY}`;
+    const url = `${BASE_URL}/produtos?pageSize=200&key=${FIREBASE_API_KEY}`;
     const res = await axios.get(url, { timeout: 8000 });
     return (res.data.documents || []).map(d => {
       const f = d.fields || {};
@@ -78,7 +76,6 @@ async function buscarProdutosPadrao() {
   }
 }
 
-// Consulta CNPJ via BrasilAPI
 async function consultarCNPJ(cnpj) {
   try {
     const limpo = cnpj.replace(/\D/g, '');
@@ -102,7 +99,6 @@ async function consultarCNPJ(cnpj) {
   }
 }
 
-// Consulta CEP via ViaCEP
 async function consultarCEP(cep) {
   try {
     const limpo = cep.replace(/\D/g, '');
@@ -122,71 +118,36 @@ async function consultarCEP(cep) {
   }
 }
 
-// Filtra produtos relevantes com base nas palavras da conversa
-function filtrarProdutosRelevantes(produtos, conversa, maxProdutos = 80) {
-  if (!produtos.length) return [];
-
-  // Palavras de parada (stopwords PT-BR)
-  const stopwords = new Set(['de','a','o','e','que','em','um','uma','para','com','não','do','da','dos','das','se','na','no','por','mais','como','mas','foi','ao','ele','das','tem','à','seu','sua','ou','quando','muito','nos','já','eu','também','só','pelo','pela','até','isso','ela','entre','era','depois','sem','mesmo','aos','seus','quem','nas','me','esse','eles','estão','você','tinha','foram','essa','num','nem','suas','meu','às','minha','numa','pelos','elas','havia','seja','qual','será','nós','tenho','lhe','deles','essas','esses','pelas','este','dele','tu','te','vocês','vos','lhes','meus','minhas','teu','tua','teus','tuas','nosso','nossa','nossos','nossas','dela','delas','esta','estes','estas','aquele','aquela','aqueles','aquelas','isto','aquilo','estou','está','estamos','estão','estive','esteve','estivemos','estiveram','estava','estávamos','estavam','estivera','estivéramos','esteja','estejamos','estejam','estivesse','estivéssemos','estivessem','estiver','estivermos','estiverem']);
-
-  // Extrai palavras-chave da conversa (mínimo 3 chars, sem stopwords)
-  const palavras = conversa
-    .toLowerCase()
-    .replace(/[^a-záéíóúãõâêîôûç\s]/g, ' ')
-    .split(/\s+/)
-    .filter(p => p.length >= 3 && !stopwords.has(p));
-
-  const keywords = [...new Set(palavras)];
-  if (!keywords.length) return produtos.slice(0, maxProdutos);
-
-  // Pontua cada produto pela quantidade de palavras-chave que batem
-  const pontuados = produtos.map(p => {
-    const texto = `${p.nome} ${p.categoria} ${p.descricao}`.toLowerCase();
-    const score = keywords.reduce((acc, kw) => acc + (texto.includes(kw) ? 1 : 0), 0);
-    return { ...p, _score: score };
-  });
-
-  // Ordena por score desc, pega os relevantes primeiro; se poucos, completa com os demais
-  pontuados.sort((a, b) => b._score - a._score);
-  const relevantes = pontuados.filter(p => p._score > 0).slice(0, maxProdutos);
-  if (relevantes.length >= 20) return relevantes;
-
-  // Fallback: completa com primeiros do catálogo até maxProdutos
-  const ids = new Set(relevantes.map(p => p.id));
-  const extras = pontuados.filter(p => !ids.has(p.id)).slice(0, maxProdutos - relevantes.length);
-  return [...relevantes, ...extras];
-}
-
-// Analise progressiva com Groq
-async function analisarConversaComGroq(conversa, produtosPadrao, leadNome = '', leadEmpresa = '') {
+async function analisarConversaComGroq(conversa, produtosPadrao, leadInfo) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no servidor');
 
-  const produtosFiltrados = filtrarProdutosRelevantes(produtosPadrao, conversa, 80);
-  const catalogoResumo = produtosFiltrados.length > 0
-    ? produtosFiltrados.map(p => `${p.nome}|${p.sku}|R$${p.preco}`).join('\n')
+  const catalogoResumo = produtosPadrao.length > 0
+    ? produtosPadrao.slice(0, 50).map(p => `- ${p.nome} (SKU: ${p.sku}) R$${p.preco}`).join('\n')
     : '(catalogo vazio)';
 
-  const dadosConhecidos = [];
-  if (leadNome) dadosConhecidos.push(`- Nome do contato: "${leadNome}"`);
-  if (leadEmpresa) dadosConhecidos.push(`- Empresa do contato: "${leadEmpresa}"`);
-  const contextoLead = dadosConhecidos.length
-    ? `\nDADOS JA CONHECIDOS DO LEAD (use como base, nao ignore):\n${dadosConhecidos.join('\n')}\n`
+  const leadCtx = [];
+  if (leadInfo.nome) leadCtx.push(`Nome do contato no CRM: "${leadInfo.nome}"`);
+  if (leadInfo.empresa) leadCtx.push(`Empresa do lead no CRM: "${leadInfo.empresa}"`);
+  const leadContexto = leadCtx.length > 0
+    ? `\n\nDADOS JA CONHECIDOS DO LEAD (use como base, atualize se a conversa trouxer dados mais recentes):\n${leadCtx.join('\n')}`
     : '';
 
   const prompt = `Voce e um assistente de vendas da CDS Industrial (metalurgia / caldeiraria / estruturas metalicas).
 Analise a conversa de WhatsApp abaixo e extraia TODOS os dados que conseguir identificar.
-${contextoLead}
-CATALOGO DE PRODUTOS PADRAO da empresa (use nomes EXATOS do catalogo quando possivel):
+
+CATALOGO DE PRODUTOS PADRAO da empresa:
 ${catalogoResumo}
+${leadContexto}
 
 REGRAS:
-1. Se o cliente mencionar um produto que EXISTE no catalogo acima (mesmo que nao seja exatamente igual), use o nome EXATO do catalogo e marque "produtoPadrao": true.
-2. Para produtos do catalogo, preencha "skuCatalogo" com o SKU correspondente.
-3. Se o produto NAO existe no catalogo, marque "produtoPadrao": false e estime o preco se mencionado.
-4. Se DADOS JA CONHECIDOS DO LEAD foram informados, use-os DIRETAMENTE no campo cliente sem precisar extrair da conversa.
+1. Se o cliente mencionar um produto que EXISTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true).
+2. Se o produto NAO existe no catalogo, marque "produtoPadrao": false e estime o preco se mencionado.
+3. IMPORTANTE - NOME DO PRODUTO: Inclua TODAS as especificacoes mencionadas na conversa (capacidade em litros, dimensoes em mm/cm/m, material como inox/aco carbono/galvanizado, espessura, tipo). Exemplo: "Container 1200L Inox 304" ou "Escada Marinheiro 6m Galvanizada". NUNCA use nomes genericos como apenas "container" ou "escada" sem as specs.
+4. DESCRICAO DO PRODUTO: Coloque todos os detalhes tecnicos: dimensoes, material, acabamento, capacidade, quantidade, norma se aplicavel.
 5. Extraia CNPJ, CPF, CEP, endereco, inscricao estadual se mencionados no texto.
 6. Se dados estao incompletos, liste em "camposFaltando".
 7. Avalie "confianca" de 0 a 100 (quao completos estao os dados para gerar proposta).
+8. CLIENTE: O campo "empresa" e para o nome da empresa/CNPJ. O campo "nome" e para a PESSOA de contato (responsavel). Se o lead ja tem dados no CRM, use como base.
 
 Conversa:
 ${conversa}
@@ -194,8 +155,8 @@ ${conversa}
 Responda APENAS com JSON valido no formato:
 {
   "cliente": {
-    "nome": "string ou null",
-    "empresa": "string ou null",
+    "nome": "string - nome da PESSOA de contato",
+    "empresa": "string - nome da EMPRESA ou null se pessoa fisica",
     "telefone": "string ou null",
     "email": "string ou null",
     "cnpj": "string ou null",
@@ -210,8 +171,8 @@ Responda APENAS com JSON valido no formato:
   },
   "produtos": [
     {
-      "nome": "string",
-      "descricao": "string",
+      "nome": "string DETALHADO com specs (ex: Container 1200L Inox 304)",
+      "descricao": "descricao tecnica completa com dimensoes/material/capacidade",
       "quantidade": 1,
       "unidade": "UN",
       "precoUnitario": 0,
@@ -254,7 +215,6 @@ Responda APENAS com JSON valido no formato:
   }
 }
 
-// Handler principal
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -268,19 +228,17 @@ export default async function handler(req, res) {
   const tel = String(telefone).replace(/\D/g, '');
 
   try {
-    // 1. Buscar mensagens e produtos em paralelo
     const [mensagens, produtosPadrao] = await Promise.all([
       buscarMensagens(tel),
       buscarProdutosPadrao(),
     ]);
 
-    // 2. Recortar conversa atual
     const conversaAtual = recortarConversaAtual(mensagens);
     if (!conversaAtual.length) {
       return res.status(200).json({
         ok: true,
         analise: {
-          cliente: {},
+          cliente: { nome: leadNome || null, empresa: leadEmpresa || null },
           produtos: [],
           observacoes: '',
           resumoConversa: 'Sem mensagens recentes',
@@ -292,15 +250,18 @@ export default async function handler(req, res) {
       });
     }
 
-    // 3. Formatar conversa para o Groq
     const conversaFormatada = conversaAtual
       .map(m => `[${m.tipo === 'saida' ? 'VENDEDOR' : 'CLIENTE'}]: ${m.texto}`)
       .join('\n');
 
-    // 4. Analisar com Groq + catalogo de produtos
-    const analise = await analisarConversaComGroq(conversaFormatada, produtosPadrao, leadNome, leadEmpresa);
+    const analise = await analisarConversaComGroq(conversaFormatada, produtosPadrao, {
+      nome: leadNome || '',
+      empresa: leadEmpresa || '',
+    });
 
-    // 5. Enriquecer com BrasilAPI / ViaCEP se tiver CNPJ ou CEP
+    if (!analise.cliente.nome && leadNome) analise.cliente.nome = leadNome;
+    if (!analise.cliente.empresa && leadEmpresa) analise.cliente.empresa = leadEmpresa;
+
     let dadosCNPJ = null;
     let dadosCEP = null;
 
@@ -333,13 +294,11 @@ export default async function handler(req, res) {
       }
     }
 
-    // 6. Matching de produtos padrao com catalogo real
     if (analise.produtos?.length) {
       for (const item of analise.produtos) {
         if (item.produtoPadrao && item.skuCatalogo) {
           const match = produtosPadrao.find(p =>
-            p.sku === item.skuCatalogo ||
-            p.nome.toLowerCase() === item.nome.toLowerCase()
+            p.sku === item.skuCatalogo || p.nome.toLowerCase() === item.nome.toLowerCase()
           );
           if (match) {
             item.precoUnitario = item.precoUnitario || match.preco || match.precoRegular;
@@ -347,9 +306,9 @@ export default async function handler(req, res) {
             item.skuCatalogo = match.sku;
           }
         } else if (item.produtoPadrao) {
+          const nomeItem = item.nome.toLowerCase();
           const match = produtosPadrao.find(p =>
-            p.nome.toLowerCase().includes(item.nome.toLowerCase()) ||
-            item.nome.toLowerCase().includes(p.nome.toLowerCase())
+            p.nome.toLowerCase().includes(nomeItem) || nomeItem.includes(p.nome.toLowerCase())
           );
           if (match) {
             item.precoUnitario = item.precoUnitario || match.preco || match.precoRegular;
@@ -363,7 +322,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // 7. Recalcular confianca e prontoParaProposta
     const camposCriticos = ['nome', 'telefone'];
     const temProdutos = analise.produtos?.length > 0;
     const temCliente = camposCriticos.every(c => analise.cliente?.[c]);
@@ -387,3 +345,4 @@ export default async function handler(req, res) {
     return res.status(status).json({ error: msg });
   }
 }
+
