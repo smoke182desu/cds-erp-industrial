@@ -71,11 +71,11 @@ async function obterLeadId(telefone, nome) {
   if (existe) return existe.document.name.split('/').pop();
   // cria se não existir
   return firestoreAdd('leads', {
-    nome:        str(nome || 'Lead WhatsApp'),
-    telefone:    str(telefone),
-    etapa:       str('lead_novo'),
-    origem:      str('whatsapp'),
-    criadoEm:    ts(),
+    nome:         str(nome || 'Lead WhatsApp'),
+    telefone:     str(telefone),
+    etapa:        str('lead_novo'),
+    origem:       str('whatsapp'),
+    criadoEm:     ts(),
     atualizadoEm: ts(),
   });
 }
@@ -86,7 +86,7 @@ async function salvarMensagem(telefone, texto, tipo, leadId) {
     telefone: str(telefone),
     leadId:   str(leadId || ''),
     texto:    str(texto),
-    tipo:     str(tipo),           // 'entrada' | 'saida'
+    tipo:     str(tipo),           // 'entrada' (cliente) | 'saida' (vendedor)
     origem:   str('whatsapp'),
     criadoEm: ts(),
   });
@@ -107,18 +107,39 @@ export default async function handler(req, res) {
     if (!msg || !msg.texto || !msg.telefone) {
       return res.status(200).json({ ok: true, msg: 'Sem dados de mensagem' });
     }
-    // Ignora mensagens enviadas pelo próprio número da empresa
-    if (msg.fromMe || msg.telefone === NUMERO_EMPRESA) {
-      return res.status(200).json({ ok: true, msg: 'fromMe ignorado' });
+
+    // Determina tipo: mensagem enviada pelo vendedor = 'saida', recebida do cliente = 'entrada'
+    const tipo = msg.fromMe ? 'saida' : 'entrada';
+
+    // Telefone do contato:
+    // - fromMe=true: a mensagem foi enviada PARA o número msg.telefone (o cliente)
+    // - fromMe=false: a mensagem veio DO número msg.telefone (o cliente)
+    // Em ambos os casos, o telefone que indexamos é o do cliente, não o da empresa
+    const telefoneCliente = msg.telefone === NUMERO_EMPRESA
+      ? null  // caso raro: mensagem para si mesmo, ignora
+      : msg.telefone;
+
+    if (!telefoneCliente) {
+      return res.status(200).json({ ok: true, msg: 'Mensagem própria ignorada' });
     }
 
-    // Garante lead e cliente no CRM
-    const leadId = await obterLeadId(msg.telefone, msg.nome);
+    // Para mensagens 'saida' (fromMe), só cria lead se já existir — não queremos criar lead
+    // para toda mensagem que o vendedor envia para um número novo
+    let leadId;
+    if (tipo === 'saida') {
+      const existe = await firestoreQuery('leads', 'telefone', telefoneCliente);
+      leadId = existe ? existe.document.name.split('/').pop() : null;
+      // Se não há lead para esse contato ainda, ainda assim salvamos a mensagem
+      // pois quando o cliente responder, o lead será criado e vinculará pelo telefone
+    } else {
+      // mensagem 'entrada': garante lead existe
+      leadId = await obterLeadId(telefoneCliente, msg.nome);
+    }
 
-    // Salva a mensagem no histórico
-    await salvarMensagem(msg.telefone, msg.texto, 'entrada', leadId);
+    // Salva a mensagem com o tipo correto
+    await salvarMensagem(telefoneCliente, msg.texto, tipo, leadId || '');
 
-    return res.status(200).json({ ok: true, leadId });
+    return res.status(200).json({ ok: true, tipo, leadId });
   } catch (err) {
     console.error('[whatsapp] erro:', err.message);
     return res.status(500).json({ error: err.message });

@@ -13,6 +13,7 @@ import {
 } from '../services/propostaService';
 import { useERP } from '../contexts/ERPContext';
 import { Cliente, Proposta } from '../types';
+import ConversaInteligente from '../components/ConversaInteligente';
 
 // ─── cores por etapa ─────────────────────────────────────────────────────────
 const ETAPA_COR: Record<EtapaFunil, string> = {
@@ -658,6 +659,124 @@ function PropostaModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   );
 }
 
+// ─── Modal Cadastrar Produto (capturado da conversa) ─────────────────────────
+function CadastrarProdutoModal({ produto, onClose, onSalvo }: {
+  produto: any;
+  onClose: () => void;
+  onSalvo: () => void;
+}) {
+  const [form, setForm] = useState({
+    nome: produto.nome || '',
+    sku: (produto.skuCatalogo || produto.nome || '').toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 20),
+    descricao: produto.descricao || '',
+    preco: String(produto.precoUnitario || 0),
+    unidade: produto.unidade || 'UN',
+    ncm: '',
+    categoria: 'sob-medida',
+  });
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [ok, setOk] = useState(false);
+
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const salvar = async () => {
+    if (!form.nome.trim() || !form.sku.trim()) {
+      setErro('Nome e SKU são obrigatórios.');
+      return;
+    }
+    setSalvando(true);
+    setErro('');
+    try {
+      const res = await fetch('/api/produto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: form.nome,
+          sku: form.sku,
+          descricao: form.descricao,
+          preco: parseFloat(form.preco) || 0,
+          precoRegular: parseFloat(form.preco) || 0,
+          unidade: form.unidade,
+          ncm: form.ncm || undefined,
+          categoria: form.categoria,
+          tipo: 'sob-medida',
+          origem: 'conversa-whatsapp',
+          emEstoque: false,
+          estoque: 0,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.erros?.join(', ') || json.error || 'Erro ao salvar');
+      setOk(true);
+      setTimeout(onSalvo, 1500);
+    } catch (e: any) {
+      setErro(e.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="bg-violet-600 text-white px-5 py-4 rounded-t-2xl">
+          <h2 className="font-bold text-base">📦 Cadastrar Produto</h2>
+          <p className="text-xs text-white/70 mt-0.5">Capturado da conversa — vire produto do catálogo</p>
+        </div>
+        {ok ? (
+          <div className="p-8 text-center">
+            <div className="text-4xl mb-3">✅</div>
+            <p className="font-bold text-green-700">Produto cadastrado com sucesso!</p>
+            <p className="text-xs text-gray-500 mt-1">Agora aparece no catálogo e na inteligência de conversa.</p>
+          </div>
+        ) : (
+          <div className="p-5 flex flex-col gap-3">
+            {erro && <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">⚠️ {erro}</div>}
+            {[
+              ['nome', 'Nome do produto *', 'text'],
+              ['sku', 'SKU (código único) *', 'text'],
+              ['descricao', 'Descrição técnica', 'text'],
+              ['unidade', 'Unidade (UN, KG, M, M²...)', 'text'],
+              ['preco', 'Preço (R$)', 'number'],
+              ['ncm', 'NCM (8 dígitos, opcional)', 'text'],
+            ].map(([k, label, type]) => (
+              <div key={k}>
+                <label className="text-xs text-gray-600 font-medium">{label}</label>
+                <input
+                  type={type}
+                  value={(form as any)[k]}
+                  onChange={e => set(k, e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                />
+              </div>
+            ))}
+            <div>
+              <label className="text-xs text-gray-600 font-medium">Categoria</label>
+              <select value={form.categoria} onChange={e => set('categoria', e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-violet-300">
+                <option value="sob-medida">Sob Medida</option>
+                <option value="caldeiraria">Caldeiraria</option>
+                <option value="estrutura-metalica">Estrutura Metálica</option>
+                <option value="pintura">Pintura / Tratamento</option>
+                <option value="servico">Serviço</option>
+                <option value="outros">Outros</option>
+              </select>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <button onClick={onClose} className="flex-1 border border-gray-300 rounded-xl py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancelar</button>
+              <button onClick={salvar} disabled={salvando} className="flex-1 bg-violet-600 text-white rounded-xl py-2 text-sm font-bold hover:bg-violet-700 disabled:opacity-50">
+                {salvando ? '⏳ Salvando...' : '📦 Cadastrar'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 // ─── Página principal Leads ────────────────────────────────────────────────
 export function Leads() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -668,6 +787,8 @@ export function Leads() {
   const [propostaLead, setPropostaLead] = useState<Lead | null>(null);
   const [msgsAtivas, setMsgsAtivas] = useState<Mensagem[]>([]);
   const [textoInjetado, setTextoInjetado] = useState({ v: '', n: 0 });
+  const [tabPainel, setTabPainel] = useState<'detalhes' | 'inteligencia'>('inteligencia');
+  const [produtoCadastrar, setProdutoCadastrar] = useState<any>(null);
 
   useEffect(() => { return subscribeLeads(data => { setLeads(data); setLoading(false); }); }, []);
   useEffect(() => {
@@ -746,8 +867,35 @@ export function Leads() {
         </div>
 
         {leadAtivo && (
-          <div className="w-52 flex-shrink-0 border-l bg-white overflow-hidden">
-            <DetalhesPanel lead={leadAtivo} onUpdate={handleUpdateLead} onCriarProposta={() => setPropostaLead(leadAtivo)} />
+          <div className="w-72 flex-shrink-0 border-l bg-white flex flex-col overflow-hidden">
+            {/* Tabs: Inteligencia | Detalhes */}
+            <div className="flex border-b flex-shrink-0">
+              <button
+                onClick={() => setTabPainel('inteligencia')}
+                className={`flex-1 text-xs py-2 font-semibold transition-colors ${tabPainel === 'inteligencia' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                🧠 Inteligência
+              </button>
+              <button
+                onClick={() => setTabPainel('detalhes')}
+                className={`flex-1 text-xs py-2 font-semibold transition-colors ${tabPainel === 'detalhes' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                👤 Detalhes
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">
+              {tabPainel === 'detalhes' ? (
+                <DetalhesPanel lead={leadAtivo} onUpdate={handleUpdateLead} onCriarProposta={() => setPropostaLead(leadAtivo)} />
+              ) : (
+                <ConversaInteligente
+                  telefone={leadAtivo.telefone || ''}
+                  leadNome={leadAtivo.nome}
+                  leadEmpresa={leadAtivo.empresa}
+                  onGerarProposta={() => setPropostaLead(leadAtivo)}
+                  onCadastrarProduto={(produto) => setProdutoCadastrar(produto)}
+                />
+              )}
+            </div>
           </div>
         )}
 
@@ -765,6 +913,13 @@ export function Leads() {
 
       {novoModalOpen && <NovoLeadModal onClose={() => setNovoModalOpen(false)} onSave={handleAdicionarLead} />}
       {propostaLead && <PropostaModal lead={propostaLead} onClose={() => setPropostaLead(null)} />}
+      {produtoCadastrar && (
+        <CadastrarProdutoModal
+          produto={produtoCadastrar}
+          onClose={() => setProdutoCadastrar(null)}
+          onSalvo={() => { setProdutoCadastrar(null); }}
+        />
+      )}
     </div>
   );
 }
