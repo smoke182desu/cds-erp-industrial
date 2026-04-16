@@ -18,7 +18,6 @@ function getDb() {
 function validar(produto) {
   const erros = [];
   if (!produto.nome?.trim()) erros.push('nome obrigatorio');
-  if (!produto.sku?.trim()) erros.push('sku obrigatorio');
   if (produto.ncm && !/^\d{8}$/.test(String(produto.ncm).replace(/\D/g, ''))) erros.push('NCM deve ter 8 digitos');
   if (produto.cfopDentro && !/^\d{4}$/.test(String(produto.cfopDentro))) erros.push('CFOP dentro deve ter 4 digitos');
   if (produto.cfopFora && !/^\d{4}$/.test(String(produto.cfopFora))) erros.push('CFOP fora deve ter 4 digitos');
@@ -26,7 +25,7 @@ function validar(produto) {
   return erros;
 }
 
-// Defaults pra MEI (CSOSN 102, PIS/COFINS isento)
+// Defaults para MEI (CSOSN 102, PIS/COFINS isento)
 function aplicarDefaultsMEI(p) {
   return {
     origemMercadoria: '0',
@@ -64,6 +63,53 @@ function docIdFor(p) {
   return null;
 }
 
+// Normaliza string para comparação (sem acento, minúsculo, só alfanumérico)
+function normStr(s) {
+  return String(s || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Busca produto existente no catálogo por SKU ou nome similar
+async function buscarProdutoExistente(db, produto) {
+  const col = db.collection('produtos');
+
+  // 1. Busca por SKU exato
+  if (produto.sku) {
+    const docId = docIdFor(produto);
+    if (docId) {
+      const snap = await col.doc(docId).get();
+      if (snap.exists) return { id: snap.id, ...snap.data() };
+    }
+    // Busca por campo sku
+    const bySku = await col.where('sku', '==', produto.sku).limit(1).get();
+    if (!bySku.empty) {
+      const doc = bySku.docs[0];
+      return { id: doc.id, ...doc.data() };
+    }
+  }
+
+  // 2. Busca por nome exato (case insensitive)
+  if (produto.nome) {
+    const nomeNorm = normStr(produto.nome);
+    // Busca os primeiros 200 produtos e faz matching no servidor
+    const snap = await col.limit(200).get();
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      if (!data.nome) continue;
+      const existNorm = normStr(data.nome);
+      // Match exato ou um contém o outro (produto sob medida pode ter nome ligeiramente diferente)
+      if (existNorm === nomeNorm ||
+          existNorm.includes(nomeNorm) ||
+          nomeNorm.includes(existNorm)) {
+        return { id: doc.id, ...data };
+      }
+    }
+  }
+
+  return null;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
@@ -75,23 +121,74 @@ export default async function handler(req, res) {
     const col = db.collection('produtos');
     const id = req.query.id || req.body?.id;
 
-    // GET /api/produto?id=xxx - buscar um
+    // GET /api/produto - listar todos ou buscar um
     if (req.method === 'GET') {
-      if (!id) return res.status(400).json({ error: 'id obrigatorio' });
-      const snap = await col.doc(id).get();
-      if (!snap.exists) return res.status(404).json({ error: 'nao encontrado' });
-      return res.status(200).json({ ok: true, produto: { id: snap.id, ...snap.data() } });
+      if (id) {
+        const snap = await col.doc(id).get();
+        if (!snap.exists) return res.status(404).json({ error: 'nao encontrado' });
+        return res.status(200).json({ ok: true, produto: { id: snap.id, ...snap.data() } });
+      }
+      // GET sem id → listar todos (útil para catálogo)
+      const snap = await col.orderBy('nome').limit(300).get();
+      const produtos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      return res.status(200).json({ ok: true, produtos, total: produtos.length });
     }
 
-    // POST /api/produto - criar
+    // POST /api/produto - criar ou atualizar se já existir no catálogo
     if (req.method === 'POST') {
       const body = req.body || {};
-      const produto = aplicarDefaultsMEI(normalizar(body));
+      const produtoRaw = normalizar(body);
+      const produto = aplicarDefaultsMEI(produtoRaw);
+
       const erros = validar(produto);
       if (erros.length) return res.status(400).json({ error: 'validacao', erros });
-      const docId = id || docIdFor(produto);
-      if (!docId) return res.status(400).json({ error: 'precisa de sku ou wcId' });
+
       const now = new Date().toISOString();
+
+      // Buscar se já existe no catálogo (por SKU ou nome similar)
+      const existente = await buscarProdutoExistente(db, produto);
+
+      if (existente) {
+        // Produto já existe — atualiza com novos dados (merge inteligente)
+        const docId = existente.id;
+        const atualizado = {
+          ...existente,
+          // Atualiza apenas campos fiscais e de preço se veio preenchido no request
+          ...(produto.preco > 0 && { preco: produto.preco }),
+          ...(produto.precoRegular > 0 && { precoRegular: produto.precoRegular }),
+          ...(produto.ncm && { ncm: produto.ncm }),
+          ...(produto.unidade && produto.unidade !== 'UN' && { unidade: produto.unidade }),
+          ...(produto.descricao && { descricao: produto.descricao }),
+          ...(produto.categoria && { categoria: produto.categoria }),
+          // Sempre aplica defaults MEI se não tinha
+          csosnIcms: existente.csosnIcms || produto.csosnIcms,
+          cstPis: existente.cstPis || produto.cstPis,
+          cstCofins: existente.cstCofins || produto.cstCofins,
+          cfopDentro: existente.cfopDentro || produto.cfopDentro,
+          cfopFora: existente.cfopFora || produto.cfopFora,
+          atualizadoEm: now,
+          // Preserva SKU existente se não veio um novo
+          sku: produto.sku || existente.sku,
+        };
+
+        await col.doc(docId).set(atualizado, { merge: true });
+        return res.status(200).json({
+          ok: true,
+          id: docId,
+          produto: atualizado,
+          atualizado: true,
+          msg: `Produto "${existente.nome}" atualizado no catálogo existente`,
+        });
+      }
+
+      // Produto novo — cria normalmente
+      let docId = id || docIdFor(produto);
+      if (!docId) {
+        // Sem SKU: gera ID baseado no nome
+        const nomeSlug = normStr(produto.nome).replace(/\s+/g, '_').slice(0, 40);
+        docId = `manual_${nomeSlug}_${Date.now()}`;
+      }
+
       const data = {
         ...produto,
         origem: produto.origem || 'manual',
@@ -99,15 +196,17 @@ export default async function handler(req, res) {
         atualizadoEm: now,
       };
       await col.doc(docId).set(data, { merge: true });
-      return res.status(201).json({ ok: true, id: docId, produto: data });
+      return res.status(201).json({ ok: true, id: docId, produto: data, criado: true });
     }
 
-    // PUT /api/produto?id=xxx - atualizar
+    // PUT /api/produto?id=xxx - atualizar explicitamente
     if (req.method === 'PUT') {
       if (!id) return res.status(400).json({ error: 'id obrigatorio' });
       const body = req.body || {};
       const produto = normalizar(body);
-      const erros = validar({ ...await col.doc(id).get().then(s => s.data() || {}), ...produto });
+      const snapAtual = await col.doc(id).get();
+      const atual = snapAtual.exists ? snapAtual.data() : {};
+      const erros = validar({ ...atual, ...produto });
       if (erros.length) return res.status(400).json({ error: 'validacao', erros });
       produto.atualizadoEm = new Date().toISOString();
       await col.doc(id).set(produto, { merge: true });
