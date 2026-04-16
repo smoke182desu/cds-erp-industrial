@@ -1,4 +1,4 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 
 // Groq - modelo gratuito (14.400 req/dia) substitui Gemini
 const GROQ_MODEL = 'llama-3.1-8b-instant';
@@ -6,7 +6,7 @@ const GROQ_MODEL = 'llama-3.1-8b-instant';
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || 'AIzaSyCr_o3dEiSExaafhkP57SpTf1wTLQSIiMs';
 const PROJECT_ID       = process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0908948294';
 const DATABASE_ID      = process.env.FIREBASE_DATABASE_ID || 'ai-studio-eb49ab80-1528-409e-b7d5-b3e84e7a358d';
-const GROQ_API_KEY     = process.env.GROQ_API_KEY || '';
+const GROQ_API_KEY     = process.env.GROQ_API_KEY || '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';
 
 // Tempo em minutos sem trocar mensagem que consideramos ser "outra conversa anterior".
 const JANELA_CONVERSA_MIN = 180; // 3h sem responder = corta e pega so a conversa atual
@@ -133,3 +133,4 @@ export default async function handler(req, res) {
         return res.status(status).json({ error: msg });
   }
 }
+
