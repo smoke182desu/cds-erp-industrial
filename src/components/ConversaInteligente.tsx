@@ -55,17 +55,17 @@ interface ConversaInteligenteProps {
 }
 
 export default function ConversaInteligente({
-  telefone, leadNome, leadEmpresa, onGerarProposta, onCadastrarProduto,
+  telefone,
+  leadNome,
+  leadEmpresa,
+  onGerarProposta,
+  onCadastrarProduto,
 }: ConversaInteligenteProps) {
   const [analise, setAnalise] = useState<AnaliseConversa | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
-  const [expandido, setExpandido] = useState({ cliente: true, produtos: true, faltando: false });
+  const [expandido, setExpandido] = useState({ cliente: true, produtos: true, faltando: true });
   const [meta, setMeta] = useState({ totalMsgs: 0, msgsUsadas: 0, produtosCatalogo: 0 });
-  const [buscaProduto, setBuscaProduto] = useState('');
-  const [catalogoFull, setCatalogoFull] = useState<any[]>([]);
-  const [resultadosBusca, setResultadosBusca] = useState<any[]>([]);
-  const [buscandoProduto, setBuscandoProduto] = useState(false);
 
   const analisar = useCallback(async () => {
     if (!telefone) return;
@@ -90,60 +90,11 @@ export default function ConversaInteligente({
     } finally {
       setCarregando(false);
     }
-  }, [telefone]);
+  }, [telefone, leadNome, leadEmpresa]);
 
   useEffect(() => {
     if (telefone) analisar();
   }, [telefone, analisar]);
-
-  // Busca no catalogo quando usuario digita
-  useEffect(() => {
-    if (!buscaProduto.trim()) { setResultadosBusca([]); return; }
-    const termo = buscaProduto.toLowerCase();
-
-    const buscarLocal = (lista: any[]) =>
-      lista.filter(p => p.nome?.toLowerCase().includes(termo) || p.sku?.toLowerCase().includes(termo)).slice(0, 8);
-
-    if (catalogoFull.length > 0) {
-      setResultadosBusca(buscarLocal(catalogoFull));
-      return;
-    }
-    // Carrega catalogo uma vez
-    setBuscandoProduto(true);
-    fetch('/api/produto')
-      .then(r => r.json())
-      .then(j => {
-        const lista = j.produtos || [];
-        setCatalogoFull(lista);
-        setResultadosBusca(buscarLocal(lista));
-      })
-      .catch(() => {})
-      .finally(() => setBuscandoProduto(false));
-  }, [buscaProduto, catalogoFull]);
-
-  const adicionarProdutoCatalogo = (p: any) => {
-    if (!analise) return;
-    const jaExiste = analise.produtos.some(ap =>
-      ap.produtoId === p.id || ap.nome?.toLowerCase() === p.nome?.toLowerCase()
-    );
-    if (jaExiste) { setBuscaProduto(''); setResultadosBusca([]); return; }
-    setAnalise(prev => prev ? {
-      ...prev,
-      produtos: [...prev.produtos, {
-        nome: p.nome,
-        descricao: p.descricao || '',
-        quantidade: 1,
-        unidade: p.unidade || 'UN',
-        precoUnitario: p.preco || p.precoRegular || 0,
-        produtoPadrao: true,
-        skuCatalogo: p.sku || null,
-        produtoId: p.id,
-        nomeCatalogo: p.nome,
-      }],
-    } : prev);
-    setBuscaProduto('');
-    setResultadosBusca([]);
-  };
 
   if (!telefone) return null;
 
@@ -154,7 +105,6 @@ export default function ConversaInteligente({
 
   return (
     <div className="border-t border-gray-200 bg-gradient-to-b from-indigo-50/50 to-white">
-      {/* Header */}
       <div className="px-3 py-2 flex items-center justify-between border-b border-indigo-100">
         <div className="flex items-center gap-1.5">
           <Brain className="w-4 h-4 text-indigo-600" />
@@ -188,7 +138,6 @@ export default function ConversaInteligente({
 
       {analise && (
         <div className="text-xs">
-          {/* Barra de confianca */}
           <div className="px-3 py-2">
             <div className="flex items-center justify-between mb-1">
               <span className="text-gray-500">Dados coletados</span>
@@ -205,7 +154,7 @@ export default function ConversaInteligente({
             )}
           </div>
 
-          {/* Secao Cliente */}
+          {/* Secao Cliente - Empresa primeiro, depois Responsavel */}
           <div className="border-t border-gray-100">
             <button
               className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-gray-50"
@@ -222,15 +171,15 @@ export default function ConversaInteligente({
             </button>
             {expandido.cliente && (
               <div className="px-3 pb-2 space-y-1">
-                <DadoCliente icone={<User className="w-3 h-3" />} label="Nome" valor={analise.cliente.nome} />
-                <DadoCliente icone={<Building2 className="w-3 h-3" />} label="Empresa" valor={analise.cliente.empresa || analise.cliente.nomeFantasia} />
-                <DadoCliente icone={<Phone className="w-3 h-3" />} label="Telefone" valor={analise.cliente.telefone || telefone} />
-                <DadoCliente icone={<Mail className="w-3 h-3" />} label="E-mail" valor={analise.cliente.email} />
-                <DadoCliente icone={<FileText className="w-3 h-3" />} label="CNPJ" valor={analise.cliente.cnpj} destaque />
+                <DadoCliente icone={<Building2 className="w-3 h-3" />} label="Empresa" valor={analise.cliente.empresa || analise.cliente.nomeFantasia || leadEmpresa} destaque />
                 {analise.cliente.razaoSocial && (
                   <DadoCliente icone={<Building2 className="w-3 h-3" />} label="Razao Social" valor={analise.cliente.razaoSocial} />
                 )}
+                <DadoCliente icone={<FileText className="w-3 h-3" />} label="CNPJ" valor={analise.cliente.cnpj} destaque />
                 <DadoCliente icone={<FileText className="w-3 h-3" />} label="IE" valor={analise.cliente.inscricaoEstadual} />
+                <DadoCliente icone={<User className="w-3 h-3" />} label="Responsavel" valor={analise.cliente.nome || leadNome} />
+                <DadoCliente icone={<Phone className="w-3 h-3" />} label="Telefone" valor={analise.cliente.telefone || telefone} />
+                <DadoCliente icone={<Mail className="w-3 h-3" />} label="E-mail" valor={analise.cliente.email} />
                 {(analise.cliente.logradouro || analise.cliente.cidade) && (
                   <DadoCliente
                     icone={<MapPin className="w-3 h-3" />}
@@ -294,7 +243,9 @@ export default function ConversaInteligente({
                         </button>
                       )}
                     </div>
-                    {p.descricao && <p className="text-gray-500 mt-0.5">{p.descricao}</p>}
+                    {p.descricao && (
+                      <p className="text-gray-500 mt-0.5">{p.descricao}</p>
+                    )}
                     <div className="flex items-center gap-3 mt-1 text-gray-600">
                       <span>{p.quantidade} {p.unidade}</span>
                       {p.precoUnitario > 0 && (
@@ -303,44 +254,14 @@ export default function ConversaInteligente({
                           R$ {p.precoUnitario.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </span>
                       )}
-                      {p.skuCatalogo && <span className="text-gray-400">SKU: {p.skuCatalogo}</span>}
+                      {p.skuCatalogo && (
+                        <span className="text-gray-400">SKU: {p.skuCatalogo}</span>
+                      )}
                     </div>
                   </div>
                 )) : (
                   <p className="text-gray-400 italic">Nenhum produto identificado ainda</p>
                 )}
-
-                {/* Busca manual de produto */}
-                <div className="mt-2 relative">
-                  <div className="flex items-center gap-1 border border-dashed border-indigo-300 rounded px-2 py-1 bg-indigo-50/50">
-                    <Search className="w-3 h-3 text-indigo-400 flex-shrink-0" />
-                    <input
-                      type="text"
-                      value={buscaProduto}
-                      onChange={e => setBuscaProduto(e.target.value)}
-                      placeholder="Buscar e adicionar produto..."
-                      className="flex-1 bg-transparent text-xs outline-none text-gray-700 placeholder-gray-400 min-w-0"
-                    />
-                    {buscandoProduto && <Loader2 className="w-3 h-3 animate-spin text-indigo-400" />}
-                  </div>
-                  {resultadosBusca.length > 0 && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded shadow-lg z-10 max-h-40 overflow-y-auto">
-                      {resultadosBusca.map((p, i) => (
-                        <button
-                          key={i}
-                          onClick={() => adicionarProdutoCatalogo(p)}
-                          className="w-full text-left px-2 py-1.5 hover:bg-indigo-50 border-b border-gray-100 last:border-0"
-                        >
-                          <div className="font-medium text-gray-800 text-[11px]">{p.nome}</div>
-                          <div className="text-gray-400 text-[10px]">
-                            {p.sku && `SKU: ${p.sku}`}
-                            {p.preco > 0 && ` · R$ ${p.preco.toFixed(2)}`}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
             )}
           </div>
@@ -354,14 +275,18 @@ export default function ConversaInteligente({
               >
                 <div className="flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 text-orange-500" />
-                  <span className="font-semibold text-gray-700">Faltando ({analise.camposFaltando.length})</span>
+                  <span className="font-semibold text-gray-700">
+                    Faltando ({analise.camposFaltando.length})
+                  </span>
                 </div>
                 {expandido.faltando ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               </button>
               {expandido.faltando && (
                 <div className="px-3 pb-2 flex flex-wrap gap-1">
                   {analise.camposFaltando.map((c, i) => (
-                    <span key={i} className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded text-[10px]">{c}</span>
+                    <span key={i} className="bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded text-[10px]">
+                      {c}
+                    </span>
                   ))}
                 </div>
               )}
@@ -377,7 +302,6 @@ export default function ConversaInteligente({
             </div>
           )}
 
-          {/* Botao Gerar Proposta */}
           <div className="border-t border-gray-100 p-3">
             <button
               onClick={() => onGerarProposta(analise)}
@@ -407,7 +331,10 @@ export default function ConversaInteligente({
 }
 
 function DadoCliente({
-  icone, label, valor, destaque = false,
+  icone,
+  label,
+  valor,
+  destaque = false,
 }: {
   icone: React.ReactNode;
   label: string;
@@ -420,8 +347,11 @@ function DadoCliente({
       <span className="text-gray-400 mt-0.5">{icone}</span>
       <div>
         <span className="text-gray-400">{label}: </span>
-        <span className={destaque ? 'font-semibold text-indigo-700' : 'text-gray-700'}>{valor}</span>
+        <span className={destaque ? 'font-semibold text-indigo-700' : 'text-gray-700'}>
+          {valor}
+        </span>
       </div>
     </div>
   );
 }
+
