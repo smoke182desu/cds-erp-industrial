@@ -62,6 +62,10 @@ export default function ConversaInteligente({
   const [erro, setErro] = useState('');
   const [expandido, setExpandido] = useState({ cliente: true, produtos: true, faltando: false });
   const [meta, setMeta] = useState({ totalMsgs: 0, msgsUsadas: 0, produtosCatalogo: 0 });
+  const [buscaProduto, setBuscaProduto] = useState('');
+  const [catalogoFull, setCatalogoFull] = useState<any[]>([]);
+  const [resultadosBusca, setResultadosBusca] = useState<any[]>([]);
+  const [buscandoProduto, setBuscandoProduto] = useState(false);
 
   const analisar = useCallback(async () => {
     if (!telefone) return;
@@ -71,7 +75,7 @@ export default function ConversaInteligente({
       const res = await fetch('/api/conversa-inteligencia', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefone }),
+        body: JSON.stringify({ telefone, leadNome, leadEmpresa }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro ao analisar');
@@ -91,6 +95,55 @@ export default function ConversaInteligente({
   useEffect(() => {
     if (telefone) analisar();
   }, [telefone, analisar]);
+
+  // Busca no catalogo quando usuario digita
+  useEffect(() => {
+    if (!buscaProduto.trim()) { setResultadosBusca([]); return; }
+    const termo = buscaProduto.toLowerCase();
+
+    const buscarLocal = (lista: any[]) =>
+      lista.filter(p => p.nome?.toLowerCase().includes(termo) || p.sku?.toLowerCase().includes(termo)).slice(0, 8);
+
+    if (catalogoFull.length > 0) {
+      setResultadosBusca(buscarLocal(catalogoFull));
+      return;
+    }
+    // Carrega catalogo uma vez
+    setBuscandoProduto(true);
+    fetch('/api/produto')
+      .then(r => r.json())
+      .then(j => {
+        const lista = j.produtos || [];
+        setCatalogoFull(lista);
+        setResultadosBusca(buscarLocal(lista));
+      })
+      .catch(() => {})
+      .finally(() => setBuscandoProduto(false));
+  }, [buscaProduto, catalogoFull]);
+
+  const adicionarProdutoCatalogo = (p: any) => {
+    if (!analise) return;
+    const jaExiste = analise.produtos.some(ap =>
+      ap.produtoId === p.id || ap.nome?.toLowerCase() === p.nome?.toLowerCase()
+    );
+    if (jaExiste) { setBuscaProduto(''); setResultadosBusca([]); return; }
+    setAnalise(prev => prev ? {
+      ...prev,
+      produtos: [...prev.produtos, {
+        nome: p.nome,
+        descricao: p.descricao || '',
+        quantidade: 1,
+        unidade: p.unidade || 'UN',
+        precoUnitario: p.preco || p.precoRegular || 0,
+        produtoPadrao: true,
+        skuCatalogo: p.sku || null,
+        produtoId: p.id,
+        nomeCatalogo: p.nome,
+      }],
+    } : prev);
+    setBuscaProduto('');
+    setResultadosBusca([]);
+  };
 
   if (!telefone) return null;
 
@@ -256,6 +309,38 @@ export default function ConversaInteligente({
                 )) : (
                   <p className="text-gray-400 italic">Nenhum produto identificado ainda</p>
                 )}
+
+                {/* Busca manual de produto */}
+                <div className="mt-2 relative">
+                  <div className="flex items-center gap-1 border border-dashed border-indigo-300 rounded px-2 py-1 bg-indigo-50/50">
+                    <Search className="w-3 h-3 text-indigo-400 flex-shrink-0" />
+                    <input
+                      type="text"
+                      value={buscaProduto}
+                      onChange={e => setBuscaProduto(e.target.value)}
+                      placeholder="Buscar e adicionar produto..."
+                      className="flex-1 bg-transparent text-xs outline-none text-gray-700 placeholder-gray-400 min-w-0"
+                    />
+                    {buscandoProduto && <Loader2 className="w-3 h-3 animate-spin text-indigo-400" />}
+                  </div>
+                  {resultadosBusca.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded shadow-lg z-10 max-h-40 overflow-y-auto">
+                      {resultadosBusca.map((p, i) => (
+                        <button
+                          key={i}
+                          onClick={() => adicionarProdutoCatalogo(p)}
+                          className="w-full text-left px-2 py-1.5 hover:bg-indigo-50 border-b border-gray-100 last:border-0"
+                        >
+                          <div className="font-medium text-gray-800 text-[11px]">{p.nome}</div>
+                          <div className="text-gray-400 text-[10px]">
+                            {p.sku && `SKU: ${p.sku}`}
+                            {p.preco > 0 && ` · R$ ${p.preco.toFixed(2)}`}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

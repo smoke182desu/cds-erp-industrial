@@ -123,25 +123,34 @@ async function consultarCEP(cep) {
 }
 
 // Analise progressiva com Groq
-async function analisarConversaComGroq(conversa, produtosPadrao) {
+async function analisarConversaComGroq(conversa, produtosPadrao, leadNome = '', leadEmpresa = '') {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no servidor');
 
   const catalogoResumo = produtosPadrao.length > 0
     ? produtosPadrao.slice(0, 50).map(p => `- ${p.nome} (SKU: ${p.sku}) R$${p.preco}`).join('\n')
     : '(catalogo vazio)';
 
+  const dadosConhecidos = [];
+  if (leadNome) dadosConhecidos.push(`- Nome do contato: "${leadNome}"`);
+  if (leadEmpresa) dadosConhecidos.push(`- Empresa do contato: "${leadEmpresa}"`);
+  const contextoLead = dadosConhecidos.length
+    ? `\nDADOS JA CONHECIDOS DO LEAD (use como base, nao ignore):\n${dadosConhecidos.join('\n')}\n`
+    : '';
+
   const prompt = `Voce e um assistente de vendas da CDS Industrial (metalurgia / caldeiraria / estruturas metalicas).
 Analise a conversa de WhatsApp abaixo e extraia TODOS os dados que conseguir identificar.
-
-CATALOGO DE PRODUTOS PADRAO da empresa:
+${contextoLead}
+CATALOGO DE PRODUTOS PADRAO da empresa (use nomes EXATOS do catalogo quando possivel):
 ${catalogoResumo}
 
 REGRAS:
-1. Se o cliente mencionar um produto que EXISTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true).
-2. Se o produto NAO existe no catalogo, marque "produtoPadrao": false e estime o preco se mencionado.
-3. Extraia CNPJ, CPF, CEP, endereco, inscricao estadual se mencionados no texto.
-4. Se dados estao incompletos, liste em "camposFaltando".
-5. Avalie "confianca" de 0 a 100 (quao completos estao os dados para gerar proposta).
+1. Se o cliente mencionar um produto que EXISTE no catalogo acima (mesmo que nao seja exatamente igual), use o nome EXATO do catalogo e marque "produtoPadrao": true.
+2. Para produtos do catalogo, preencha "skuCatalogo" com o SKU correspondente.
+3. Se o produto NAO existe no catalogo, marque "produtoPadrao": false e estime o preco se mencionado.
+4. Se DADOS JA CONHECIDOS DO LEAD foram informados, use-os DIRETAMENTE no campo cliente sem precisar extrair da conversa.
+5. Extraia CNPJ, CPF, CEP, endereco, inscricao estadual se mencionados no texto.
+6. Se dados estao incompletos, liste em "camposFaltando".
+7. Avalie "confianca" de 0 a 100 (quao completos estao os dados para gerar proposta).
 
 Conversa:
 ${conversa}
@@ -217,7 +226,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
 
-  const { telefone } = req.body || {};
+  const { telefone, leadNome, leadEmpresa } = req.body || {};
   if (!telefone) return res.status(400).json({ error: 'telefone obrigatorio' });
 
   const tel = String(telefone).replace(/\D/g, '');
@@ -253,7 +262,7 @@ export default async function handler(req, res) {
       .join('\n');
 
     // 4. Analisar com Groq + catalogo de produtos
-    const analise = await analisarConversaComGroq(conversaFormatada, produtosPadrao);
+    const analise = await analisarConversaComGroq(conversaFormatada, produtosPadrao, leadNome, leadEmpresa);
 
     // 5. Enriquecer com BrasilAPI / ViaCEP se tiver CNPJ ou CEP
     let dadosCNPJ = null;
