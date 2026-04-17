@@ -2,7 +2,7 @@
 // CRUD de leads para o funil CRM
 // MIGRADO para Firebase Admin SDK para evitar quota 50k/dia da REST API publica
 
-import { firestoreAdd, firestoreQuery, firestoreList, firestoreUpdate, firestoreIncrement } from './lib/firestore.js';
+import { firestoreAdd, firestoreQuery, firestoreList, firestoreUpdate, firestoreIncrement } from './_lib/firestore.js';
 
 const WEBHOOK_SECRET = process.env.LEADS_WEBHOOK_SECRET || 'cds-leads-secret';
 

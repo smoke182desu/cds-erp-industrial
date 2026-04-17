@@ -2,7 +2,7 @@
 // Webhook handler para mensagens WhatsApp (Z-API, Evolution API, Twilio)
 // MIGRADO para Firebase Admin SDK para evitar quota 50k/dia da REST API publica
 
-import { firestoreAdd, firestoreQuery } from './lib/firestore.js';
+import { firestoreAdd, firestoreQuery } from './_lib/firestore.js';
 
 const NUMERO_EMPRESA = (process.env.NUMERO_EMPRESA || '5561993081396').replace(/\D/g, '');
 

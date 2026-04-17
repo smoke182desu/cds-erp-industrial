@@ -3,7 +3,7 @@
 // MIGRADO para Firebase Admin SDK para evitar quota 50k/dia da REST API publica
 
 import axios from 'axios';
-import { firestoreAdd, firestoreQueryMulti } from './lib/firestore.js';
+import { firestoreAdd, firestoreQueryMulti } from './_lib/firestore.js';
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-903e.up.railway.app';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
