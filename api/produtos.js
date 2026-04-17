@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { withCacheSWR, cacheDel } from './_lib/cache.js';
 
 export const config = { maxDuration: 60 };
 
@@ -57,12 +58,11 @@ async function firestoreGetAll() {
   return all;
 }
 
-// Cache local de produtos pra search — stale-while-revalidate.
-// Fresco por 10min, ainda serve por 24h mesmo se Firestore tiver caido/quota esgotada.
-const FRESH_MS = 10 * 60 * 1000;
-const STALE_MS = 24 * 60 * 60 * 1000;
-let SEARCH_CACHE = { data: null, ts: 0 };
-let REVALIDANDO = false;
+// Cache compartilhado (Upstash Redis + fallback memoria).
+// Fresco 10min — stale serve 24h mesmo se Firestore cair/quota estourar.
+const CACHE_KEY_PRODUTOS = 'produtos:all';
+const FRESH_S = 10 * 60;
+const STALE_S = 24 * 60 * 60;
 
 function _norm(s) {
   return String(s || '')
@@ -74,27 +74,7 @@ function _norm(s) {
 }
 
 async function carregarListaComCache() {
-  const agora = Date.now();
-  const idade = agora - SEARCH_CACHE.ts;
-  if (SEARCH_CACHE.data && idade < FRESH_MS) return SEARCH_CACHE.data;
-  if (SEARCH_CACHE.data && idade < STALE_MS) {
-    if (!REVALIDANDO) {
-      REVALIDANDO = true;
-      firestoreGetAll()
-        .then(d => { if (d?.length) SEARCH_CACHE = { data: d, ts: Date.now() }; })
-        .catch(() => {})
-        .finally(() => { REVALIDANDO = false; });
-    }
-    return SEARCH_CACHE.data;
-  }
-  try {
-    const d = await firestoreGetAll();
-    if (d?.length) SEARCH_CACHE = { data: d, ts: agora };
-    return d;
-  } catch (err) {
-    if (SEARCH_CACHE.data) return SEARCH_CACHE.data;
-    throw err;
-  }
+  return withCacheSWR(CACHE_KEY_PRODUTOS, FRESH_S, STALE_S, firestoreGetAll);
 }
 
 async function firestoreSearch(q, limit = 20) {
@@ -196,6 +176,8 @@ async function syncOnePage(requestedPage) {
     lastPageSyncedAt: new Date().toISOString(),
   }, { merge: true });
 
+  await cacheDel(CACHE_KEY_PRODUTOS);
+
   return {
     ok: true,
     page,
@@ -232,6 +214,9 @@ async function syncAll() {
     lastFullSyncAt: new Date().toISOString(),
     lastPageSyncedAt: new Date().toISOString(),
   }, { merge: true });
+
+  // Invalida cache compartilhado pra refletir produtos novos
+  await cacheDel(CACHE_KEY_PRODUTOS);
 
   return { ok: true, totalSincronizados, paginasProcessadas: ciclos };
 }

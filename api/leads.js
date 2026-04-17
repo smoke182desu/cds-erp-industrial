@@ -3,6 +3,7 @@
 // MIGRADO para Firebase Admin SDK para evitar quota 50k/dia da REST API publica
 
 import { firestoreAdd, firestoreQuery, firestoreList, firestoreUpdate, firestoreIncrement } from './_lib/firestore.js';
+import { withCacheSWR, cacheDel } from './_lib/cache.js';
 
 const WEBHOOK_SECRET = process.env.LEADS_WEBHOOK_SECRET || 'cds-leads-secret';
 
@@ -56,40 +57,19 @@ async function listarLeadsDoFirestore() {
   }));
 }
 
-// ---------- Cache SWR para evitar quota Firestore ----------
-// Fresco por 30s — ainda serve por 24h mesmo se Firestore tiver caido/quota esgotada.
+// ---------- Cache SWR compartilhado (Upstash Redis + fallback memoria) ----------
+// Fresco 30s — stale serve por 24h mesmo se Firestore cair/quota estourar.
 // Invalidacao explicita ao criar/atualizar lead.
-const FRESH_MS = 30 * 1000;
-const STALE_MS = 24 * 60 * 60 * 1000;
-let LEADS_CACHE = { data: null, ts: 0 };
-let REVALIDANDO = false;
+const CACHE_KEY = 'leads:all';
+const FRESH_S = 30;
+const STALE_S = 24 * 60 * 60;
 
 async function listarLeads() {
-  const agora = Date.now();
-  const idade = agora - LEADS_CACHE.ts;
-  if (LEADS_CACHE.data && idade < FRESH_MS) return LEADS_CACHE.data;
-  if (LEADS_CACHE.data && idade < STALE_MS) {
-    if (!REVALIDANDO) {
-      REVALIDANDO = true;
-      listarLeadsDoFirestore()
-        .then(d => { if (d) LEADS_CACHE = { data: d, ts: Date.now() }; })
-        .catch(() => {})
-        .finally(() => { REVALIDANDO = false; });
-    }
-    return LEADS_CACHE.data;
-  }
-  try {
-    const d = await listarLeadsDoFirestore();
-    LEADS_CACHE = { data: d, ts: agora };
-    return d;
-  } catch (err) {
-    if (LEADS_CACHE.data) return LEADS_CACHE.data;
-    throw err;
-  }
+  return withCacheSWR(CACHE_KEY, FRESH_S, STALE_S, listarLeadsDoFirestore);
 }
 
-function invalidarCacheLeads() {
-  LEADS_CACHE = { data: null, ts: 0 };
+async function invalidarCacheLeads() {
+  await cacheDel(CACHE_KEY);
 }
 
 // ---------- handler principal ----------
@@ -127,7 +107,7 @@ export default async function handler(req, res) {
       if (body.valor !== undefined) updates.valor = Number(body.valor) || 0;
 
       await firestoreUpdate('leads', id, updates);
-      invalidarCacheLeads();
+      await invalidarCacheLeads();
       return res.status(200).json({ ok: true, id });
     } catch (err) {
       console.error('[leads PUT] erro:', err.message);

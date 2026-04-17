@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { withCacheSWR } from './_lib/cache.js';
 
 // Groq - modelo gratuito (14.400 req/dia)
 const GROQ_MODEL = 'llama-3.1-8b-instant';
@@ -20,15 +21,12 @@ const MSGS_INICIAIS       = 15;
 // Max de produtos pre-filtrados enviados ao prompt da IA
 const MAX_PRODUTOS_PROMPT = 30;
 
-// Cache do catalogo em memoria.
-// - Se fresco (< FRESH_MS): usa direto, sem reler.
-// - Se stale (entre FRESH_MS e MAX_STALE_MS): retorna o cache, mas revalida em background.
-// - Se nao existe ou quebrou: tenta recarregar, SENAO retorna o ultimo cache que tivermos mesmo vencido.
-// Isso evita torrar cota do Firestore (50k reads/dia free) a cada cold start da Vercel.
-const FRESH_MS     = 10 * 60 * 1000;   // 10 min — cache fresco
-const MAX_STALE_MS = 24 * 60 * 60 * 1000; // 24h — ainda aceitavel se quota esgotou
-let CACHE_PRODUTOS = { data: null, ts: 0 };
-let CACHE_REVALIDANDO = false;
+// Cache do catalogo compartilhado entre instancias (Upstash Redis).
+// - Fresco 10min.
+// - Stale 24h — serve mesmo se Firestore cair ou quota esgotar.
+const CACHE_KEY_CATALOGO = 'produtos:catalogo';
+const FRESH_S = 10 * 60;
+const STALE_S = 24 * 60 * 60;
 
 // Stopwords PT-BR (nao usadas como keyword de busca)
 const STOPWORDS = new Set([
@@ -124,36 +122,17 @@ async function _recarregarCatalogoDoFirestore() {
   return produtos;
 }
 
-// Carrega catalogo com stale-while-revalidate. Protege quota do Firestore.
+// Carrega catalogo com stale-while-revalidate compartilhado via Upstash.
 async function carregarCatalogoCompleto() {
-  const agora = Date.now();
-  const idade = agora - CACHE_PRODUTOS.ts;
-
-  // Cache fresco: retorna direto
-  if (CACHE_PRODUTOS.data && idade < FRESH_MS) {
-    return CACHE_PRODUTOS.data;
-  }
-
-  // Cache stale mas ainda aceitavel: retorna cache e revalida em background
-  if (CACHE_PRODUTOS.data && idade < MAX_STALE_MS) {
-    if (!CACHE_REVALIDANDO) {
-      CACHE_REVALIDANDO = true;
-      _recarregarCatalogoDoFirestore()
-        .then(produtos => { if (produtos?.length) CACHE_PRODUTOS = { data: produtos, ts: Date.now() }; })
-        .catch(() => { /* ignora erro na revalidacao silenciosa */ })
-        .finally(() => { CACHE_REVALIDANDO = false; });
-    }
-    return CACHE_PRODUTOS.data;
-  }
-
-  // Sem cache util: tenta carregar. Se falhar (quota/timeout), retorna cache expirado se existir.
   try {
-    const produtos = await _recarregarCatalogoDoFirestore();
-    if (produtos?.length) CACHE_PRODUTOS = { data: produtos, ts: agora };
-    return produtos;
-  } catch (err) {
-    // Firestore caiu ou quota esgotou — melhor devolver cache vencido do que quebrar a analise.
-    if (CACHE_PRODUTOS.data) return CACHE_PRODUTOS.data;
+    const produtos = await withCacheSWR(
+      CACHE_KEY_CATALOGO,
+      FRESH_S,
+      STALE_S,
+      _recarregarCatalogoDoFirestore
+    );
+    return produtos || [];
+  } catch {
     return [];
   }
 }
