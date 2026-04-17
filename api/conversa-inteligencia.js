@@ -163,10 +163,10 @@ function filtrarProdutosRelevantes(produtos, palavrasChave, limite = MAX_PRODUTO
 function extrairAlternativas(textoConversa) {
   const texto = String(textoConversa || '');
 
-  // Telefones BR: captura "janelas" de texto com digitos+separadores e valida tamanho (10-13 digitos).
+  // Telefones BR: captura "janelas" de digitos com separadores comuns (SEM ponto — ponto e de CPF/CNPJ).
   // Aceita fixo (10), celular (11), com/sem DDI 55 (12/13).
   const telefones = new Set();
-  const reTel = /\+?[\d][\d\s\-\(\)\.]{8,18}\d/g;
+  const reTel = /\+?[\d][\d\s\-\(\)]{8,18}\d/g;
   let m;
   while ((m = reTel.exec(texto)) !== null) {
     let digits = m[0].replace(/\D/g, '');
@@ -174,8 +174,9 @@ function extrairAlternativas(textoConversa) {
     if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
       digits = digits.slice(2);
     }
-    // Ignora CPF (11 dig pontuado com padrao XXX.XXX.XXX-XX) e CNPJ (14)
+    // DDDs no Brasil sao 11-99 (nunca comecam com 0). Ignora CPF (11 dig) acidental.
     if (digits.length < 10 || digits.length > 11) continue;
+    if (digits.startsWith('0')) continue;
     telefones.add(digits);
   }
 
