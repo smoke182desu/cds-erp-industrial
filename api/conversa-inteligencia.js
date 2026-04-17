@@ -12,8 +12,9 @@ const GROQ_API_KEY    = process.env.GROQ_API_KEY || '';
 
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents`;
 
-const JANELA_CONVERSA_MIN = 180;
-const MAX_MSGS_CONTEXTO   = 30;
+// Pega as ultimas N mensagens sem filtro de tempo — clientes frequentemente retomam
+// conversas dias/semanas depois e os dados (CPF, endereco, produto) estao nas mensagens antigas.
+const MAX_MSGS_CONTEXTO   = 50;
 
 // Max de produtos pre-filtrados enviados ao prompt da IA
 const MAX_PRODUTOS_PROMPT = 30;
@@ -225,7 +226,7 @@ async function buscarMensagens(telefone) {
       from: [{ collectionId: 'mensagens' }],
       where: { fieldFilter: { field: { fieldPath: 'telefone' }, op: 'EQUAL', value: { stringValue: telefone } } },
       orderBy: [{ field: { fieldPath: 'criadoEm' }, direction: 'DESCENDING' }],
-      limit: 50,
+      limit: 200,
     },
   };
   const res = await axios.post(url, body);
@@ -245,16 +246,9 @@ async function buscarMensagens(telefone) {
 
 function recortarConversaAtual(mensagens) {
   if (!mensagens.length) return [];
-  const out = [mensagens[mensagens.length - 1]];
-  for (let i = mensagens.length - 2; i >= 0; i--) {
-    const atual = new Date(out[0].criadoEm).getTime();
-    const anter = new Date(mensagens[i].criadoEm).getTime();
-    const diffMin = (atual - anter) / 60000;
-    if (diffMin > JANELA_CONVERSA_MIN) break;
-    out.unshift(mensagens[i]);
-    if (out.length >= MAX_MSGS_CONTEXTO) break;
-  }
-  return out;
+  // Pega as ultimas MAX_MSGS_CONTEXTO mensagens (ordenadas cronologicamente).
+  // Sem filtro de tempo: se o cliente passou dados ha dias/semanas, ainda queremos usar.
+  return mensagens.slice(-MAX_MSGS_CONTEXTO);
 }
 
 // Busca produtos relevantes para a conversa (pre-filtro por palavras-chave)
@@ -348,12 +342,14 @@ ${leadContexto}
 REGRAS:
 1. Se o cliente mencionar um produto que EXISTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true).
 2. Se o produto NAO existe no catalogo, marque "produtoPadrao": false e estime o preco se mencionado.
-3. IMPORTANTE - NOME DO PRODUTO: Inclua TODAS as especificacoes mencionadas na conversa (capacidade em litros, dimensoes em mm/cm/m, material como inox/aco carbono/galvanizado, espessura, tipo). Exemplo: "Container 1200L Inox 304" ou "Escada Marinheiro 6m Galvanizada". NUNCA use nomes genericos como apenas "container" ou "escada" sem as specs.
+3. IMPORTANTE - NOME DO PRODUTO: Inclua TODAS as especificacoes mencionadas na conversa (capacidade em litros, dimensoes em mm/cm/m, material como inox/aco carbono/galvanizado, espessura, tipo). Exemplo: "Container 1200L Inox 304" ou "Tampa para casa de maquinas 110cm". NUNCA use nomes genericos como apenas "container" ou "tampa" sem as specs/dimensoes.
 4. DESCRICAO DO PRODUTO: Coloque todos os detalhes tecnicos: dimensoes, material, acabamento, capacidade, quantidade, norma se aplicavel.
 5. Extraia CNPJ, CPF, CEP, endereco, inscricao estadual se mencionados no texto.
-6. Se dados estao incompletos, liste em "camposFaltando".
-7. Avalie "confianca" de 0 a 100 (quao completos estao os dados para gerar proposta).
-8. CLIENTE: O campo "empresa" e para o nome da empresa/CNPJ. O campo "nome" e para a PESSOA de contato (responsavel). Se o lead ja tem dados no CRM, use como base.
+6. DADOS ESTRUTURADOS: Se o cliente enviar uma mensagem em formato "Nome: X / Cpf: Y / Endereço: Z / Cep: W", EXTRAIA TODOS esses campos literalmente. O nome do cliente (pessoa fisica) vai em cliente.nome; CPF em cliente.cpf; parseia o endereco em logradouro/numero/bairro/cidade/uf; CEP em cliente.cep.
+7. DIFERENCA CNPJ DO VENDEDOR vs CLIENTE: Se o VENDEDOR mandar "Nossa chave pix CNPJ: X", esse CNPJ e da CDS Industrial (vendedor), NAO do cliente. NAO preencha cliente.cnpj com esse CNPJ.
+8. Se dados estao incompletos, liste em "camposFaltando".
+9. Avalie "confianca" de 0 a 100 (quao completos estao os dados para gerar proposta).
+10. CLIENTE: O campo "empresa" e para o nome da empresa/CNPJ. O campo "nome" e para a PESSOA de contato (responsavel). Se o lead ja tem dados no CRM, use como base, mas PREFIRA o nome da pessoa que o cliente informou explicitamente na conversa ("Nome: Zilmaria...") sobre o nome do lead no CRM.
 
 Conversa:
 ${conversa}
@@ -575,9 +571,16 @@ export default async function handler(req, res) {
     // Limpa camposFaltando: remove tudo que ja esta preenchido no cliente.
     // Evita bug de ter "telefone" como faltando quando temos o numero do WhatsApp.
     if (Array.isArray(analise.camposFaltando)) {
+      const ehPessoaFisica = !!analise.cliente?.cpf && !analise.cliente?.cnpj;
+      const ehPessoaJuridica = !!analise.cliente?.cnpj;
       analise.camposFaltando = analise.camposFaltando.filter(c => {
         const v = analise.cliente?.[c];
-        return !v || String(v).trim() === '';
+        if (v && String(v).trim() !== '') return false;
+        // Pessoa fisica nao precisa de CNPJ/IE
+        if (ehPessoaFisica && (c === 'cnpj' || c === 'inscricaoEstadual')) return false;
+        // Pessoa juridica nao precisa de CPF
+        if (ehPessoaJuridica && c === 'cpf') return false;
+        return true;
       });
     }
 
