@@ -20,9 +20,15 @@ const MSGS_INICIAIS       = 15;
 // Max de produtos pre-filtrados enviados ao prompt da IA
 const MAX_PRODUTOS_PROMPT = 30;
 
-// Cache do catalogo em memoria (TTL 5 min) para nao recarregar 3668 produtos a cada request
-const CACHE_TTL_MS = 5 * 60 * 1000;
+// Cache do catalogo em memoria.
+// - Se fresco (< FRESH_MS): usa direto, sem reler.
+// - Se stale (entre FRESH_MS e MAX_STALE_MS): retorna o cache, mas revalida em background.
+// - Se nao existe ou quebrou: tenta recarregar, SENAO retorna o ultimo cache que tivermos mesmo vencido.
+// Isso evita torrar cota do Firestore (50k reads/dia free) a cada cold start da Vercel.
+const FRESH_MS     = 10 * 60 * 1000;   // 10 min — cache fresco
+const MAX_STALE_MS = 24 * 60 * 60 * 1000; // 24h — ainda aceitavel se quota esgotou
 let CACHE_PRODUTOS = { data: null, ts: 0 };
+let CACHE_REVALIDANDO = false;
 
 // Stopwords PT-BR (nao usadas como keyword de busca)
 const STOPWORDS = new Set([
@@ -72,40 +78,27 @@ function getDbAdmin() {
   }
 }
 
-// Carrega TODOS os produtos (via firebase-admin, com paginacao) e cacheia
-async function carregarCatalogoCompleto() {
-  const agora = Date.now();
-  if (CACHE_PRODUTOS.data && (agora - CACHE_PRODUTOS.ts) < CACHE_TTL_MS) {
-    return CACHE_PRODUTOS.data;
-  }
-
+async function _recarregarCatalogoDoFirestore() {
   const db = getDbAdmin();
   if (!db) {
-    // Fallback: REST API (max 300 docs, nao ideal mas evita quebrar se admin nao estiver configurado)
-    try {
-      const url = `${BASE_URL}/produtos?pageSize=300&key=${FIREBASE_API_KEY}`;
-      const res = await axios.get(url, { timeout: 8000 });
-      const produtos = (res.data.documents || []).map(d => {
-        const f = d.fields || {};
-        const get = (k, fb = '') => f[k]?.stringValue ?? f[k]?.doubleValue ?? f[k]?.booleanValue ?? fb;
-        return {
-          id: d.name.split('/').pop(),
-          nome: get('nome'),
-          sku: get('sku'),
-          preco: Number(get('preco', 0)),
-          precoRegular: Number(get('precoRegular', 0)),
-          categoria: get('categoria'),
-          descricao: get('descricao'),
-          tipo: get('tipo'),
-        };
-      });
-      CACHE_PRODUTOS = { data: produtos, ts: agora };
-      return produtos;
-    } catch {
-      return [];
-    }
+    // Fallback REST (max 300 docs) — evita quebrar se admin nao estiver configurado
+    const url = `${BASE_URL}/produtos?pageSize=300&key=${FIREBASE_API_KEY}`;
+    const res = await axios.get(url, { timeout: 8000 });
+    return (res.data.documents || []).map(d => {
+      const f = d.fields || {};
+      const get = (k, fb = '') => f[k]?.stringValue ?? f[k]?.doubleValue ?? f[k]?.booleanValue ?? fb;
+      return {
+        id: d.name.split('/').pop(),
+        nome: get('nome'),
+        sku: get('sku'),
+        preco: Number(get('preco', 0)),
+        precoRegular: Number(get('precoRegular', 0)),
+        categoria: get('categoria'),
+        descricao: get('descricao'),
+        tipo: get('tipo'),
+      };
+    });
   }
-
   // firebase-admin: paginacao completa
   const produtos = [];
   let last = null;
@@ -128,9 +121,41 @@ async function carregarCatalogoCompleto() {
     }
     last = snap.docs.length === 500 ? snap.docs[snap.docs.length - 1] : null;
   } while (last);
-
-  CACHE_PRODUTOS = { data: produtos, ts: agora };
   return produtos;
+}
+
+// Carrega catalogo com stale-while-revalidate. Protege quota do Firestore.
+async function carregarCatalogoCompleto() {
+  const agora = Date.now();
+  const idade = agora - CACHE_PRODUTOS.ts;
+
+  // Cache fresco: retorna direto
+  if (CACHE_PRODUTOS.data && idade < FRESH_MS) {
+    return CACHE_PRODUTOS.data;
+  }
+
+  // Cache stale mas ainda aceitavel: retorna cache e revalida em background
+  if (CACHE_PRODUTOS.data && idade < MAX_STALE_MS) {
+    if (!CACHE_REVALIDANDO) {
+      CACHE_REVALIDANDO = true;
+      _recarregarCatalogoDoFirestore()
+        .then(produtos => { if (produtos?.length) CACHE_PRODUTOS = { data: produtos, ts: Date.now() }; })
+        .catch(() => { /* ignora erro na revalidacao silenciosa */ })
+        .finally(() => { CACHE_REVALIDANDO = false; });
+    }
+    return CACHE_PRODUTOS.data;
+  }
+
+  // Sem cache util: tenta carregar. Se falhar (quota/timeout), retorna cache expirado se existir.
+  try {
+    const produtos = await _recarregarCatalogoDoFirestore();
+    if (produtos?.length) CACHE_PRODUTOS = { data: produtos, ts: agora };
+    return produtos;
+  } catch (err) {
+    // Firestore caiu ou quota esgotou — melhor devolver cache vencido do que quebrar a analise.
+    if (CACHE_PRODUTOS.data) return CACHE_PRODUTOS.data;
+    return [];
+  }
 }
 
 // Pontua cada produto baseado em quantas palavras-chave da conversa matcham

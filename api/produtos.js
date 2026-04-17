@@ -57,9 +57,12 @@ async function firestoreGetAll() {
   return all;
 }
 
-// Cache local de produtos pra search (TTL 5 min). Evita reler 3668 docs a cada digitada.
-const SEARCH_TTL_MS = 5 * 60 * 1000;
+// Cache local de produtos pra search — stale-while-revalidate.
+// Fresco por 10min, ainda serve por 24h mesmo se Firestore tiver caido/quota esgotada.
+const FRESH_MS = 10 * 60 * 1000;
+const STALE_MS = 24 * 60 * 60 * 1000;
 let SEARCH_CACHE = { data: null, ts: 0 };
+let REVALIDANDO = false;
 
 function _norm(s) {
   return String(s || '')
@@ -70,13 +73,32 @@ function _norm(s) {
     .trim();
 }
 
-async function firestoreSearch(q, limit = 20) {
+async function carregarListaComCache() {
   const agora = Date.now();
-  let lista = SEARCH_CACHE.data;
-  if (!lista || (agora - SEARCH_CACHE.ts) > SEARCH_TTL_MS) {
-    lista = await firestoreGetAll();
-    SEARCH_CACHE = { data: lista, ts: agora };
+  const idade = agora - SEARCH_CACHE.ts;
+  if (SEARCH_CACHE.data && idade < FRESH_MS) return SEARCH_CACHE.data;
+  if (SEARCH_CACHE.data && idade < STALE_MS) {
+    if (!REVALIDANDO) {
+      REVALIDANDO = true;
+      firestoreGetAll()
+        .then(d => { if (d?.length) SEARCH_CACHE = { data: d, ts: Date.now() }; })
+        .catch(() => {})
+        .finally(() => { REVALIDANDO = false; });
+    }
+    return SEARCH_CACHE.data;
   }
+  try {
+    const d = await firestoreGetAll();
+    if (d?.length) SEARCH_CACHE = { data: d, ts: agora };
+    return d;
+  } catch (err) {
+    if (SEARCH_CACHE.data) return SEARCH_CACHE.data;
+    throw err;
+  }
+}
+
+async function firestoreSearch(q, limit = 20) {
+  const lista = await carregarListaComCache();
   const termos = _norm(q).split(' ').filter(t => t.length >= 2);
   if (!termos.length) return lista.slice(0, limit);
 
@@ -237,7 +259,7 @@ export default async function handler(req, res) {
         const produtos = await firestoreSearch(String(req.query.q), limit);
         return res.status(200).json({ ok: true, produtos, total: produtos.length, q: req.query.q });
       }
-      const produtos = await firestoreGetAll();
+      const produtos = await carregarListaComCache();
       return res.status(200).json({ ok: true, produtos, total: produtos.length });
     }
     if (req.method === 'POST') {
