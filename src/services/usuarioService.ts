@@ -1,6 +1,3 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { configEmpresa } from '../constants/configEmpresa';
 
 export interface UsuarioConfig {
@@ -41,28 +38,22 @@ export const defaultConfig: UsuarioConfig = {
 };
 
 export const buscarConfiguracoes = async (userId: string): Promise<UsuarioConfig> => {
-  const path = `usuarios_configs/${userId}`;
   try {
-    const docRef = doc(db, 'usuarios_configs', userId);
-    const docSnap = await getDoc(docRef);
-
-    if (docSnap.exists()) {
-      return { ...defaultConfig, ...docSnap.data() } as UsuarioConfig;
-    } else {
-      return defaultConfig;
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.GET, path);
-    return defaultConfig;
-  }
+    const r = await fetch(`/api/config?col=usuarios_configs&doc=${encodeURIComponent(userId)}`);
+    const d = await r.json();
+    if (d.data) return { ...defaultConfig, ...d.data } as UsuarioConfig;
+  } catch { /* fallback abaixo */ }
+  return defaultConfig;
 };
 
 export const salvarConfiguracoes = async (userId: string, config: UsuarioConfig): Promise<void> => {
-  const path = `usuarios_configs/${userId}`;
   try {
-    const docRef = doc(db, 'usuarios_configs', userId);
-    await setDoc(docRef, config, { merge: true });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
+    await fetch(`/api/config?col=usuarios_configs&doc=${encodeURIComponent(userId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+  } catch (e) {
+    console.error('[usuarioService] erro ao salvar:', e);
   }
 };

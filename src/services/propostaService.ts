@@ -1,6 +1,3 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-
 export interface ItemProposta {
   nome: string;
   descricao?: string;
@@ -30,14 +27,22 @@ export interface PropostaDados {
   prazoEntrega?: string;
 }
 
-// ---------- Contador sequencial no Firestore ----------
+// ---------- Contador sequencial via REST ----------
 export async function proximoNumeroProposta(): Promise<number> {
-  const ref = doc(db, 'config', 'proposta_counter');
-  const snap = await getDoc(ref);
-  const atual = snap.exists() ? (snap.data().numero as number) : 42;
-  const proximo = atual + 1;
-  await setDoc(ref, { numero: proximo });
-  return proximo;
+  try {
+    const r = await fetch('/api/config?col=config&doc=proposta_counter');
+    const d = await r.json();
+    const atual = d.data?.numero ?? 42;
+    const proximo = Number(atual) + 1;
+    await fetch('/api/config?col=config&doc=proposta_counter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ numero: proximo }),
+    });
+    return proximo;
+  } catch {
+    return Date.now() % 10000; // fallback: número baseado em timestamp
+  }
 }
 
 // ---------- Helpers ----------
