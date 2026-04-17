@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { ErrorBoundary } from './ErrorBoundary';
 import { Viewer3D } from './Part3DViewer/Viewer3D';
 import { perfisDB, PerfilData } from '../data/perfisDB';
@@ -38,8 +38,6 @@ import { useConfig } from '../contexts/ConfigContext';
 import { useERP } from '../contexts/ERPContext';
 import { CheckoutPropostaModal } from './CheckoutPropostaModal';
 import { CatalogoIndustrial } from './CatalogoIndustrial';
-import { auth, db } from '../firebase';
-import { collection, addDoc } from 'firebase/firestore';
 
 import { calcularPortaoBasculante } from '../utils/EngCalculations';
 import { coresDB } from '../data/coresDB';
@@ -151,7 +149,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [tier, setTier] = useState<'comercial' | 'reforcado' | 'premium'>('comercial');
 
-  // Efeito para aplicar configurações de Tier
+  // Efeito para aplicar configuraÃ§Ãµes de Tier
   useEffect(() => {
     if (tier === 'comercial') {
       setPerfilCaixaId('chapa_dobrada_u_100x40');
@@ -179,7 +177,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
 
   const steps = [
     { label: 'PRODUTO', icon: Package },
-    { label: 'DIMENSÕES', icon: Ruler },
+    { label: 'DIMENSÃ•ES', icon: Ruler },
     { label: 'ESTRUTURA', icon: Settings },
     { label: 'MATERIAIS', icon: Paintbrush },
     { label: 'PROJETO', icon: Eye },
@@ -187,7 +185,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
 
   const [activeStep, setActiveStep] = useState(0);
 
-  // Cores automáticas baseadas no padrão ABNT
+  // Cores automÃ¡ticas baseadas no padrÃ£o ABNT
   const systemColors = {
     banzo: coresDB.find(c => c.id === 'azul_1')?.hex || '#3b82f6',
     montante: coresDB.find(c => c.id === 'verde_3')?.hex || '#166534',
@@ -224,13 +222,13 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         >
           <option value="vidro">Vidro Laminado</option>
           <option value="policarbonato">Policarbonato Alveolar</option>
-          <option value="telha">Telha Termoacústica</option>
+          <option value="telha">Telha TermoacÃºstica</option>
           <option value="vazio">Sem Cobertura</option>
         </select>
       );
     }
 
-    // Mapeamento de códigos para estados e compatibilidades (Sensível ao tipo de produto)
+    // Mapeamento de cÃ³digos para estados e compatibilidades (SensÃ­vel ao tipo de produto)
     const getMapping = (): Record<string, { state: string, setter: (val: string) => void, compat: string[] }> => {
       if (tipoProduto === 'portao_basculante') {
         return {
@@ -297,7 +295,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       const targetWeight = p.pesoPorMetro || 0;
       if (targetWeight > currentWeight * 1.05) return { label: 'Melhora', color: 'text-emerald-500', icon: ChevronUp };
       if (targetWeight < currentWeight * 0.95) return { label: 'Reduz', color: 'text-rose-500', icon: ChevronDown };
-      return { label: 'Mantém', color: 'text-slate-400', icon: ArrowRightLeft };
+      return { label: 'MantÃ©m', color: 'text-slate-400', icon: ArrowRightLeft };
     };
 
     return (
@@ -347,10 +345,10 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       materiaisNecessarios: productSummary.materiaisNecessarios,
       custos: productSummary.custos,
       preco: productSummary.precoTotal,
-      bom: currentBOM // Adicionando o Índice de Peças (Regra de Ouro)
+      bom: currentBOM // Adicionando o Ãndice de PeÃ§as (Regra de Ouro)
     };
 
-    // 2. Ação no Estado Global
+    // 2. AÃ§Ã£o no Estado Global
     adicionarAoCarrinho(produtoCarrinho);
 
     // 3. Feedback Visual
@@ -562,13 +560,13 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     return () => clearTimeout(timer);
   }, [largura, altura, profundidade, tipoProduto, inclinacaoPercentual, materialCobertura, telhaSelecionadaId, perfilColunaId, perfilVigaId, perfilDiagonalId, perfilTercaId, perfilTrilhoId, perfilGuiaId, perfilBatenteId, perfilColunaPortaoId, incluirPortaoPedestre, tipoTesouraId, qtdTercas, qtdColunasExtras, acabamento, mostrarCotas, mostrarNodes, explodedFactor, fixacao, perfilSelecionadoId, tipoTelhado, espessuraChapa, abaExtra, referenciaMedida, temPintura]);
 
-  // Lógica de colunas automáticas
+  // LÃ³gica de colunas automÃ¡ticas
   React.useEffect(() => {
     if (tipoProduto === 'cobertura_pergolado' && autoColunas) {
-      // Regra: Uma coluna extra a cada 3.5 metros de vão
+      // Regra: Uma coluna extra a cada 3.5 metros de vÃ£o
       const colunasLargura = Math.max(0, Math.floor(largura / 3500));
       const colunasProfundidade = Math.max(0, Math.floor(profundidade / 3500));
-      // Simplificação: pegamos o maior reforço necessário
+      // SimplificaÃ§Ã£o: pegamos o maior reforÃ§o necessÃ¡rio
       const totalSugerido = colunasLargura + colunasProfundidade;
       if (totalSugerido !== qtdColunasExtras) {
         setQtdColunasExtras(totalSugerido);
@@ -576,7 +574,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     }
   }, [largura, profundidade, tipoProduto, autoColunas]);
 
-  // Filtrar perfis compatíveis com o tipo de projeto
+  // Filtrar perfis compatÃ­veis com o tipo de projeto
   const perfisCompativeis = perfisDB.filter(p => 
     tipoProduto === 'tesoura' || 
     tipoProduto === 'galpao' || 
@@ -585,7 +583,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     p.projetosCompativeis.includes(tipoProduto as any)
   );
 
-  // Filtros específicos por componente
+  // Filtros especÃ­ficos por componente
   const perfisColuna = perfisCompativeis.filter(p => p.componentesCompativeis?.includes('coluna'));
   const perfisViga = perfisCompativeis.filter(p => p.componentesCompativeis?.includes('viga'));
   const perfisDiagonal = perfisCompativeis.filter(p => p.componentesCompativeis?.includes('viga') || p.componentesCompativeis?.includes('coluna'));
@@ -621,10 +619,10 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     let qtdMontantes = 0;
     let materialGuardaCorpoMM = 0;
     let confortabilidade = 100;
-    let nivelConforto = '100% Confortável';
+    let nivelConforto = '100% ConfortÃ¡vel';
     let corConforto = 'text-emerald-400';
     
-    // Variáveis para exibição no relatório
+    // VariÃ¡veis para exibiÃ§Ã£o no relatÃ³rio
     const telha = telhasDB.find(t => t.id === telhaSelecionadaId) || telhasDB[0];
     const maxSpan = telha.tipo === 'sanduiche' ? 2000 : 1500; // em mm
     
@@ -697,7 +695,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
 
       listaCorte.push({ nome: 'Trilho Inferior', qtd: 1, medida: `${largura * 2} mm` });
       listaCorte.push({ nome: 'Guia Superior', qtd: 1, medida: `${largura * 2} mm` });
-      listaCorte.push({ nome: 'Colunas de Sustentação', qtd: 2, medida: `${altura} mm` });
+      listaCorte.push({ nome: 'Colunas de SustentaÃ§Ã£o', qtd: 2, medida: `${altura} mm` });
       listaCorte.push({ nome: 'Travessa Superior (Batente)', qtd: 1, medida: `${largura} mm` });
       listaCorte.push({ nome: 'Folha - Horizontais', qtd: 2, medida: `${larguraFolha} mm` });
       listaCorte.push({ nome: 'Folha - Verticais', qtd: 2, medida: `${alturaGradeFolha} mm` });
@@ -705,8 +703,8 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         listaCorte.push({ nome: 'Folha - Grades', qtd: quantidadeGrades, medida: `${alturaGradeFolha} mm` });
       }
       if (incluirPortaoPedestre) {
-        listaCorte.push({ nome: 'Portão Pedestre - Horizontais', qtd: 2, medida: `900 mm` });
-        listaCorte.push({ nome: 'Portão Pedestre - Verticais', qtd: 2, medida: `2100 mm` });
+        listaCorte.push({ nome: 'PortÃ£o Pedestre - Horizontais', qtd: 2, medida: `900 mm` });
+        listaCorte.push({ nome: 'PortÃ£o Pedestre - Verticais', qtd: 2, medida: `2100 mm` });
       }
     } else if (tipoProduto === 'escada_reta') {
       const numEspelhos = Math.round(altura / 180);
@@ -723,7 +721,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       const blondel = (2 * espelho) + pisada;
       if (blondel >= 620 && blondel <= 640) {
         confortabilidade = 100;
-        nivelConforto = 'Escada Confortável (Dentro da Norma)';
+        nivelConforto = 'Escada ConfortÃ¡vel (Dentro da Norma)';
         corConforto = 'text-emerald-400';
       } else if (blondel < 620) {
         confortabilidade = 60;
@@ -746,11 +744,11 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         materialTotalMM += materialGuardaCorpoMM;
       }
 
-      listaCorte.push({ nome: 'Vigas Laterais', qtd: 2, medida: `${hipotenusa.toFixed(1)} mm (Ângulo: ${(angulo * 180 / Math.PI).toFixed(1)}°)` });
+      listaCorte.push({ nome: 'Vigas Laterais', qtd: 2, medida: `${hipotenusa.toFixed(1)} mm (Ã‚ngulo: ${(angulo * 180 / Math.PI).toFixed(1)}Â°)` });
       listaCorte.push({ nome: 'Degraus', qtd: numDegraus, medida: `Pisada: ${pisada} mm, Espelho: ${espelho.toFixed(1)} mm` });
       if (temGuardaCorpo) {
         const qtdLados = ladoGuardaCorpo === 'ambos' ? 2 : 1;
-        listaCorte.push({ nome: 'Corrimão Superior', qtd: qtdLados, medida: `${hipotenusa.toFixed(1)} mm` });
+        listaCorte.push({ nome: 'CorrimÃ£o Superior', qtd: qtdLados, medida: `${hipotenusa.toFixed(1)} mm` });
         listaCorte.push({ nome: 'Montantes Verticais', qtd: qtdMontantes * qtdLados, medida: `900 mm` });
       }
     } else if (tipoProduto === 'escada_l') {
@@ -771,32 +769,32 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       const hipotenusa1 = Math.sqrt(Math.pow(alturaPatamar, 2) + Math.pow(comprimento1, 2));
       const hipotenusa2 = Math.sqrt(Math.pow(alturaRestante, 2) + Math.pow(comprimento2, 2));
       hipotenusa = hipotenusa1 + hipotenusa2;
-      angulo = Math.atan2(alturaPatamar, comprimento1); // Ângulo médio
+      angulo = Math.atan2(alturaPatamar, comprimento1); // Ã‚ngulo mÃ©dio
       
       materialTotalMM = (2 * hipotenusa1) + (2 * hipotenusa2) + (4 * largura); // Vigas laterais + patamar
 
       const blondel = (2 * espelho) + pisada;
       if (blondel >= 630 && blondel <= 640) {
         confortabilidade = 100;
-        nivelConforto = '100% Confortável (Ideal)';
+        nivelConforto = '100% ConfortÃ¡vel (Ideal)';
         corConforto = 'text-emerald-400';
       } else {
         const desvio = Math.min(Math.abs(blondel - 635), 150);
         confortabilidade = Math.max(0, Math.round(100 - (desvio * 1.2)));
         if (confortabilidade >= 90) {
-          nivelConforto = 'Muito Confortável';
+          nivelConforto = 'Muito ConfortÃ¡vel';
           corConforto = 'text-emerald-400';
         } else if (confortabilidade >= 75) {
-          nivelConforto = 'Confortável';
+          nivelConforto = 'ConfortÃ¡vel';
           corConforto = 'text-green-400';
         } else if (confortabilidade >= 50) {
-          nivelConforto = 'Desconfortável';
+          nivelConforto = 'DesconfortÃ¡vel';
           corConforto = 'text-yellow-400';
         } else if (confortabilidade >= 25) {
-          nivelConforto = 'Muito Desconfortável (Risco de Queda)';
+          nivelConforto = 'Muito DesconfortÃ¡vel (Risco de Queda)';
           corConforto = 'text-orange-400';
         } else {
-          nivelConforto = 'Altamente Desconfortável (Risco Fatal)';
+          nivelConforto = 'Altamente DesconfortÃ¡vel (Risco Fatal)';
           corConforto = 'text-red-500';
         }
       }
@@ -813,12 +811,12 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
 
       listaCorte.push({ nome: 'Vigas Lance 1', qtd: 2, medida: `${hipotenusa1.toFixed(1)} mm` });
       listaCorte.push({ nome: 'Vigas Lance 2', qtd: 2, medida: `${hipotenusa2.toFixed(1)} mm` });
-      listaCorte.push({ nome: 'Degraus', qtd: numDegraus, medida: `Pisada: ${pisada} mm, Espelho Médio: ${espelho.toFixed(1)} mm` });
+      listaCorte.push({ nome: 'Degraus', qtd: numDegraus, medida: `Pisada: ${pisada} mm, Espelho MÃ©dio: ${espelho.toFixed(1)} mm` });
       listaCorte.push({ nome: 'Patamar', qtd: 1, medida: `${largura} x ${largura} mm` });
       
       if (temGuardaCorpo) {
         const qtdLados = ladoGuardaCorpo === 'ambos' ? 2 : 1;
-        listaCorte.push({ nome: 'Corrimão', qtd: qtdLados, medida: `${hipotenusa.toFixed(1)} mm` });
+        listaCorte.push({ nome: 'CorrimÃ£o', qtd: qtdLados, medida: `${hipotenusa.toFixed(1)} mm` });
         listaCorte.push({ nome: 'Montantes Verticais', qtd: qtdMontantes * qtdLados, medida: `900 mm` });
       }
     } else if (isCobertura || isGalpao || isTesoura) {
@@ -842,12 +840,12 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         const numTesouras = Math.ceil(_p / 4000) + 1;
         const materialPilares = (_a * 2) * numTesouras;
         const materialTesouras = (_l + (diferencaAltura * 2)) * numTesouras;
-        const materialTerças = (qtdTercasCalculada * 2) * _p;
-        materialTotalMM = materialPilares + materialTesouras + materialTerças;
+        const materialTerÃ§as = (qtdTercasCalculada * 2) * _p;
+        materialTotalMM = materialPilares + materialTesouras + materialTerÃ§as;
 
         listaCorte.push({ nome: 'Pilares Estruturais', qtd: numTesouras * 2, medida: `${_a} mm` });
         listaCorte.push({ nome: 'Tesouras (Banzos)', qtd: numTesouras * 2, medida: `${(comprimentoInclinado / 2).toFixed(1)} mm` });
-        listaCorte.push({ nome: 'Terças de Cobertura', qtd: qtdTercasCalculada * 2, medida: `${_p} mm` });
+        listaCorte.push({ nome: 'TerÃ§as de Cobertura', qtd: qtdTercasCalculada * 2, medida: `${_p} mm` });
       } else if (isTesoura) {
         const materialBanzos = _l + 2 * Math.sqrt(Math.pow(_l/2, 2) + Math.pow(_a, 2));
         const materialInternos = _l + 2 * _a;
@@ -860,13 +858,13 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         const alturaTraseira = _a + diferencaAltura;
         const materialPilares = (_a * 2) + (alturaTraseira * 2) + (_qC * ((_a + alturaTraseira) / 2));
         const materialVigas = (_l * 2) + (_p * 2);
-        const materialTerças = _qT * _l;
-        materialTotalMM = materialPilares + materialVigas + materialTerças;
+        const materialTerÃ§as = _qT * _l;
+        materialTotalMM = materialPilares + materialVigas + materialTerÃ§as;
 
         listaCorte.push({ nome: 'Pilares Frontais', qtd: 2, medida: `${_a} mm` });
         listaCorte.push({ nome: 'Pilares Traseiros', qtd: 2, medida: `${alturaTraseira.toFixed(1)} mm` });
         listaCorte.push({ nome: 'Vigas de Contorno', qtd: 2, medida: `${_l} mm e ${_p} mm` });
-        listaCorte.push({ nome: 'Terças', qtd: _qT, medida: `${_l} mm` });
+        listaCorte.push({ nome: 'TerÃ§as', qtd: _qT, medida: `${_l} mm` });
       }
       
       if (materialCobertura === 'telha') {
@@ -918,23 +916,23 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         const numTesouras = Math.ceil(_p / 4000) + 1;
         const materialPilares = (_a * 2) * numTesouras;
         const materialVigas = (_l + (diferencaAltura * 2)) * numTesouras * 2; 
-        const materialTerças = (qtdTercasCalculada * 2) * _p;
+        const materialTerÃ§as = (qtdTercasCalculada * 2) * _p;
         const numWebMembersPerTruss = 16;
         const avgWebLength = (diferencaAltura / 2);
         const materialWeb = (numWebMembersPerTruss * avgWebLength) * numTesouras * 2;
         const diagLateral = Math.sqrt(Math.pow(_a, 2) + Math.pow(4000, 2));
         const diagTelhado = Math.sqrt(Math.pow(_l/2, 2) + Math.pow(4000, 2));
         const materialBracing = (diagLateral * 8) + (diagTelhado * 8);
-        const materialTerçasTotal = materialTerças + materialWeb + materialBracing;
+        const materialTerÃ§asTotal = materialTerÃ§as + materialWeb + materialBracing;
         
         const pesoPilares = (materialPilares / 1000) * (perfilColunaSelecionado.pesoPorMetro || 0);
         const pesoVigas = (materialVigas / 1000) * (perfilVigaSelecionado.pesoPorMetro || 0);
-        const pesoTercas = (materialTerçasTotal / 1000) * (perfilTercaSelecionado.pesoPorMetro || 0);
+        const pesoTercas = (materialTerÃ§asTotal / 1000) * (perfilTercaSelecionado.pesoPorMetro || 0);
         pesoFinal = pesoPilares + pesoVigas + pesoTercas + pesoFixacao;
         
         const custoPilares = (materialPilares / 1000) * ((perfilColunaSelecionado.pesoPorMetro || 0) * precoKgMetal);
         const custoVigas = (materialVigas / 1000) * ((perfilVigaSelecionado.pesoPorMetro || 0) * precoKgMetal);
-        const custoTercas = (materialTerçasTotal / 1000) * ((perfilTercaSelecionado.pesoPorMetro || 0) * precoKgMetal);
+        const custoTercas = (materialTerÃ§asTotal / 1000) * ((perfilTercaSelecionado.pesoPorMetro || 0) * precoKgMetal);
         custoFinal = (custoPilares + custoVigas + custoTercas) + custoMaterialCobertura + custoFixacao;
       } else if (isTesoura) {
         const materialBanzos = _l + 2 * Math.sqrt(Math.pow(_l/2, 2) + Math.pow(_a, 2));
@@ -949,14 +947,14 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         const alturaTraseira = _a + diferencaAltura;
         const materialPilares = (_a * 2) + (alturaTraseira * 2) + (_qC * ((_a + alturaTraseira) / 2));
         const materialVigas = (_l * 2) + (_p * 2);
-        const materialTerças = _qT * _l;
+        const materialTerÃ§as = _qT * _l;
         const pesoPilares = (materialPilares / 1000) * (perfilColunaSelecionado.pesoPorMetro || 0);
         const pesoVigas = (materialVigas / 1000) * (perfilVigaSelecionado.pesoPorMetro || 0);
-        const pesoTercas = (materialTerças / 1000) * (perfilTercaSelecionado.pesoPorMetro || 0);
+        const pesoTercas = (materialTerÃ§as / 1000) * (perfilTercaSelecionado.pesoPorMetro || 0);
         pesoFinal = pesoPilares + pesoVigas + pesoTercas + pesoFixacao;
         const custoPilares = (materialPilares / 1000) * ((perfilColunaSelecionado.pesoPorMetro || 0) * precoKgMetal);
         const custoVigas = (materialVigas / 1000) * ((perfilVigaSelecionado.pesoPorMetro || 0) * precoKgMetal);
-        const custoTercas = (materialTerças / 1000) * ((perfilTercaSelecionado.pesoPorMetro || 0) * precoKgMetal);
+        const custoTercas = (materialTerÃ§as / 1000) * ((perfilTercaSelecionado.pesoPorMetro || 0) * precoKgMetal);
         custoFinal = (custoPilares + custoVigas + custoTercas) + custoMaterialCobertura + custoFixacao;
       }
     } else if (tipoProduto === 'portao_deslizante') {
@@ -999,7 +997,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     ) {
       const qtdDobras = getQtdDobras(tipoProduto);
       let somaAbas = 0;
-      let somaAbasC = 0; // Para bandeja metálica (comprimento)
+      let somaAbasC = 0; // Para bandeja metÃ¡lica (comprimento)
 
       if (tipoProduto === 'chapa_cortada') {
         somaAbas = largura;
@@ -1015,7 +1013,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       }
 
       let desenvolvimento = 0;
-      let desenvolvimentoC = 0; // Para bandeja metálica
+      let desenvolvimentoC = 0; // Para bandeja metÃ¡lica
 
       if (referenciaMedida === 'interna') {
         desenvolvimento = somaAbas;
@@ -1025,7 +1023,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       } else {
         // Externa
         if (tipoProduto === 'bandeja_metalica') {
-          // Bandeja tem 2 dobras em cada direção
+          // Bandeja tem 2 dobras em cada direÃ§Ã£o
           desenvolvimento = somaAbas - (2 * espessuraChapa);
           desenvolvimentoC = somaAbasC - (2 * espessuraChapa);
         } else {
@@ -1033,8 +1031,8 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         }
       }
 
-      // Para bandeja metálica, o corte plano é uma chapa de (desenvolvimento) x (desenvolvimentoC)
-      // Para os outros, é (desenvolvimento) x (profundidade)
+      // Para bandeja metÃ¡lica, o corte plano Ã© uma chapa de (desenvolvimento) x (desenvolvimentoC)
+      // Para os outros, Ã© (desenvolvimento) x (profundidade)
       const comprimentoCorte = tipoProduto === 'bandeja_metalica' ? desenvolvimentoC : profundidade;
       
       listaCorte.push({
@@ -1045,8 +1043,8 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
           : `${desenvolvimento.toFixed(1)} x ${comprimentoCorte.toFixed(1)} mm`
       });
 
-      // Cálculo de peso e custo (aproximado para chapa de aço carbono)
-      // Densidade do aço = 7.85 g/cm³ = 7850 kg/m³
+      // CÃ¡lculo de peso e custo (aproximado para chapa de aÃ§o carbono)
+      // Densidade do aÃ§o = 7.85 g/cmÂ³ = 7850 kg/mÂ³
       const areaM2 = (desenvolvimento / 1000) * (comprimentoCorte / 1000);
       pesoFinal = areaM2 * (espessuraChapa / 1000) * 7850;
       custoFinal = pesoFinal * precoKgMetal;
@@ -1062,7 +1060,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     const addMaterial = (nomeBusca: string, qtd: number, unidade: string) => {
       if (qtd <= 0) return;
       
-      // Tenta encontrar o item no estoque por uma busca mais flexível
+      // Tenta encontrar o item no estoque por uma busca mais flexÃ­vel
       const nomeBase = nomeBusca.split(' (')[0].toLowerCase(); // Remove "(Chapa 18)", etc.
       
       const item = state.inventoryItems.find(i => i.nome.toLowerCase().includes(nomeBase));
@@ -1079,7 +1077,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       addMaterial(perfilSelecionado.nome, barrasPrincipais, 'barra');
     }
 
-    // Cálculo de Horas Trabalhadas (Estimativa baseada no peso e complexidade)
+    // CÃ¡lculo de Horas Trabalhadas (Estimativa baseada no peso e complexidade)
     const baseHoursPerKg = 0.15; // 0.15h por kg
     const complexityFactor = tipoProduto.includes('galpao') ? 1.5 : 1.2;
     const horasTrabalhadas = Math.ceil(pesoFinal * baseHoursPerKg * complexityFactor);
@@ -1096,10 +1094,10 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       insumos: [
         { nome: 'Arame MIG', qtd: arameMIG, unidade: 'kg' },
         { nome: 'Primer Anticorrosivo', qtd: tintaPrimer, unidade: 'latas' },
-        { nome: 'Esmalte Sintético', qtd: tintaEsmalte, unidade: 'latas' },
+        { nome: 'Esmalte SintÃ©tico', qtd: tintaEsmalte, unidade: 'latas' },
         { nome: 'Disco de Corte', qtd: Math.ceil(barrasPrincipais * 2), unidade: 'un' },
         { nome: 'Disco de Desbaste', qtd: Math.ceil(barrasPrincipais / 2), unidade: 'un' },
-        { nome: 'Energia Elétrica', qtd: horasTrabalhadas * 2.5, unidade: 'kWh' }
+        { nome: 'Energia ElÃ©trica', qtd: horasTrabalhadas * 2.5, unidade: 'kWh' }
       ],
       horasTrabalhadas,
       materiaisNecessarios,
@@ -1185,7 +1183,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     } else if (tipoProduto === 'portao_deslizante') {
       listaCorte.push({ item: 'Trilho Inferior', quantidade: 1, medida: `${largura * 2} mm` });
       listaCorte.push({ item: 'Guia Superior', quantidade: 1, medida: `${largura * 2} mm` });
-      listaCorte.push({ item: 'Colunas de Sustentação', quantidade: 2, medida: `${altura} mm` });
+      listaCorte.push({ item: 'Colunas de SustentaÃ§Ã£o', quantidade: 2, medida: `${altura} mm` });
       listaCorte.push({ item: 'Travessa Superior (Batente)', quantidade: 1, medida: `${largura} mm` });
       listaCorte.push({ item: 'Folha - Horizontais', quantidade: 2, medida: `${larguraFolha} mm` });
       listaCorte.push({ item: 'Folha - Verticais', quantidade: 2, medida: `${alturaGradeFolha} mm` });
@@ -1193,12 +1191,12 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         listaCorte.push({ item: 'Folha - Grades', quantidade: quantidadeGrades, medida: `${alturaGradeFolha} mm` });
       }
       if (incluirPortaoPedestre) {
-        listaCorte.push({ item: 'Portão Pedestre - Horizontais', quantidade: 2, medida: `900 mm` });
-        listaCorte.push({ item: 'Portão Pedestre - Verticais', quantidade: 2, medida: `2100 mm` });
+        listaCorte.push({ item: 'PortÃ£o Pedestre - Horizontais', quantidade: 2, medida: `900 mm` });
+        listaCorte.push({ item: 'PortÃ£o Pedestre - Verticais', quantidade: 2, medida: `2100 mm` });
       }
     } else if (tipoProduto === 'escada_reta' || tipoProduto === 'escada_l') {
       if (tipoProduto === 'escada_reta') {
-        listaCorte.push({ item: 'Vigas Laterais', quantidade: 2, medida: `${hipotenusa.toFixed(1)} mm (Ângulo: ${(angulo * 180 / Math.PI).toFixed(1)}°)` });
+        listaCorte.push({ item: 'Vigas Laterais', quantidade: 2, medida: `${hipotenusa.toFixed(1)} mm (Ã‚ngulo: ${(angulo * 180 / Math.PI).toFixed(1)}Â°)` });
         listaCorte.push({ item: 'Degraus', quantidade: numDegraus, medida: `Pisada: ${pisada} mm, Espelho: ${espelho.toFixed(1)} mm` });
       } else {
         const numDegraus1 = Math.max(1, Math.round(alturaPatamar / 180));
@@ -1211,7 +1209,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         
         listaCorte.push({ item: 'Vigas Lance 1', quantidade: 2, medida: `${hipotenusa1.toFixed(1)} mm` });
         listaCorte.push({ item: 'Vigas Lance 2', quantidade: 2, medida: `${hipotenusa2.toFixed(1)} mm` });
-        listaCorte.push({ item: 'Degraus', quantidade: numDegraus, medida: `Pisada: ${pisada} mm, Espelho Médio: ${espelho.toFixed(1)} mm` });
+        listaCorte.push({ item: 'Degraus', quantidade: numDegraus, medida: `Pisada: ${pisada} mm, Espelho MÃ©dio: ${espelho.toFixed(1)} mm` });
         listaCorte.push({ item: 'Patamar', quantidade: 1, medida: `${largura} x ${largura} mm` });
       }
       
@@ -1219,7 +1217,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
 
       if (temGuardaCorpo) {
         const qtdLados = ladoGuardaCorpo === 'ambos' ? 2 : 1;
-        listaCorte.push({ item: 'Corrimão Superior', quantidade: qtdLados, medida: `${hipotenusa.toFixed(1)} mm` });
+        listaCorte.push({ item: 'CorrimÃ£o Superior', quantidade: qtdLados, medida: `${hipotenusa.toFixed(1)} mm` });
         listaCorte.push({ item: 'Montantes Verticais', quantidade: qtdMontantes * qtdLados, medida: `900 mm` });
       }
     } else if (tipoProduto === 'cobertura_pergolado' || tipoProduto === 'galpao' || tipoProduto === 'galpao_tesoura_personalizada' || tipoProduto === 'tesoura') {
@@ -1236,9 +1234,9 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         const compBanzoSup = Math.sqrt(Math.pow(largura / 2, 2) + Math.pow(rise, 2));
         
         listaCorte.push({ item: 'Pilares (Colunas)', quantidade: numTesouras * 2, medida: `${altura} mm` });
-        listaCorte.push({ item: 'Terças de Telhado', quantidade: qtdTercasCalculada * 2, medida: `${profundidade} mm` });
+        listaCorte.push({ item: 'TerÃ§as de Telhado', quantidade: qtdTercasCalculada * 2, medida: `${profundidade} mm` });
         
-        // Detalhamento da Tesoura dentro do Galpão
+        // Detalhamento da Tesoura dentro do GalpÃ£o
         listaCorte.push({ item: 'Banzos Inferiores (Tesouras)', quantidade: numTesouras, medida: `${largura} mm` });
         listaCorte.push({ item: 'Banzos Superiores (Tesouras)', quantidade: numTesouras * 2, medida: `${compBanzoSup.toFixed(1)} mm` });
         listaCorte.push({ item: 'Montantes Centrais (Tesouras)', quantidade: numTesouras, medida: `${rise.toFixed(1)} mm` });
@@ -1252,10 +1250,10 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       } else {
         listaCorte.push({ item: 'Pilares Principais', quantidade: 4, medida: `Frontal: ${altura} mm, Traseiro: ${(altura + rise).toFixed(1)} mm` });
         if (qtdColunasExtras > 0) {
-          listaCorte.push({ item: 'Colunas de Reforço (Flambagem)', quantidade: qtdColunasExtras, medida: `Média: ${((altura + (altura + rise)) / 2).toFixed(1)} mm` });
+          listaCorte.push({ item: 'Colunas de ReforÃ§o (Flambagem)', quantidade: qtdColunasExtras, medida: `MÃ©dia: ${((altura + (altura + rise)) / 2).toFixed(1)} mm` });
         }
         listaCorte.push({ item: 'Vigas Principais', quantidade: 4, medida: `Largura: ${largura} mm, Profundidade: ${profundidade} mm` });
-        listaCorte.push({ item: 'Terças', quantidade: qtdTercas, medida: `${largura} mm` });
+        listaCorte.push({ item: 'TerÃ§as', quantidade: qtdTercas, medida: `${largura} mm` });
       }
       
       if (materialCobertura === 'telha') {
@@ -1264,7 +1262,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         const comprimentoTelha = slopeLength + 100;
         listaCorte.push({ item: `Telhas (${telha.nome})`, quantidade: numTelhasLargura * (isGalpao ? 2 : 1), medida: `${comprimentoTelha.toFixed(1)} mm` });
       } else {
-        listaCorte.push({ item: 'Cobertura', quantidade: 1, medida: `${areaCobertura.toFixed(2)} m² (${materialCobertura})` });
+        listaCorte.push({ item: 'Cobertura', quantidade: 1, medida: `${areaCobertura.toFixed(2)} mÂ² (${materialCobertura})` });
       }
     }
 
@@ -1295,7 +1293,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
 
   const handleCompartilhar = async () => {
     if (!auth.currentUser) {
-      alert("Você precisa estar logado para compartilhar projetos.");
+      alert("VocÃª precisa estar logado para compartilhar projetos.");
       return;
     }
 
@@ -1365,7 +1363,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     </div>
   );
 
-  // Componente de Seção de Configuração
+  // Componente de SeÃ§Ã£o de ConfiguraÃ§Ã£o
   const ConfigSection = ({ title, icon: Icon, children, isOpen = true }: { title: string, icon: any, children: React.ReactNode, isOpen?: boolean }) => {
     const [isExpanded, setIsExpanded] = useState(isOpen);
     return (
@@ -1477,24 +1475,24 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
 
     if (isTrussProduct(novoTipo) && isTrussProduct(tipoProduto)) {
       if (tipoProduto === 'tesoura' && (novoTipo === 'galpao' || novoTipo === 'galpao_tesoura_personalizada')) {
-        // De Tesoura para Galpão: Altura da tesoura vira Inclinação
+        // De Tesoura para GalpÃ£o: Altura da tesoura vira InclinaÃ§Ã£o
         finalInclinacao = (altura / (largura / 2)) * 100;
         setInclinacaoPercentual(finalInclinacao);
-        // Se a altura era pequena (altura de tesoura), define um pé direito padrão
+        // Se a altura era pequena (altura de tesoura), define um pÃ© direito padrÃ£o
         if (altura < 3500) {
           finalAltura = 5000;
           setAltura(5000);
         }
-        // Se a profundidade era de tesoura (100mm), define uma profundidade padrão para galpão
+        // Se a profundidade era de tesoura (100mm), define uma profundidade padrÃ£o para galpÃ£o
         if (profundidade < 1000) {
           finalProfundidade = 12000;
           setProfundidade(12000);
         }
       } else if ((tipoProduto === 'galpao' || tipoProduto === 'galpao_tesoura_personalizada') && novoTipo === 'tesoura') {
-        // De Galpão para Tesoura: Inclinação vira Altura da tesoura
+        // De GalpÃ£o para Tesoura: InclinaÃ§Ã£o vira Altura da tesoura
         finalAltura = Math.round((largura / 2) * (inclinacaoPercentual / 100));
         setAltura(finalAltura);
-        // Tesoura isolada tem profundidade mínima (100mm)
+        // Tesoura isolada tem profundidade mÃ­nima (100mm)
         finalProfundidade = 100;
         setProfundidade(100);
       }
@@ -1552,7 +1550,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     }
 
     setTipoProduto(novoTipo);
-    setActiveStep(1); // Avança automaticamente para o próximo passo
+    setActiveStep(1); // AvanÃ§a automaticamente para o prÃ³ximo passo
     onUpdate({ 
       tipoProduto: novoTipo,
       inclinacaoPercentual: finalInclinacao,
@@ -1593,7 +1591,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
           </span>
         </button>
 
-        {/* Botão Adicionar ao Carrinho - CAD Style - Only on Desktop here */}
+        {/* BotÃ£o Adicionar ao Carrinho - CAD Style - Only on Desktop here */}
         <div className="hidden lg:block absolute bottom-6 left-6 right-6 z-40 max-w-md mx-auto">
           <button 
             onClick={handleAdicionarAoCarrinho}
@@ -1789,7 +1787,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
               <div className="flex items-center justify-between bg-slate-100/50 p-4 rounded border border-slate-200">
                 <div className="flex items-center gap-3">
                   <Settings className="text-blue-400" size={18} />
-                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Exibir Nós (Gussets)</span>
+                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">Exibir NÃ³s (Gussets)</span>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input 
@@ -1839,13 +1837,13 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
               {/* SELETOR DE TIER (QUALIDADE) */}
               <div className="mt-6 border-t border-slate-200 pt-6">
                 <label className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-4 block flex items-center">
-                  01.1 CONFIGURAÇÃO DE QUALIDADE
-                  <Tooltip text="Escolha o nível de robustez e acabamento do projeto." title="Nível de Qualidade" />
+                  01.1 CONFIGURAÃ‡ÃƒO DE QUALIDADE
+                  <Tooltip text="Escolha o nÃ­vel de robustez e acabamento do projeto." title="NÃ­vel de Qualidade" />
                 </label>
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { id: 'comercial', label: 'Comercial', desc: 'Custo-benefício', icon: ShoppingCart, color: 'blue' },
-                    { id: 'reforcado', label: 'Reforçado', desc: 'Maior durabilidade', icon: ShieldAlert, color: 'amber' },
+                    { id: 'comercial', label: 'Comercial', desc: 'Custo-benefÃ­cio', icon: ShoppingCart, color: 'blue' },
+                    { id: 'reforcado', label: 'ReforÃ§ado', desc: 'Maior durabilidade', icon: ShieldAlert, color: 'amber' },
                     { id: 'premium', label: 'Premium', desc: 'Qualidade absoluta', icon: Check, color: 'emerald' }
                   ].map((t) => (
                     <button
@@ -1871,9 +1869,9 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
             </div>
           )}
 
-          {/* SEÇÃO: DIMENSÕES PRINCIPAIS */}
+          {/* SEÃ‡ÃƒO: DIMENSÃ•ES PRINCIPAIS */}
           {activeStep === 1 && (() => {
-            // Cálculo de Conforto em tempo real para os Sliders
+            // CÃ¡lculo de Conforto em tempo real para os Sliders
             let currentTrackColor = '#1e293b';
             let alturaGradient = undefined;
             let profundidadeGradient = undefined;
@@ -1896,7 +1894,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   lightness = 42 + (1 - dist / 35) * 18; 
                   saturation = 80 + (1 - dist / 35) * 20;
                 } else if (dist <= 80) {
-                  // Entre Limite Conforto e Crítico
+                  // Entre Limite Conforto e CrÃ­tico
                   // Interpola entre Amarelo (45) e Vermelho (0)
                   hue = 45 - ((dist - 35) / 45) * 45;
                   saturation = 80 - ((dist - 35) / 45) * 20;
@@ -1952,11 +1950,11 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
             }
 
             return (
-              <ConfigSection title="Dimensões Principais" icon={Ruler}>
+              <ConfigSection title="DimensÃµes Principais" icon={Ruler}>
                 <DimensionInput 
                   label={(() => {
                     if (tipoProduto === 'escada_reta' || tipoProduto === 'escada_l') return 'Largura da Escada';
-                    if (tipoProduto === 'tesoura') return 'Largura (Vão)';
+                    if (tipoProduto === 'tesoura') return 'Largura (VÃ£o)';
                     if (tipoProduto === 'chapa_dobrada_l') return 'Aba 1';
                     if (tipoProduto === 'chapa_dobrada_u' || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'chapa_dobrada_cartola') return 'Base';
                     if (tipoProduto === 'chapa_dobrada_z') return 'Alma';
@@ -1977,15 +1975,15 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   min={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? 600 : (tipoProduto === 'tesoura' ? 2000 : (tipoProduto.startsWith('chapa_') || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'bandeja_metalica' ? 10 : 500))} 
                   max={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? 1500 : (tipoProduto === 'tesoura' || isGalpao ? 30000 : 10000)} 
                   step={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? 10 : (tipoProduto.startsWith('chapa_') || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'bandeja_metalica' ? 1 : 50)}
-                  info={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? "Largura útil dos degraus." : (tipoProduto === 'tesoura' ? "Vão livre da tesoura." : "Medida em milímetros.")}
+                  info={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? "Largura Ãºtil dos degraus." : (tipoProduto === 'tesoura' ? "VÃ£o livre da tesoura." : "Medida em milÃ­metros.")}
                 />
 
                 {tipoProduto !== 'chapa_cortada' && (
                   <DimensionInput 
                     label={(() => {
-                      if (tipoProduto === 'escada_reta' || tipoProduto === 'escada_l') return 'Altura do Pé Direito';
+                      if (tipoProduto === 'escada_reta' || tipoProduto === 'escada_l') return 'Altura do PÃ© Direito';
                       if (tipoProduto === 'tesoura') return 'Altura da Tesoura';
-                      if (isGalpao) return 'Pé Direito (Altura Coluna)';
+                      if (isGalpao) return 'PÃ© Direito (Altura Coluna)';
                       if (tipoProduto === 'chapa_dobrada_l') return 'Aba 2';
                       if (tipoProduto === 'chapa_dobrada_u' || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'chapa_dobrada_z' || tipoProduto === 'bandeja_metalica') return 'Abas';
                       if (tipoProduto === 'chapa_dobrada_cartola') return 'Almas';
@@ -2001,20 +1999,20 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     min={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? 1000 : (tipoProduto === 'tesoura' ? Math.max(200, Math.round(largura * 0.10)) : (tipoProduto.startsWith('chapa_') || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'bandeja_metalica' ? 10 : 500))} 
                     max={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? 4000 : (tipoProduto === 'tesoura' ? Math.max(500, Math.round(largura * 0.30)) : (isGalpao ? 12000 : 3000))} 
                     step={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? 10 : (tipoProduto.startsWith('chapa_') || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'bandeja_metalica' ? 1 : 50)}
-                    info={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? "Altura total do chão até o nível superior." : (tipoProduto === 'tesoura' ? "Altura total da tesoura (da base até a cumeeira). Recomendado entre 10% e 30% do vão (ABNT)." : (isGalpao ? "Altura livre das colunas (pé direito)." : "Medida em milímetros."))}
+                    info={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? "Altura total do chÃ£o atÃ© o nÃ­vel superior." : (tipoProduto === 'tesoura' ? "Altura total da tesoura (da base atÃ© a cumeeira). Recomendado entre 10% e 30% do vÃ£o (ABNT)." : (isGalpao ? "Altura livre das colunas (pÃ© direito)." : "Medida em milÃ­metros."))}
                     trackColor={alturaGradient || currentTrackColor}
                     hint={tipoProduto === 'tesoura' ? (() => {
                       const percentual = (altura / largura) * 100;
                       let status = '';
                       let colorClass = '';
                       if (percentual >= 10 && percentual <= 15) {
-                        status = 'Ideal (Ótimo custo-benefício e estética)';
+                        status = 'Ideal (Ã“timo custo-benefÃ­cio e estÃ©tica)';
                         colorClass = 'text-emerald-600 bg-emerald-50 border-emerald-200';
                       } else if (percentual < 10) {
-                        status = 'Muito Baixa (Risco de infiltração/deformação)';
+                        status = 'Muito Baixa (Risco de infiltraÃ§Ã£o/deformaÃ§Ã£o)';
                         colorClass = 'text-amber-600 bg-amber-50 border-amber-200';
                       } else if (percentual > 15 && percentual <= 25) {
-                        status = 'Moderada (Padrão estrutural)';
+                        status = 'Moderada (PadrÃ£o estrutural)';
                         colorClass = 'text-blue-600 bg-blue-50 border-blue-200';
                       } else {
                         status = 'Alta (Muito pontuda/Alto consumo)';
@@ -2022,7 +2020,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                       }
                       return (
                         <div className={`text-[10px] font-medium px-2 py-1 rounded border ${colorClass} flex justify-between items-center`}>
-                          <span>Proporção: {percentual.toFixed(1)}% do vão</span>
+                          <span>ProporÃ§Ã£o: {percentual.toFixed(1)}% do vÃ£o</span>
                           <span>{status}</span>
                         </div>
                       );
@@ -2038,7 +2036,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     min={10} 
                     max={100} 
                     step={1}
-                    info="Medida em milímetros."
+                    info="Medida em milÃ­metros."
                   />
                 )}
 
@@ -2055,7 +2053,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     min={tipoProduto.startsWith('chapa_') || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'bandeja_metalica' ? 10 : (tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? 1000 : 500)} 
                     max={isGalpao ? 30000 : (tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? 8000 : 12000)} 
                     step={tipoProduto.startsWith('chapa_') || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'bandeja_metalica' ? 1 : 50}
-                    info={isGalpao ? "Comprimento total do galpão." : (tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? "Comprimento horizontal total da escada." : "Medida em milímetros.")}
+                    info={isGalpao ? "Comprimento total do galpÃ£o." : (tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? "Comprimento horizontal total da escada." : "Medida em milÃ­metros.")}
                     trackColor={profundidadeGradient || currentTrackColor}
                   />
                 )}
@@ -2114,12 +2112,12 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   );
                 })()}
 
-                {/* ESCADAS: TERMÔMETRO DE CONFORTO */}
+                {/* ESCADAS: TERMÃ”METRO DE CONFORTO */}
                 {(tipoProduto === 'escada_reta' || tipoProduto === 'escada_l') && (
                   <div className="flex flex-col gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 mt-2">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
-                      Nível de Confortabilidade
-                      <Tooltip text="Calculado pela fórmula de Blondel: 2x Espelho + Pisada. O ideal é entre 63cm e 64cm." />
+                      NÃ­vel de Confortabilidade
+                      <Tooltip text="Calculado pela fÃ³rmula de Blondel: 2x Espelho + Pisada. O ideal Ã© entre 63cm e 64cm." />
                     </label>
                     <div className="flex items-center gap-3">
                       <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -2158,9 +2156,9 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
           })()}
 
 
-          {/* SEÇÃO: CONFIGURAÇÕES ESPECÍFICAS */}
+          {/* SEÃ‡ÃƒO: CONFIGURAÃ‡Ã•ES ESPECÃFICAS */}
           {activeStep === 2 && (
-            <ConfigSection title="Configurações Técnicas" icon={Settings}>
+            <ConfigSection title="ConfiguraÃ§Ãµes TÃ©cnicas" icon={Settings}>
               {/* CHAPAS E DOBRAS */}
               {(tipoProduto.startsWith('chapa_') || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'bandeja_metalica') && (
                 <div className="flex flex-col gap-4">
@@ -2181,8 +2179,8 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
 
                   <div className="flex flex-col gap-2">
                     <label className="text-[9px] font-bold text-slate-600 uppercase tracking-widest flex items-center">
-                      Referência da Medida
-                      <Tooltip text="Externa: O desenvolvimento desconta a espessura nas dobras. Interna: O desenvolvimento é a soma exata das abas." />
+                      ReferÃªncia da Medida
+                      <Tooltip text="Externa: O desenvolvimento desconta a espessura nas dobras. Interna: O desenvolvimento Ã© a soma exata das abas." />
                     </label>
                     <div className="flex gap-2">
                       <button
@@ -2210,14 +2208,14 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                 </div>
               )}
 
-              {/* QUADRO BÁSICO */}
+              {/* QUADRO BÃSICO */}
               {tipoProduto === 'quadro_simples' && (
                 <>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex justify-between items-center">
                       <span className="flex items-center">
                         Quantidade de Grades
-                        <Tooltip text="Número de barras verticais internas para preenchimento do quadro." />
+                        <Tooltip text="NÃºmero de barras verticais internas para preenchimento do quadro." />
                       </span>
                       <span className="text-blue-400 font-mono font-bold">{quantidadeGrades}</span>
                     </label>
@@ -2234,36 +2232,36 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                       Tipo de Montagem
-                      <Tooltip text="Reto: barras cortadas em 90°. 45°: barras cortadas em meia-esquadria para acabamento superior." />
+                      <Tooltip text="Reto: barras cortadas em 90Â°. 45Â°: barras cortadas em meia-esquadria para acabamento superior." />
                     </label>
                     <div className="flex bg-slate-50 p-1 rounded border border-slate-100">
                       <button
                         className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded transition-all ${tipoMontagem === 'reto' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-600 hover:text-slate-600'}`}
                         onClick={() => setTipoMontagem('reto')}
                       >
-                        Corte Reto (90°)
+                        Corte Reto (90Â°)
                       </button>
                       <button
                         className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded transition-all ${tipoMontagem === 'meia-esquadria' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-600 hover:text-slate-600'}`}
                         onClick={() => setTipoMontagem('meia-esquadria')}
                       >
-                        Meia-Esquadria (45°)
+                        Meia-Esquadria (45Â°)
                       </button>
                     </div>
                   </div>
                 </>
               )}
 
-              {/* PORTÕES */}
+              {/* PORTÃ•ES */}
               {(tipoProduto === 'portao_basculante' || tipoProduto === 'portao_deslizante') && (
                 <>
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex justify-between items-center">
                       <span className="flex items-center">
-                        Simulação de Abertura
-                        <Tooltip text="Ajuste para visualizar como o portão se comporta ao abrir." />
+                        SimulaÃ§Ã£o de Abertura
+                        <Tooltip text="Ajuste para visualizar como o portÃ£o se comporta ao abrir." />
                       </span>
-                      <span className="text-blue-400 font-mono">{anguloAberturaGraus}°</span>
+                      <span className="text-blue-400 font-mono">{anguloAberturaGraus}Â°</span>
                     </label>
                     <input 
                       type="range" 
@@ -2279,7 +2277,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex justify-between items-center">
                       <span className="flex items-center">
                         Quantidade de Palitos
-                        <Tooltip text="Número de barras de preenchimento da folha do portão." />
+                        <Tooltip text="NÃºmero de barras de preenchimento da folha do portÃ£o." />
                       </span>
                       <span className="text-blue-400 font-mono">{quantidadeGrades}</span>
                     </label>
@@ -2296,15 +2294,15 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                 </>
               )}
 
-              {/* COBERTURA / PERGOLADO / GALPÃO / TESOURA */}
+              {/* COBERTURA / PERGOLADO / GALPÃƒO / TESOURA */}
               {(tipoProduto === 'cobertura_pergolado' || isGalpao || tipoProduto === 'tesoura') && (
                 <>
                   {(tipoProduto === 'cobertura_pergolado' || isGalpao) && (
                     <div className="flex flex-col gap-2">
                       <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex justify-between items-center">
                         <span className="flex items-center">
-                          Inclinação (%)
-                          <Tooltip text="Inclinação para escoamento de água. Recomendado 10% para telhas e 5% para vidro/policarbonato." />
+                          InclinaÃ§Ã£o (%)
+                          <Tooltip text="InclinaÃ§Ã£o para escoamento de Ã¡gua. Recomendado 10% para telhas e 5% para vidro/policarbonato." />
                         </span>
                         <span className="text-blue-400 font-mono">{inclinacaoPercentual}%</span>
                       </label>
@@ -2351,14 +2349,14 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     <div className="flex flex-col gap-2">
                       <label className="text-[9px] font-bold text-slate-600 uppercase tracking-widest flex items-center">
                         Tipo de Telhado
-                        <Tooltip text="Uma Água: inclinação única. Invertido: inclinação para o centro (borboleta)." />
+                        <Tooltip text="Uma Ãgua: inclinaÃ§Ã£o Ãºnica. Invertido: inclinaÃ§Ã£o para o centro (borboleta)." />
                       </label>
                       <div className="flex bg-slate-50 p-1 rounded border border-slate-100">
                         <button
                           className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded transition-all ${tipoTelhado === 'uma_agua' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-600 hover:text-slate-600'}`}
                           onClick={() => setTipoTelhado('uma_agua')}
                         >
-                          Uma Água
+                          Uma Ãgua
                         </button>
                         <button
                           className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-widest rounded transition-all ${tipoTelhado === 'invertido' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-600 hover:text-slate-600'}`}
@@ -2421,8 +2419,8 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
-                      Quantidade de Terças {isGalpao ? '(por água)' : ''}
-                      <Tooltip text="Barras horizontais que sustentam a cobertura. Mais terças aumentam a resistência mas também o custo." />
+                      Quantidade de TerÃ§as {isGalpao ? '(por Ã¡gua)' : ''}
+                      <Tooltip text="Barras horizontais que sustentam a cobertura. Mais terÃ§as aumentam a resistÃªncia mas tambÃ©m o custo." />
                     </label>
                     <div className="flex items-center gap-3">
                       <input 
@@ -2442,7 +2440,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                         Colunas Extras
-                        <Tooltip text="Colunas adicionais para vãos muito grandes. O sistema sugere automaticamente a cada 3.5m." />
+                        <Tooltip text="Colunas adicionais para vÃ£os muito grandes. O sistema sugere automaticamente a cada 3.5m." />
                       </label>
                       <button 
                         onClick={() => setAutoColunas(!autoColunas)}
@@ -2482,7 +2480,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                         className="w-5 h-5 text-indigo-600 rounded-lg border-slate-300 focus:ring-indigo-500"
                       />
                       <span className="text-sm font-bold text-slate-700">Adicionar Guarda-Corpo</span>
-                      <Tooltip text="Inclui corrimão e montantes de segurança na escada." />
+                      <Tooltip text="Inclui corrimÃ£o e montantes de seguranÃ§a na escada." />
                     </label>
                   </div>
 
@@ -2490,7 +2488,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     <div className="flex flex-col gap-2">
                       <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                         Lados do Guarda-Corpo
-                        <Tooltip text="Escolha em quais lados da escada o guarda-corpo será instalado." />
+                        <Tooltip text="Escolha em quais lados da escada o guarda-corpo serÃ¡ instalado." />
                       </label>
                       <select
                         value={ladoGuardaCorpo}
@@ -2517,7 +2515,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                       />
                       <div className="flex flex-col gap-2">
                         <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
-                          Direção da Curva
+                          DireÃ§Ã£o da Curva
                           <Tooltip text="Sentido da curva no patamar (visto de baixo para cima)." />
                         </label>
                         <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
@@ -2545,7 +2543,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                 <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
                   <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                     {isCobertura ? 'Perfil dos Pilares' : (tipoProduto === 'tesoura' || tipoProduto === 'galpao_tesoura_personalizada') ? 'Perfil dos Banzos (Superior/Inferior)' : 'Perfil Principal'}
-                    <Tooltip text="Selecione o perfil metálico principal da estrutura." />
+                    <Tooltip text="Selecione o perfil metÃ¡lico principal da estrutura." />
                   </label>
                   <select
                     value={isCobertura ? perfilColunaId : perfilSelecionadoId}
@@ -2565,20 +2563,20 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                 </div>
               )}
 
-              {/* CONFIGURAÇÕES DE PORTÃO DESLIZANTE */}
+              {/* CONFIGURAÃ‡Ã•ES DE PORTÃƒO DESLIZANTE */}
               {tipoProduto === 'portao_deslizante' && (
                 <>
                   <div className="flex flex-col gap-2 mt-4">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                       Perfil do Trilho
-                      <Tooltip text="Selecione o perfil metálico para o trilho inferior." />
+                      <Tooltip text="Selecione o perfil metÃ¡lico para o trilho inferior." />
                     </label>
                     <select
                       value={perfilTrilhoId}
                       onChange={(e) => setPerfilTrilhoId(e.target.value)}
                       className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-950 focus:ring-2 focus:ring-indigo-500 outline-none"
                     >
-                      {perfisDB.filter(p => p.nome.toLowerCase().includes('redondo maciço') || p.nome.toLowerCase().includes('trilho')).map(p => (
+                      {perfisDB.filter(p => p.nome.toLowerCase().includes('redondo maciÃ§o') || p.nome.toLowerCase().includes('trilho')).map(p => (
                         <option key={p.id} value={p.id}>{p.nome}</option>
                       ))}
                     </select>
@@ -2586,7 +2584,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   <div className="flex flex-col gap-2 mt-4">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                       Perfil da Guia Superior
-                      <Tooltip text="Selecione o perfil metálico para a guia superior." />
+                      <Tooltip text="Selecione o perfil metÃ¡lico para a guia superior." />
                     </label>
                     <select
                       value={perfilGuiaId}
@@ -2601,7 +2599,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   <div className="flex flex-col gap-2 mt-4">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                       Perfil do Batente
-                      <Tooltip text="Selecione o perfil metálico para o batente." />
+                      <Tooltip text="Selecione o perfil metÃ¡lico para o batente." />
                     </label>
                     <select
                       value={perfilBatenteId}
@@ -2616,7 +2614,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   <div className="flex flex-col gap-2 mt-4">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                       Perfil das Colunas
-                      <Tooltip text="Selecione o perfil metálico para as colunas de sustentação." />
+                      <Tooltip text="Selecione o perfil metÃ¡lico para as colunas de sustentaÃ§Ã£o." />
                     </label>
                     <select
                       value={perfilColunaPortaoId}
@@ -2637,19 +2635,19 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                       className="w-4 h-4 text-indigo-600 bg-slate-100 border-slate-300 rounded focus:ring-indigo-500"
                     />
                     <label htmlFor="incluirPortaoPedestre" className="text-sm font-bold text-slate-700">
-                      Incluir Portão de Pedestre
+                      Incluir PortÃ£o de Pedestre
                     </label>
                   </div>
                 </>
               )}
 
-              {/* CONFIGURAÇÕES DE TESOURA (MONTANTES E DIAGONAIS) */}
+              {/* CONFIGURAÃ‡Ã•ES DE TESOURA (MONTANTES E DIAGONAIS) */}
               {(tipoProduto === 'tesoura' || tipoProduto === 'galpao_tesoura_personalizada') && (
                 <>
                   <div className="flex flex-col gap-2 mt-4">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                       Perfil Interno (Montantes)
-                      <Tooltip text="Selecione o perfil metálico para os montantes verticais (interno) da tesoura." />
+                      <Tooltip text="Selecione o perfil metÃ¡lico para os montantes verticais (interno) da tesoura." />
                     </label>
                     <select
                       value={perfilVigaId}
@@ -2664,7 +2662,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   <div className="flex flex-col gap-2 mt-4">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                       Perfil Interno (Diagonais)
-                      <Tooltip text="Selecione o perfil metálico para as diagonais (interno) da tesoura." />
+                      <Tooltip text="Selecione o perfil metÃ¡lico para as diagonais (interno) da tesoura." />
                     </label>
                     <select
                       value={perfilDiagonalId}
@@ -2685,12 +2683,12 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
               <div className="flex flex-col gap-3">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                   Tipo de Entrega / Acabamento Final
-                  <Tooltip text="Escolha se deseja apenas as peças cortadas, a estrutura montada sem pintura ou o produto final completo." />
+                  <Tooltip text="Escolha se deseja apenas as peÃ§as cortadas, a estrutura montada sem pintura ou o produto final completo." />
                 </label>
                 <div className="grid grid-cols-1 gap-2">
                   {[
-                    { id: 'pecas', label: 'Somente Peças (Kit para Montar)', icon: Package, desc: 'Peças cortadas e identificadas' },
-                    { id: 'montado_sem_pintura', label: 'Montado sem Pintura', icon: Hammer, desc: 'Estrutura soldada em aço bruto' },
+                    { id: 'pecas', label: 'Somente PeÃ§as (Kit para Montar)', icon: Package, desc: 'PeÃ§as cortadas e identificadas' },
+                    { id: 'montado_sem_pintura', label: 'Montado sem Pintura', icon: Hammer, desc: 'Estrutura soldada em aÃ§o bruto' },
                     { id: 'montado_com_pintura', label: 'Montado e com Pintura', icon: Paintbrush, desc: 'Produto final com acabamento premium' },
                   ].map((item) => (
                     <button
@@ -2725,7 +2723,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     <div className="flex flex-col gap-2">
                       <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                         Material da Cobertura
-                        <Tooltip text="Escolha o material que irá cobrir a estrutura. Isso afeta o custo e o peso total." />
+                        <Tooltip text="Escolha o material que irÃ¡ cobrir a estrutura. Isso afeta o custo e o peso total." />
                       </label>
                       <select
                         value={materialCobertura}
@@ -2734,7 +2732,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                       >
                         <option value="vidro">Vidro Temperado 8mm</option>
                         <option value="policarbonato">Policarbonato Alveolar</option>
-                        <option value="telha">Telhas Metálicas</option>
+                        <option value="telha">Telhas MetÃ¡licas</option>
                         <option value="vazio">Sem Cobertura (Vazio)</option>
                       </select>
                     </div>
@@ -2743,7 +2741,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                       <div className="flex flex-col gap-2 mt-4">
                         <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                           Modelo da Telha
-                          <Tooltip text="Diferentes modelos de telhas possuem larguras úteis e preços variados." />
+                          <Tooltip text="Diferentes modelos de telhas possuem larguras Ãºteis e preÃ§os variados." />
                         </label>
                         <select
                           value={telhaSelecionadaId}
@@ -2764,16 +2762,16 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     <div className="flex flex-col gap-2">
                       <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                         Material do Piso da Rampa
-                        <Tooltip text="Escolha o material antiderrapante para a superfície da rampa." />
+                        <Tooltip text="Escolha o material antiderrapante para a superfÃ­cie da rampa." />
                       </label>
                       <select
                         value={materialCoberturaRampa}
                         onChange={(e) => setMaterialCoberturaRampa(e.target.value)}
                         className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
                       >
-                        <option value="chapa_antiderrapante_aco_3">Chapa Xadrez Aço 3mm</option>
-                        <option value="chapa_antiderrapante_aco_4.75">Chapa Xadrez Aço 4.75mm</option>
-                        <option value="chapa_aluminio_xadrez_2">Chapa Xadrez Alumínio 2mm</option>
+                        <option value="chapa_antiderrapante_aco_3">Chapa Xadrez AÃ§o 3mm</option>
+                        <option value="chapa_antiderrapante_aco_4.75">Chapa Xadrez AÃ§o 4.75mm</option>
+                        <option value="chapa_aluminio_xadrez_2">Chapa Xadrez AlumÃ­nio 2mm</option>
                         <option value="grade_piso_aco">Grade de Piso Serrilhada</option>
                       </select>
                     </div>
@@ -2781,7 +2779,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     <div className="flex flex-col gap-2">
                       <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                         Perfil do Quadro da Rampa
-                        <Tooltip text="Selecione o perfil metálico (metalon) para a estrutura do quadro e reforços." />
+                        <Tooltip text="Selecione o perfil metÃ¡lico (metalon) para a estrutura do quadro e reforÃ§os." />
                       </label>
                       <select
                         value={perfilQuadroRampaId}
@@ -2844,7 +2842,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                       Material Base
-                      <Tooltip text="Escolha o material da chapa metálica." />
+                      <Tooltip text="Escolha o material da chapa metÃ¡lica." />
                     </label>
                     <select
                       value={acabamento}
@@ -2864,7 +2862,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                       Cor da Pintura / Acabamento
-                      <Tooltip text="Escolha a cor e o tipo de acabamento da estrutura metálica." />
+                      <Tooltip text="Escolha a cor e o tipo de acabamento da estrutura metÃ¡lica." />
                     </label>
                     <select
                       value={acabamento}
@@ -2883,8 +2881,8 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                 {!(tipoProduto?.startsWith('chapa_') || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'bandeja_metalica') && (
                   <div className="flex flex-col gap-2">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
-                      Método de Fixação
-                      <Tooltip text="Sapata: base metálica parafusada no piso. Chumbado: pilar enterrado ou fixado com concreto." />
+                      MÃ©todo de FixaÃ§Ã£o
+                      <Tooltip text="Sapata: base metÃ¡lica parafusada no piso. Chumbado: pilar enterrado ou fixado com concreto." />
                     </label>
                     <select
                       value={fixacao}
@@ -2905,12 +2903,12 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                           <Layers className="text-indigo-600" size={18} />
                         </div>
                         <div>
-                          <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">Personalização por Peça</h4>
+                          <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">PersonalizaÃ§Ã£o por PeÃ§a</h4>
                           <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">Substitua materiais e medidas individualmente</p>
                         </div>
                       </div>
                       <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
-                        {currentBOM.length} PEÇAS
+                        {currentBOM.length} PEÃ‡AS
                       </span>
                     </div>
                     
@@ -2963,7 +2961,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     <ShieldAlert className="text-red-500 shrink-0" size={20} />
                     <div>
                       <p className="text-xs font-bold text-red-800 uppercase tracking-tight">Risco Estrutural</p>
-                      <p className="text-[10px] text-red-700 leading-relaxed font-medium">O vão livre excede 4.5m sem reforço. Adicione colunas extras.</p>
+                      <p className="text-[10px] text-red-700 leading-relaxed font-medium">O vÃ£o livre excede 4.5m sem reforÃ§o. Adicione colunas extras.</p>
                     </div>
                   </div>
                 )}
@@ -2971,7 +2969,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
             )}
           </div>
 
-          {/* Botões de Navegação */}
+          {/* BotÃµes de NavegaÃ§Ã£o */}
           <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-auto">
             <button
               onClick={() => setActiveStep(Math.max(0, activeStep - 1))}
@@ -2995,13 +2993,13 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   : 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95'
               }`}
             >
-              Próximo
+              PrÃ³ximo
               <ChevronDown className="-rotate-90" size={16} />
             </button>
           </div>
         </div>
 
-        {/* RELATÓRIO DE PRODUÇÃO */}
+        {/* RELATÃ“RIO DE PRODUÃ‡ÃƒO */}
         <div className="bg-white rounded-xl p-3 shadow-lg border border-slate-100 mt-2">
           <button 
             onClick={() => setIsReportExpanded(!isReportExpanded)}
@@ -3011,7 +3009,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
               <div className="p-1 bg-indigo-500/20 rounded-lg">
                 <FileText className="text-indigo-400" size={14} />
               </div>
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Relatório de Produção</h3>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">RelatÃ³rio de ProduÃ§Ã£o</h3>
             </div>
             <div className="text-slate-600">
               {isReportExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -3049,7 +3047,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                 <li className="flex justify-between items-center py-0.5 border-b border-slate-100">
                   <span className="text-slate-600 font-medium">Acabamento:</span>
                   <span className="font-bold text-indigo-400">
-                    {tipoEntrega === 'pecas' ? 'SOMENTE PEÇAS' : 
+                    {tipoEntrega === 'pecas' ? 'SOMENTE PEÃ‡AS' : 
                      tipoEntrega === 'montado_sem_pintura' ? 'MONTADO (BRUTO)' : 
                      'MONTADO E PINTADO'}
                   </span>
@@ -3097,8 +3095,8 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   <span className="font-mono font-bold text-slate-900">2x {hipotenusa.toFixed(1)} mm</span>
                 </li>
                 <li className="flex justify-between items-center">
-                  <span className="text-slate-600">Ângulo de Corte:</span>
-                  <span className="font-mono font-bold text-slate-900">{(angulo * 180 / Math.PI).toFixed(1)}°</span>
+                  <span className="text-slate-600">Ã‚ngulo de Corte:</span>
+                  <span className="font-mono font-bold text-slate-900">{(angulo * 180 / Math.PI).toFixed(1)}Â°</span>
                 </li>
                 <li className="flex justify-between items-center pt-2 border-t border-slate-100">
                   <span className="text-slate-600 font-bold">Confortabilidade:</span>
@@ -3111,7 +3109,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                       <span className="font-mono font-bold">{(materialGuardaCorpoMM / 1000).toFixed(2)} m</span>
                     </li>
                     <li className="flex justify-between items-center text-blue-300">
-                      <span className="font-bold uppercase text-[9px]">Altura do Corrimão:</span>
+                      <span className="font-bold uppercase text-[9px]">Altura do CorrimÃ£o:</span>
                       <span className="font-mono font-bold">900 mm</span>
                     </li>
                   </>
@@ -3122,7 +3120,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
             {tipoProduto === 'cobertura_pergolado' && (
               <>
                 <li className="flex justify-between items-center">
-                  <span className="text-slate-600">Terças:</span>
+                  <span className="text-slate-600">TerÃ§as:</span>
                   <span className="font-mono font-bold text-slate-900">{qtdTercas}x {largura} mm</span>
                 </li>
                 {qtdColunasExtras > 0 && (
@@ -3144,8 +3142,8 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   </>
                 ) : (
                   <li className="flex justify-between items-center">
-                    <span className="text-slate-600">Área Cobertura:</span>
-                    <span className="font-mono font-bold text-slate-900">{areaCobertura.toFixed(2)} m²</span>
+                    <span className="text-slate-600">Ãrea Cobertura:</span>
+                    <span className="font-mono font-bold text-slate-900">{areaCobertura.toFixed(2)} mÂ²</span>
                   </li>
                 )}
               </>
@@ -3158,7 +3156,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   <span className="font-mono font-bold text-slate-900 uppercase">{tipoTesouraId}</span>
                 </li>
                 <li className="flex justify-between items-center">
-                  <span className="text-slate-600">Largura (Vão):</span>
+                  <span className="text-slate-600">Largura (VÃ£o):</span>
                   <span className="font-mono font-bold text-slate-900">{largura} mm</span>
                 </li>
                 <li className="flex justify-between items-center">
@@ -3166,7 +3164,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   <span className="font-mono font-bold text-slate-900">{altura} mm</span>
                 </li>
                 <li className="flex justify-between items-center text-blue-300 italic text-[9px]">
-                  <span>* Inclui chapas de reforço (gussets) em todos os nós.</span>
+                  <span>* Inclui chapas de reforÃ§o (gussets) em todos os nÃ³s.</span>
                 </li>
               </>
             )}
@@ -3193,7 +3191,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                   <span className="font-mono font-bold text-slate-900">{Math.ceil(profundidade / 4000) + 1} un.</span>
                 </li>
                 <li className="flex justify-between items-center">
-                  <span className="text-slate-600">Terças (Total):</span>
+                  <span className="text-slate-600">TerÃ§as (Total):</span>
                   <span className="font-mono font-bold text-slate-900">{qtdTercasCalculada * 2}x {profundidade} mm</span>
                 </li>
                 <li className="flex justify-between items-center text-blue-300 italic text-[9px]">
@@ -3216,7 +3214,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
             
             {tipoProduto !== 'escada_reta' && tipoProduto !== 'escada_l' && !isCobertura && !isGalpao && tipoProduto !== 'tesoura' && (
               <li className="flex justify-between items-center py-2 border-y border-slate-100">
-                <span className="text-slate-600">Vão Livre (Tubos):</span>
+                <span className="text-slate-600">VÃ£o Livre (Tubos):</span>
                 <span className="font-mono font-bold text-blue-400">{vaoLivreCalculadoEmMM.toFixed(1)} mm</span>
               </li>
             )}
@@ -3255,7 +3253,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
               className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-widest rounded shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-3 active:scale-95 border border-blue-500"
             >
               <Check size={18} />
-              🛒 Adicionar ao Orçamento
+              ðŸ›’ Adicionar ao OrÃ§amento
             </button>
           </div>
           </>
@@ -3289,3 +3287,4 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     </div>
   );
 };
+

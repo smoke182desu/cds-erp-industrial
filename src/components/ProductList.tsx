@@ -1,6 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import { db } from '../firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+﻿import React, { useEffect, useState } from 'react';
 
 interface Product {
   id: string;
@@ -15,29 +13,34 @@ export const ProductList: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
 
   useEffect(() => {
-    const q = collection(db, 'products');
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const productsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Product[];
-      setProducts(productsData);
-    }, (error) => {
-      console.error("Error fetching products: ", error);
-    });
-    return () => unsubscribe();
+    fetch('/api/produtos')
+      .then(r => r.json())
+      .then(data => {
+        const mapped = (data.produtos || []).map((p: any) => ({
+          id: p.id,
+          name: p.nome || p.name || '',
+          category: p.categoria || p.category || '',
+          description: p.descricao || p.description || '',
+          specifications: p.specifications || '',
+          imageUrl: p.imagem || p.imageUrl || '',
+        }));
+        setProducts(mapped);
+      })
+      .catch(err => console.error('Erro ao buscar produtos:', err));
   }, []);
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold mb-6">Produtos Gravia</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <h2 className="text-2xl font-bold mb-4">Produtos</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {products.map(product => (
-          <div key={product.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-            <img src={product.imageUrl} alt={product.name} className="w-full h-48 object-cover rounded-lg mb-4" referrerPolicy="no-referrer" />
-            <h3 className="text-lg font-bold">{product.name}</h3>
-            <p className="text-sm text-slate-500 mb-2">{product.category}</p>
-            <p className="text-sm text-slate-700">{product.description}</p>
+          <div key={product.id} className="border rounded-lg p-4 shadow-sm">
+            {product.imageUrl && (
+              <img src={product.imageUrl} alt={product.name} className="w-full h-48 object-cover rounded mb-3" />
+            )}
+            <h3 className="font-semibold text-lg">{product.name}</h3>
+            <p className="text-sm text-gray-500">{product.category}</p>
+            <p className="text-sm mt-2">{product.description}</p>
           </div>
         ))}
       </div>

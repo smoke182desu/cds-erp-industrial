@@ -1,18 +1,4 @@
-import {
-  collection,
-  addDoc,
-  getDocs,
-  updateDoc,
-  doc,
-  query,
-  orderBy,
-  where,
-  getDoc,
-  setDoc,
-} from 'firebase/firestore';
-import { db } from '../firebase';
-
-// ---------- Tipos do funil CRM ----------
+﻿// ---------- Tipos do funil CRM ----------
 export type EtapaFunil =
   | 'lead_novo'
   | 'contato_feito'
@@ -25,21 +11,21 @@ export type EtapaFunil =
 export type LeadOrigem = 'site' | 'whatsapp' | 'woocommerce' | 'calculadora' | 'manual';
 
 export const ETAPAS_FUNIL: { id: EtapaFunil; label: string; cor: string; descricao: string }[] = [
-  { id: 'lead_novo',        label: 'Novo Lead',         cor: '#6366f1', descricao: 'Lead recém captado' },
+  { id: 'lead_novo',        label: 'Novo Lead',         cor: '#6366f1', descricao: 'Lead recem captado' },
   { id: 'contato_feito',    label: 'Contato Feito',     cor: '#0ea5e9', descricao: 'Primeiro contato realizado' },
   { id: 'qualificado',      label: 'Qualificado',       cor: '#f59e0b', descricao: 'Lead validado e com potencial' },
   { id: 'proposta_enviada', label: 'Proposta Enviada',  cor: '#8b5cf6', descricao: 'Proposta comercial enviada' },
-  { id: 'negociacao',       label: 'Em Negociação',     cor: '#ec4899', descricao: 'Negociação em andamento' },
-  { id: 'fechado_ganho',    label: 'Fechado ✓',         cor: '#10b981', descricao: 'Venda concluída com sucesso' },
-  { id: 'fechado_perdido',  label: 'Perdido ✗',         cor: '#ef4444', descricao: 'Oportunidade perdida' },
+  { id: 'negociacao',       label: 'Em Negociacao',     cor: '#ec4899', descricao: 'Negociacao em andamento' },
+  { id: 'fechado_ganho',    label: 'Fechado OK',        cor: '#10b981', descricao: 'Venda concluida com sucesso' },
+  { id: 'fechado_perdido',  label: 'Perdido',           cor: '#ef4444', descricao: 'Oportunidade perdida' },
 ];
 
 export const ORIGEM_LABELS: Record<LeadOrigem, string> = {
-  site:        '🌐 Site',
-  whatsapp:    '💬 WhatsApp',
-  woocommerce: '🛒 WooCommerce',
-  calculadora: '📐 Calculadora',
-  manual:      '✏️ Manual',
+  site:        'Site',
+  whatsapp:    'WhatsApp',
+  woocommerce: 'WooCommerce',
+  calculadora: 'Calculadora',
+  manual:      'Manual',
 };
 
 export interface Lead {
@@ -59,7 +45,7 @@ export interface Lead {
   atualizadoEm?: string;
 }
 
-// ---------- buscar leads via REST API (sempre funciona, ignora regras Firestore) ----------
+// ---------- buscar leads via REST ----------
 async function buscarLeadsREST(): Promise<Lead[]> {
   const res = await fetch('/api/leads');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -67,137 +53,116 @@ async function buscarLeadsREST(): Promise<Lead[]> {
   return data.leads || [];
 }
 
-// ---------- buscar todos os leads (polling via REST para economizar quota Firestore) ----------
-// Trocado de onSnapshot para polling porque cada tab aberta queima 50+ reads na inicializacao.
-// Backend /api/leads tem cache SWR de 30s, entao polling de 30s nao causa carga real.
+// ---------- subscribe leads: REST imediato + polling 20s ----------
 export function subscribeLeads(callback: (leads: Lead[]) => void): () => void {
-  let cancelado = false;
+  let cancelled = false;
 
-  const fetch1x = () => {
-    if (cancelado) return;
+  const fetchAndCallback = () => {
     buscarLeadsREST()
-      .then((leads) => { if (!cancelado) callback(leads); })
+      .then(leads => { if (!cancelled) callback(leads); })
       .catch(() => {});
   };
 
-  // Carrega imediatamente
-  fetch1x();
-  // Polling a cada 30s (alinhado com o cache do backend)
-  const pollInterval = setInterval(fetch1x, 30000);
-
+  fetchAndCallback();
+  const interval = setInterval(fetchAndCallback, 20000);
   return () => {
-    cancelado = true;
-    clearInterval(pollInterval);
+    cancelled = true;
+    clearInterval(interval);
   };
 }
 
 // ---------- buscar leads (uma vez) ----------
 export async function buscarLeads(): Promise<Lead[]> {
-  const q = query(collection(db, 'leads'), orderBy('criadoEm', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Lead, 'id'>) }));
+  return buscarLeadsREST();
 }
 
 // ---------- buscar leads por etapa ----------
 export async function buscarLeadsPorEtapa(etapa: EtapaFunil): Promise<Lead[]> {
-  const q = query(collection(db, 'leads'), where('etapa', '==', etapa), orderBy('criadoEm', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Lead, 'id'>) }));
+  const todos = await buscarLeadsREST();
+  return todos.filter(l => l.etapa === etapa);
 }
 
-// ---------- próximo código de cliente (sequencial) ----------
+// ---------- proximo codigo de cliente ----------
 async function proximoCodigoCliente(): Promise<number> {
-  const ref = doc(db, 'config', 'cliente_counter');
-  const snap = await getDoc(ref);
-  const atual = snap.exists() ? (snap.data().numero as number) : 0;
-  const proximo = atual + 1;
-  await setDoc(ref, { numero: proximo });
-  return proximo;
+  try {
+    const getRes = await fetch('/api/config?col=config&doc=cliente_counter');
+    const getData = await getRes.json();
+    const atual = getData.data?.numero || 0;
+    const proximo = atual + 1;
+    await fetch('/api/config?col=config&doc=cliente_counter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ numero: proximo }),
+    });
+    return proximo;
+  } catch {
+    return Date.now() % 10000;
+  }
 }
 
-// ---------- criar ou retornar cliente ----------
+// ---------- salvar/atualizar cliente via REST ----------
 export async function salvarCliente(lead: Partial<Lead>): Promise<string> {
   if (!lead.telefone) return '';
-  // Evita duplicatas por telefone
-  const q = query(collection(db, 'clientes'), where('telefone', '==', lead.telefone));
-  const snap = await getDocs(q);
-  if (!snap.empty) {
-    const existente = snap.docs[0];
-    await updateDoc(existente.ref, {
-      nome: lead.nome || existente.data().nome || '',
-      empresa: lead.empresa || existente.data().empresa || '',
-      email: lead.email || existente.data().email || '',
-      atualizadoEm: new Date().toISOString(),
+  try {
+    const res = await fetch('/api/clientes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telefone: lead.telefone,
+        nome: lead.nome || '',
+        email: lead.email || '',
+        empresa: lead.empresa || '',
+        origem: lead.origem || 'manual',
+      }),
     });
-    return existente.id;
+    const data = await res.json();
+    return data.clienteId || '';
+  } catch {
+    return '';
   }
-  // Novo cliente com número sequencial
-  const codigo = await proximoCodigoCliente();
-  const codigoFormatado = `CLI-${String(codigo).padStart(4, '0')}`;
-  const ref = await addDoc(collection(db, 'clientes'), {
-    codigo,
-    codigoFormatado,
-    nome:      lead.nome      || '',
-    email:     lead.email     || '',
-    telefone:  lead.telefone,
-    empresa:   lead.empresa   || '',
-    tipo:      'pre_cadastro',
-    origem:    lead.origem    || 'manual',
-    criadoEm:  new Date().toISOString(),
-  });
-  return ref.id;
 }
 
 // ---------- adicionar lead via REST ----------
 export async function adicionarLead(data: Omit<Lead, 'id' | 'criadoEm'>): Promise<string> {
+  const clienteId = await salvarCliente(data);
   try {
     const res = await fetch('/api/leads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...data, erpCreate: true }),
+      body: JSON.stringify({ ...data, clienteId, erpCreate: true }),
     });
     const json = await res.json();
-    if (json.leadId) return json.leadId;
-  } catch (_) { /* fallback abaixo */ }
-
-  // Fallback: Firebase SDK direto
-  const clienteId = await salvarCliente(data);
-  const ref = await addDoc(collection(db, 'leads'), {
-    ...data, clienteId,
-    etapa: data.etapa || 'lead_novo',
-    criadoEm: new Date().toISOString(),
-    atualizadoEm: new Date().toISOString(),
-  });
-  return ref.id;
+    return json.leadId || '';
+  } catch {
+    return '';
+  }
 }
 
 // ---------- atualizar lead via REST ----------
 export async function atualizarLead(id: string, data: Partial<Omit<Lead, 'id'>>): Promise<void> {
-  const res = await fetch(`/api/leads?id=${id}`, {
+  await fetch(`/api/leads?id=${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    // fallback para Firebase SDK se REST falhar
-    await updateDoc(doc(db, 'leads', id), { ...data, atualizadoEm: new Date().toISOString() });
-  }
 }
 
 // ---------- mover etapa via REST ----------
 export async function moverEtapa(id: string, etapa: EtapaFunil): Promise<void> {
-  const res = await fetch(`/api/leads?id=${id}`, {
+  await fetch(`/api/leads?id=${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ etapa }),
   });
-  if (!res.ok) {
-    await updateDoc(doc(db, 'leads', id), { etapa, atualizadoEm: new Date().toISOString() });
-  }
 }
 
-// ---------- buscar clientes (pre-cadastro) ----------
+// ---------- buscar clientes via REST ----------
 export async function buscarClientes() {
-  const snap = await getDocs(collection(db, 'clientes'));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  try {
+    const res = await fetch('/api/clientes');
+    const data = await res.json();
+    return data.clientes || [];
+  } catch {
+    return [];
+  }
 }

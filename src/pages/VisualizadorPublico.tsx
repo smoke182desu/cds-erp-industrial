@@ -1,7 +1,5 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { Viewer3D } from '../components/Part3DViewer/Viewer3D';
 import { perfisDB } from '../data/perfisDB';
 
@@ -16,27 +14,20 @@ export const VisualizadorPublico: React.FC = () => {
     const fetchProject = async () => {
       if (!id) return;
       try {
-        const docRef = doc(db, 'projects', id);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.isPublic) {
-            setProjectData(data);
-          } else {
-            setError('Projeto não encontrado ou indisponível');
-          }
+        const res = await fetch(`/api/projects?id=${id}`);
+        const json = await res.json();
+        if (json.ok && json.project) {
+          setProjectData(json.project);
         } else {
-          setError('Projeto não encontrado ou indisponível');
+          setError('Projeto nao encontrado ou indisponivel');
         }
       } catch (err) {
-        console.error("Erro ao buscar projeto:", err);
-        setError('Projeto não encontrado ou indisponível');
+        console.error('Erro ao buscar projeto:', err);
+        setError('Projeto nao encontrado ou indisponivel');
       } finally {
         setLoading(false);
       }
     };
-
     fetchProject();
   }, [id]);
 
@@ -62,14 +53,12 @@ export const VisualizadorPublico: React.FC = () => {
     );
   }
 
-  // Extract configurador data
   const config = projectData.data;
   const companyConfig = projectData.companyConfig || { nomeEmpresa: 'Serralheria', multiplicadorLucro: 1.5, telefone: '', logoBase64: '' };
-  const perfilSelecionado = perfisDB.find(p => p.id === config.perfilSelecionadoId) || perfisDB[0];
+  const perfilSelecionado = perfisDB.find((p: any) => p.id === config.perfilSelecionadoId) || perfisDB[0];
 
   return (
     <div className="h-screen flex flex-col bg-slate-100 font-sans">
-      {/* Header */}
       <header className="h-16 bg-white border-b border-slate-300 flex items-center justify-between px-6 shadow-sm z-10">
         <div className="flex items-center gap-3">
           {companyConfig.logoBase64 ? (
@@ -85,22 +74,18 @@ export const VisualizadorPublico: React.FC = () => {
           </div>
         </div>
         {companyConfig.telefone && (
-          <div className="text-sm font-medium text-slate-600">
-            {companyConfig.telefone}
-          </div>
+          <div className="text-sm font-medium text-slate-600">{companyConfig.telefone}</div>
         )}
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 relative flex flex-col md:flex-row">
-        {/* 3D Viewer */}
         <div className="flex-1 h-full relative">
-          <Viewer3D 
-            largura={config.largura} 
-            altura={config.altura} 
-            perfilData={perfilSelecionado} 
-            quantidadeGrades={config.quantidadeGrades} 
-            tipoMontagem={config.tipoMontagem} 
+          <Viewer3D
+            largura={config.largura}
+            altura={config.altura}
+            perfilData={perfilSelecionado}
+            quantidadeGrades={config.quantidadeGrades}
+            tipoMontagem={config.tipoMontagem}
             tipoProduto={config.tipoProduto}
             anguloAbertura={(anguloAberturaGraus * Math.PI) / 180}
             temGuardaCorpo={config.temGuardaCorpo}
@@ -109,23 +94,18 @@ export const VisualizadorPublico: React.FC = () => {
             materialDegrau={config.materialDegrau}
           />
         </div>
-
-        {/* Floating Controls for Client */}
         {config.tipoProduto === 'portao_basculante' && (
           <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 w-full max-w-md px-4 md:static md:transform-none md:w-80 md:h-full md:border-l md:border-slate-300 md:bg-white md:p-6 md:flex md:flex-col md:justify-center">
             <div className="bg-white/90 backdrop-blur-md p-6 rounded-2xl shadow-xl border border-slate-300/50">
-              <h3 className="text-sm font-bold text-slate-800 mb-4 text-center md:text-left">Interação</h3>
+              <h3 className="text-sm font-bold text-slate-800 mb-4 text-center md:text-left">Interacao</h3>
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-bold text-slate-700 flex justify-between">
-                  <span>Abrir Portão</span>
-                  <span className="text-blue-600">{anguloAberturaGraus}°</span>
+                  <span>Abrir Portao</span>
+                  <span className="text-blue-600">{anguloAberturaGraus}deg</span>
                 </label>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="90" 
-                  step="1" 
-                  value={anguloAberturaGraus} 
+                <input
+                  type="range" min="0" max="90" step="1"
+                  value={anguloAberturaGraus}
                   onChange={(e) => setAnguloAberturaGraus(Number(e.target.value))}
                   className="w-full accent-blue-600"
                 />
@@ -135,11 +115,10 @@ export const VisualizadorPublico: React.FC = () => {
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-slate-300 p-4 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
+      <footer className="bg-white border-t border-slate-300 p-4 flex flex-col sm:flex-row justify-between items-center gap-4 z-10">
         <div className="flex items-center gap-4 text-sm">
           <div className="flex flex-col">
-            <span className="text-slate-600 font-medium">Dimensões Totais</span>
+            <span className="text-slate-600 font-medium">Dimensoes Totais</span>
             <span className="font-bold text-slate-800">{config.largura}mm x {config.altura}mm</span>
           </div>
           <div className="h-8 w-px bg-slate-200"></div>
@@ -148,12 +127,13 @@ export const VisualizadorPublico: React.FC = () => {
             <span className="font-bold text-slate-800">{perfilSelecionado.nome}</span>
           </div>
         </div>
-        
         {config.custoTotal && (
           <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-100">
             <span className="text-sm text-blue-800 font-medium mr-2">Valor Estimado:</span>
             <span className="text-lg font-bold text-blue-700">
-              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(config.custoTotal + (config.custoTotal * companyConfig.multiplicadorLucro))}
+              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                config.custoTotal + (config.custoTotal * companyConfig.multiplicadorLucro)
+              )}
             </span>
           </div>
         )}
