@@ -25,6 +25,18 @@ const WC_SECRET = process.env.WC_SECRET || '';
 const BATCH_SIZE = 400;
 const SYNC_META = 'produtos_sync_state';
 
+// Gera tokens de busca a partir do nome, SKU e categoria
+function makeSearchTokens(nome = '', sku = '', categoria = '') {
+  return [...new Set(
+    `${nome} ${sku} ${categoria}`
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length >= 2)
+  )];
+}
+
 function clean(v) {
   if (v === null || v === undefined) return '';
   return v;
@@ -115,6 +127,7 @@ async function writeProducts(products) {
         permalink: clean(p.permalink),
         tipo: clean(p.type) || 'simple',
         sincronizadoEm: new Date().toISOString(),
+        searchTokens: makeSearchTokens(p.name, p.sku, p.categories?.[0]?.name),
       }, { merge: true });
     }
     await batch.commit();

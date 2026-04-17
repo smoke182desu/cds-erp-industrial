@@ -64,6 +64,17 @@ function docIdFor(p) {
 }
 
 // Normaliza string para comparação (sem acento, minúsculo, só alfanumérico)
+function makeSearchTokens(nome = '', sku = '', categoria = '') {
+  return [...new Set(
+    `${nome} ${sku} ${categoria}`
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length >= 2)
+  )];
+}
+
 function normStr(s) {
   return String(s || '').toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -192,6 +203,7 @@ export default async function handler(req, res) {
       const data = {
         ...produto,
         origem: produto.origem || 'manual',
+        searchTokens: makeSearchTokens(produto.nome, produto.sku, produto.categoria),
         criadoEm: now,
         atualizadoEm: now,
       };
@@ -209,6 +221,7 @@ export default async function handler(req, res) {
       const erros = validar({ ...atual, ...produto });
       if (erros.length) return res.status(400).json({ error: 'validacao', erros });
       produto.atualizadoEm = new Date().toISOString();
+      produto.searchTokens = makeSearchTokens(produto.nome, produto.sku, produto.categoria);
       await col.doc(id).set(produto, { merge: true });
       const snap = await col.doc(id).get();
       return res.status(200).json({ ok: true, id, produto: { id, ...snap.data() } });
