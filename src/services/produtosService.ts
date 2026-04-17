@@ -29,6 +29,16 @@ export async function buscarProdutos(): Promise<Produto[]> {
   return (data.produtos || []) as Produto[];
 }
 
+// ---------- buscar produtos por termo (AJAX / autocomplete) ----------
+export async function searchProdutos(q: string, limit = 20): Promise<Produto[]> {
+  if (!q || q.trim().length < 2) return [];
+  const url = `${API_BASE}/produtos?q=${encodeURIComponent(q.trim())}&limit=${limit}`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.produtos || []) as Produto[];
+}
+
 // ---------- sincronizar WooCommerce → Firestore (todos os produtos) ----------
 export async function sincronizarProdutos(): Promise<{ ok: boolean; totalSincronizados?: number; sincronizados?: number; error?: string }> {
   const res = await fetch(`${API_BASE}/produtos?sync=all`);

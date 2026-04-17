@@ -45,6 +45,52 @@ async function firestoreGetAll() {
   return all;
 }
 
+// Cache local de produtos pra search (TTL 5 min). Evita reler 3668 docs a cada digitada.
+const SEARCH_TTL_MS = 5 * 60 * 1000;
+let SEARCH_CACHE = { data: null, ts: 0 };
+
+function _norm(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function firestoreSearch(q, limit = 20) {
+  const agora = Date.now();
+  let lista = SEARCH_CACHE.data;
+  if (!lista || (agora - SEARCH_CACHE.ts) > SEARCH_TTL_MS) {
+    lista = await firestoreGetAll();
+    SEARCH_CACHE = { data: lista, ts: agora };
+  }
+  const termos = _norm(q).split(' ').filter(t => t.length >= 2);
+  if (!termos.length) return lista.slice(0, limit);
+
+  const scored = lista.map(p => {
+    const nomeN = _norm(p.nome);
+    const skuN  = _norm(p.sku);
+    const catN  = _norm(p.categoria);
+    const descN = _norm(p.descricao);
+    let score = 0;
+    for (const t of termos) {
+      if (skuN === t) score += 20;
+      if (nomeN.includes(t)) score += 5;
+      if (skuN.includes(t))  score += 6;
+      if (catN.includes(t))  score += 3;
+      if (descN.includes(t)) score += 1;
+    }
+    return { p, score };
+  });
+
+  return scored
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(s => s.p);
+}
+
 async function writeProducts(products) {
   const db = getDb();
   for (let i = 0; i < products.length; i += BATCH_SIZE) {
@@ -171,6 +217,12 @@ export default async function handler(req, res) {
         const page = req.query.page ? parseInt(req.query.page, 10) : undefined;
         const result = await syncOnePage(page);
         return res.status(200).json(result);
+      }
+      // Busca por termo: /api/produtos?q=container%20inox&limit=20
+      if (req.query.q) {
+        const limit = Math.min(parseInt(req.query.limit || '20', 10), 50);
+        const produtos = await firestoreSearch(String(req.query.q), limit);
+        return res.status(200).json({ ok: true, produtos, total: produtos.length, q: req.query.q });
       }
       const produtos = await firestoreGetAll();
       return res.status(200).json({ ok: true, produtos, total: produtos.length });

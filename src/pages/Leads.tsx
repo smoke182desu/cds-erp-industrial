@@ -508,17 +508,43 @@ function NovoLeadModal({ onClose, onSave }: { onClose: () => void; onSave: (l: O
 }
 
 // ─── Modal Criar Proposta ───────────────────────────────────────────────────
-function PropostaModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
-  const [dados, setDados] = useState<Omit<PropostaDados,'itens'>>({
-    empresa: lead.empresa || lead.nome || '', telefone: lead.telefone || '', email: lead.email || '',
-    cidade: '', vendedor: 'Jean', frete: 'À combinar', validade: '7 dias corridos',
+function PropostaModal({ lead, analisePrevia, onClose }: {
+  lead: Lead;
+  analisePrevia?: any;
+  onClose: () => void;
+}) {
+  // Se recebemos uma analise ja feita pelo painel Inteligencia, pre-populamos
+  const clientePrev = analisePrevia?.cliente || {};
+  const initDados: Omit<PropostaDados,'itens'> = {
+    empresa: clientePrev.empresa || clientePrev.razaoSocial || clientePrev.nomeFantasia || lead.empresa || lead.nome || '',
+    ac: clientePrev.nome || lead.nome || '',
+    telefone: clientePrev.telefone || lead.telefone || '',
+    email: clientePrev.email || lead.email || '',
+    cidade: [clientePrev.cidade, clientePrev.uf].filter(Boolean).join('/') || '',
+    vendedor: 'Jean',
+    frete: 'À combinar',
+    validade: '7 dias corridos',
     pagamento: '50% de entrada e 50% na entrega',
-  });
-  const [itens, setItens] = useState<ItemProposta[]>([{ nome: '', descricao: '', qtd: 1, valorUnitario: 0 }]);
+  } as any;
+  const initItens: ItemProposta[] = Array.isArray(analisePrevia?.produtos) && analisePrevia.produtos.length > 0
+    ? analisePrevia.produtos.map((p: any) => ({
+        nome: p.nomeCatalogo || p.nome || '',
+        descricao: p.descricao || '',
+        qtd: Number(p.quantidade) || 1,
+        valorUnitario: Number(p.precoUnitario) || 0,
+      }))
+    : [{ nome: '', descricao: '', qtd: 1, valorUnitario: 0 }];
+
+  const [dados, setDados] = useState<Omit<PropostaDados,'itens'>>(initDados);
+  const [itens, setItens] = useState<ItemProposta[]>(initItens);
   const [gerandoIA, setGerandoIA] = useState(false);
   const [erroIA, setErroIA] = useState('');
-  const [iaOk, setIaOk] = useState(false);
-  const { state, adicionarCliente, atualizarCliente, adicionarPropostaDireta } = useERP();
+  const [iaOk, setIaOk] = useState(!!analisePrevia);
+  // atualizarCliente e adicionarPropostaDireta podem nao existir em todas versoes do contexto — lemos com fallback
+  const erp = useERP() as any;
+  const { state, adicionarCliente } = erp;
+  const atualizarCliente = erp.atualizarCliente as ((id: string, patch: Partial<Cliente>) => void) | undefined;
+  const adicionarPropostaDireta = (erp.adicionarPropostaDireta || erp.adicionarProposta) as ((p: Proposta) => void) | undefined;
 
   const set = (k: string, v: string) => setDados(d => ({ ...d, [k]: v }));
   const setItem = (i: number, k: keyof ItemProposta, v: string | number) =>
@@ -548,9 +574,9 @@ function PropostaModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
     finally { setGerandoIA(false); }
   };
 
-  // Auto-dispara IA ao abrir o modal
+  // Auto-dispara IA ao abrir o modal, APENAS se nao veio analise previa do painel Inteligencia
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { gerarComIA(); }, []);
+  useEffect(() => { if (!analisePrevia) gerarComIA(); }, []);
 
   const gerar = async () => {
     // Registra ou atualiza cliente no ERP
@@ -559,12 +585,15 @@ function PropostaModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
     );
     const idFinal = `CLI-${Date.now()}`;
     if (clienteExistente) {
-      atualizarCliente(clienteExistente.id, {
-        nome: lead.nome || clienteExistente.nome,
-        email: lead.email || clienteExistente.email,
-        telefone: lead.telefone || clienteExistente.telefone,
-        cidade: dados.cidade || clienteExistente.cidade,
-      });
+      if (atualizarCliente) {
+        atualizarCliente(clienteExistente.id, {
+          nome: lead.nome || clienteExistente.nome,
+          email: lead.email || clienteExistente.email,
+          telefone: lead.telefone || clienteExistente.telefone,
+          cidade: dados.cidade || clienteExistente.cidade,
+        });
+      }
+      // senao, mantem os dados antigos do cliente — nao bloqueia a geracao da proposta
     } else {
       const novoCliente: Cliente = {
         id: idFinal,
@@ -599,9 +628,18 @@ function PropostaModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
       status: 'Rascunho',
       data: new Date().toISOString(),
     };
-    adicionarPropostaDireta(proposta);
-    // Abre o PDF da proposta
-    const num = await proximoNumeroProposta(); abrirProposta({ ...dados, numero: num, itens } as PropostaDados); onClose(); };
+    if (adicionarPropostaDireta) adicionarPropostaDireta(proposta);
+    // Abre o HTML da proposta SEMPRE — nao depende de funcoes opcionais do contexto
+    try {
+      const num = await proximoNumeroProposta();
+      abrirProposta({ ...dados, numero: num, itens } as PropostaDados);
+    } catch (e) {
+      console.error('Erro ao abrir proposta:', e);
+      // Fallback: tenta abrir sem numero sequencial
+      abrirProposta({ ...dados, numero: `PROP-${Date.now()}`, itens } as PropostaDados);
+    }
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -785,6 +823,8 @@ export function Leads() {
   const [leadAtivo, setLeadAtivo] = useState<Lead | null>(null);
   const [novoModalOpen, setNovoModalOpen] = useState(false);
   const [propostaLead, setPropostaLead] = useState<Lead | null>(null);
+  // Analise pre-computada pelo painel Inteligencia — evita chamar /api/proposta-ia novamente
+  const [propostaAnalise, setPropostaAnalise] = useState<any>(null);
   const [msgsAtivas, setMsgsAtivas] = useState<Mensagem[]>([]);
   const [textoInjetado, setTextoInjetado] = useState({ v: '', n: 0 });
   const [tabPainel, setTabPainel] = useState<'detalhes' | 'inteligencia'>('inteligencia');
@@ -891,7 +931,11 @@ export function Leads() {
                   telefone={leadAtivo.telefone || ''}
                   leadNome={leadAtivo.nome}
                   leadEmpresa={leadAtivo.empresa}
-                  onGerarProposta={() => setPropostaLead(leadAtivo)}
+                  onGerarProposta={(analise) => {
+                    // Passa a analise ja feita pro modal — evita segunda chamada a IA
+                    setPropostaAnalise(analise);
+                    setPropostaLead(leadAtivo);
+                  }}
                   onCadastrarProduto={(produto) => setProdutoCadastrar(produto)}
                 />
               )}
@@ -912,7 +956,13 @@ export function Leads() {
       </div>
 
       {novoModalOpen && <NovoLeadModal onClose={() => setNovoModalOpen(false)} onSave={handleAdicionarLead} />}
-      {propostaLead && <PropostaModal lead={propostaLead} onClose={() => setPropostaLead(null)} />}
+      {propostaLead && (
+        <PropostaModal
+          lead={propostaLead}
+          analisePrevia={propostaAnalise}
+          onClose={() => { setPropostaLead(null); setPropostaAnalise(null); }}
+        />
+      )}
       {produtoCadastrar && (
         <CadastrarProdutoModal
           produto={produtoCadastrar}

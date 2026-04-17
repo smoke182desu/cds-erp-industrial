@@ -24,7 +24,11 @@ interface Props {
  *   - Uma chamada = cadastro + proposta + movimento no funil
  */
 export const WhatsAppAnalysisModal: React.FC<Props> = ({ clienteId, onClose }) => {
-  const { state, adicionarCliente, atualizarCliente, adicionarPropostaDireta } = useERP();
+  // atualizarCliente e adicionarPropostaDireta sao opcionais — fallback pra adicionarProposta
+  const erp = useERP() as any;
+  const { state, adicionarCliente } = erp;
+  const atualizarCliente = erp.atualizarCliente as ((id: string, patch: any) => void) | undefined;
+  const adicionarPropostaDireta = (erp.adicionarPropostaDireta || erp.adicionarProposta) as ((p: any) => void) | undefined;
   const clienteAtual = useMemo(
     () => state.clientes.find(c => c.id === clienteId),
     [state.clientes, clienteId]
@@ -136,17 +140,19 @@ ${linhas}`;
 
     let idFinal = clienteId;
     if (clienteId && clienteAtual) {
-      // Atualiza cliente existente
-      atualizarCliente(clienteId, {
-        nome: cli.nome || clienteAtual.nome,
-        email: cli.email || clienteAtual.email,
-        telefone: cli.telefone || clienteAtual.telefone,
-        tipo: (cli.tipo as any) || clienteAtual.tipo,
-        documento: cli.documento || clienteAtual.documento,
-        endereco: cli.endereco || clienteAtual.endereco,
-        mensagens: mensagensParaSalvar,
-        funnelStage: 'NegociaÃ§Ã£o',
-      });
+      // Atualiza cliente existente (se a funcao existir no contexto)
+      if (atualizarCliente) {
+        atualizarCliente(clienteId, {
+          nome: cli.nome || clienteAtual.nome,
+          email: cli.email || clienteAtual.email,
+          telefone: cli.telefone || clienteAtual.telefone,
+          tipo: (cli.tipo as any) || clienteAtual.tipo,
+          documento: cli.documento || clienteAtual.documento,
+          endereco: cli.endereco || clienteAtual.endereco,
+          mensagens: mensagensParaSalvar,
+          funnelStage: 'Negociação',
+        });
+      }
     } else {
       // Cria cliente novo
       idFinal = `CLI-${Date.now()}`;
@@ -159,7 +165,7 @@ ${linhas}`;
         documento: cli.documento || '',
         endereco: cli.endereco || '',
         cep: '', logradouro: '', numero: '', bairro: '', cidade: '', uf: '',
-        funnelStage: 'NegociaÃ§Ã£o',
+        funnelStage: 'Negociação',
         mensagens: mensagensParaSalvar,
       };
       adicionarCliente(novo);
@@ -183,7 +189,7 @@ ${linhas}`;
         status: 'Rascunho',
         data: new Date().toISOString(),
       };
-      adicionarPropostaDireta(proposta);
+      if (adicionarPropostaDireta) adicionarPropostaDireta(proposta);
     }
 
     onClose();
