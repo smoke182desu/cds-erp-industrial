@@ -62,15 +62,55 @@ async function criarPreCadastro(lead) {
   });
 }
 
+// ---------- listar todos os leads via REST ----------
+async function listarLeads() {
+  const url = `${BASE_URL}/leads?key=${FIREBASE_API_KEY}&pageSize=300`;
+  const res = await axios.get(url);
+  return (res.data.documents || []).map(d => {
+    const f = d.fields || {};
+    const s = k => f[k]?.stringValue  ?? '';
+    const n = k => parseFloat(f[k]?.doubleValue ?? f[k]?.integerValue ?? 0);
+    const t = k => f[k]?.timestampValue ?? '';
+    return {
+      id:           d.name.split('/').pop(),
+      nome:         s('nome'),
+      email:        s('email'),
+      telefone:     s('telefone'),
+      empresa:      s('empresa'),
+      mensagem:     s('mensagem'),
+      origem:       s('origem') || 'manual',
+      etapa:        s('etapa')  || 'lead_novo',
+      valor:        n('valor'),
+      pedidoId:     s('pedidoId'),
+      clienteId:    s('clienteId'),
+      observacoes:  s('observacoes'),
+      criadoEm:     t('criadoEm'),
+      atualizadoEm: t('atualizadoEm'),
+    };
+  }).sort((a, b) => new Date(b.criadoEm) - new Date(a.criadoEm));
+}
+
 // ---------- handler principal ----------
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Webhook-Secret');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
+
+  // GET — listar leads para o funil (sem autenticação necessária)
+  if (req.method === 'GET') {
+    try {
+      const leads = await listarLeads();
+      return res.status(200).json({ ok: true, leads, total: leads.length });
+    } catch (err) {
+      console.error('[leads GET] erro:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const secret = req.headers['x-webhook-secret'] || req.query.secret;
   if (secret !== WEBHOOK_SECRET) return res.status(401).json({ error: 'Unauthorized' });

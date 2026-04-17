@@ -60,16 +60,49 @@ export interface Lead {
   atualizadoEm?: string;
 }
 
-// ---------- buscar todos os leads (tempo real) ----------
-export function subscribeLeads(callback: (leads: Lead[]) => void) {
+// ---------- buscar leads via REST API (sempre funciona, ignora regras Firestore) ----------
+async function buscarLeadsREST(): Promise<Lead[]> {
+  const res = await fetch('/api/leads');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return data.leads || [];
+}
+
+// ---------- buscar todos os leads (tempo real via SDK, fallback REST) ----------
+export function subscribeLeads(callback: (leads: Lead[]) => void): () => void {
+  let sdkOk = false;
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Inicia polling via REST imediatamente para garantir carregamento
+  buscarLeadsREST().then(callback).catch(() => {});
+
+  // Tenta SDK (tempo real)
   const q = query(collection(db, 'leads'), orderBy('criadoEm', 'desc'));
-  return onSnapshot(q, (snap) => {
-    const leads: Lead[] = snap.docs.map((d) => ({
-      id: d.id,
-      ...(d.data() as Omit<Lead, 'id'>),
-    }));
-    callback(leads);
-  });
+  const unsub = onSnapshot(
+    q,
+    (snap) => {
+      sdkOk = true;
+      if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+      const leads: Lead[] = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<Lead, 'id'>),
+      }));
+      callback(leads);
+    },
+    (_err) => {
+      // SDK falhou (regras, offline, etc) — usa polling REST a cada 20s
+      if (!sdkOk && !pollInterval) {
+        pollInterval = setInterval(() => {
+          buscarLeadsREST().then(callback).catch(() => {});
+        }, 20000);
+      }
+    }
+  );
+
+  return () => {
+    unsub();
+    if (pollInterval) clearInterval(pollInterval);
+  };
 }
 
 // ---------- buscar leads (uma vez) ----------
