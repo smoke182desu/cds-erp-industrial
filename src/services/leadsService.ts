@@ -7,7 +7,6 @@ import {
   query,
   orderBy,
   where,
-  onSnapshot,
   getDoc,
   setDoc,
 } from 'firebase/firestore';
@@ -68,40 +67,27 @@ async function buscarLeadsREST(): Promise<Lead[]> {
   return data.leads || [];
 }
 
-// ---------- buscar todos os leads (tempo real via SDK, fallback REST) ----------
+// ---------- buscar todos os leads (polling via REST para economizar quota Firestore) ----------
+// Trocado de onSnapshot para polling porque cada tab aberta queima 50+ reads na inicializacao.
+// Backend /api/leads tem cache SWR de 30s, entao polling de 30s nao causa carga real.
 export function subscribeLeads(callback: (leads: Lead[]) => void): () => void {
-  let sdkOk = false;
-  let pollInterval: ReturnType<typeof setInterval> | null = null;
+  let cancelado = false;
 
-  // Inicia polling via REST imediatamente para garantir carregamento
-  buscarLeadsREST().then(callback).catch(() => {});
+  const fetch1x = () => {
+    if (cancelado) return;
+    buscarLeadsREST()
+      .then((leads) => { if (!cancelado) callback(leads); })
+      .catch(() => {});
+  };
 
-  // Tenta SDK (tempo real)
-  const q = query(collection(db, 'leads'), orderBy('criadoEm', 'desc'));
-  const unsub = onSnapshot(
-    q,
-    (snap) => {
-      sdkOk = true;
-      if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-      const leads: Lead[] = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<Lead, 'id'>),
-      }));
-      callback(leads);
-    },
-    (_err) => {
-      // SDK falhou (regras, offline, etc) — usa polling REST a cada 20s
-      if (!sdkOk && !pollInterval) {
-        pollInterval = setInterval(() => {
-          buscarLeadsREST().then(callback).catch(() => {});
-        }, 20000);
-      }
-    }
-  );
+  // Carrega imediatamente
+  fetch1x();
+  // Polling a cada 30s (alinhado com o cache do backend)
+  const pollInterval = setInterval(fetch1x, 30000);
 
   return () => {
-    unsub();
-    if (pollInterval) clearInterval(pollInterval);
+    cancelado = true;
+    clearInterval(pollInterval);
   };
 }
 

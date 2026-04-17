@@ -36,7 +36,7 @@ async function criarPreCadastro(lead) {
 }
 
 // ---------- listar todos os leads ----------
-async function listarLeads() {
+async function listarLeadsDoFirestore() {
   const leads = await firestoreList('leads', 'criadoEm', 'desc', 300);
   return leads.map(d => ({
     id: d.id,
@@ -54,6 +54,42 @@ async function listarLeads() {
     criadoEm: d.criadoEm?.toDate?.() ? d.criadoEm.toDate().toISOString() : (d.criadoEm || ''),
     atualizadoEm: d.atualizadoEm?.toDate?.() ? d.atualizadoEm.toDate().toISOString() : (d.atualizadoEm || ''),
   }));
+}
+
+// ---------- Cache SWR para evitar quota Firestore ----------
+// Fresco por 30s — ainda serve por 24h mesmo se Firestore tiver caido/quota esgotada.
+// Invalidacao explicita ao criar/atualizar lead.
+const FRESH_MS = 30 * 1000;
+const STALE_MS = 24 * 60 * 60 * 1000;
+let LEADS_CACHE = { data: null, ts: 0 };
+let REVALIDANDO = false;
+
+async function listarLeads() {
+  const agora = Date.now();
+  const idade = agora - LEADS_CACHE.ts;
+  if (LEADS_CACHE.data && idade < FRESH_MS) return LEADS_CACHE.data;
+  if (LEADS_CACHE.data && idade < STALE_MS) {
+    if (!REVALIDANDO) {
+      REVALIDANDO = true;
+      listarLeadsDoFirestore()
+        .then(d => { if (d) LEADS_CACHE = { data: d, ts: Date.now() }; })
+        .catch(() => {})
+        .finally(() => { REVALIDANDO = false; });
+    }
+    return LEADS_CACHE.data;
+  }
+  try {
+    const d = await listarLeadsDoFirestore();
+    LEADS_CACHE = { data: d, ts: agora };
+    return d;
+  } catch (err) {
+    if (LEADS_CACHE.data) return LEADS_CACHE.data;
+    throw err;
+  }
+}
+
+function invalidarCacheLeads() {
+  LEADS_CACHE = { data: null, ts: 0 };
 }
 
 // ---------- handler principal ----------
@@ -91,6 +127,7 @@ export default async function handler(req, res) {
       if (body.valor !== undefined) updates.valor = Number(body.valor) || 0;
 
       await firestoreUpdate('leads', id, updates);
+      invalidarCacheLeads();
       return res.status(200).json({ ok: true, id });
     } catch (err) {
       console.error('[leads PUT] erro:', err.message);
@@ -130,6 +167,7 @@ export default async function handler(req, res) {
       atualizadoEm: new Date(),
     });
 
+    invalidarCacheLeads();
     return res.status(201).json({ success: true, leadId, clienteId });
   } catch (error) {
     console.error('Leads error:', error.message);
