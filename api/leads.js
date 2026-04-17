@@ -110,10 +110,40 @@ export default async function handler(req, res) {
     }
   }
 
+  // PUT — atualizar lead (etapa, campos) — chamado pelo frontend/kanban
+  if (req.method === 'PUT') {
+    const id = req.query.id;
+    if (!id) return res.status(400).json({ error: 'id obrigatorio' });
+    try {
+      const body = req.body || {};
+      const fields = {};
+      const map = { nome:'stringValue', email:'stringValue', telefone:'stringValue',
+        empresa:'stringValue', etapa:'stringValue', origem:'stringValue',
+        observacoes:'stringValue', mensagem:'stringValue', pedidoId:'stringValue' };
+      for (const [k, type] of Object.entries(map)) {
+        if (body[k] !== undefined) fields[k] = { [type]: String(body[k]) };
+      }
+      if (body.valor !== undefined) fields.valor = { doubleValue: Number(body.valor) || 0 };
+      fields.atualizadoEm = { timestampValue: new Date().toISOString() };
+
+      const fieldPaths = Object.keys(fields).join(',');
+      const url = `${BASE_URL}/leads/${id}?updateMask.fieldPaths=${fieldPaths}&key=${FIREBASE_API_KEY}`;
+      await axios.patch(url, { fields });
+      return res.status(200).json({ ok: true, id });
+    } catch (err) {
+      console.error('[leads PUT] erro:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const secret = req.headers['x-webhook-secret'] || req.query.secret;
-  if (secret !== WEBHOOK_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  // Criação interna via ERP não precisa de secret
+  const erpCreate = req.body?.erpCreate === true || req.headers['x-erp-create'] === '1';
+  if (!erpCreate) {
+    const secret = req.headers['x-webhook-secret'] || req.query.secret;
+    if (secret !== WEBHOOK_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  }
 
   const {
     nome, email, telefone, mensagem,

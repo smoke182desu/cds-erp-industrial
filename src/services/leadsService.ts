@@ -162,13 +162,22 @@ export async function salvarCliente(lead: Partial<Lead>): Promise<string> {
   return ref.id;
 }
 
-// ---------- adicionar lead (e salvar cliente automaticamente) ----------
+// ---------- adicionar lead via REST ----------
 export async function adicionarLead(data: Omit<Lead, 'id' | 'criadoEm'>): Promise<string> {
-  // Salva/atualiza cliente automaticamente
+  try {
+    const res = await fetch('/api/leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...data, erpCreate: true }),
+    });
+    const json = await res.json();
+    if (json.leadId) return json.leadId;
+  } catch (_) { /* fallback abaixo */ }
+
+  // Fallback: Firebase SDK direto
   const clienteId = await salvarCliente(data);
   const ref = await addDoc(collection(db, 'leads'), {
-    ...data,
-    clienteId,
+    ...data, clienteId,
     etapa: data.etapa || 'lead_novo',
     criadoEm: new Date().toISOString(),
     atualizadoEm: new Date().toISOString(),
@@ -176,20 +185,29 @@ export async function adicionarLead(data: Omit<Lead, 'id' | 'criadoEm'>): Promis
   return ref.id;
 }
 
-// ---------- atualizar lead ----------
+// ---------- atualizar lead via REST ----------
 export async function atualizarLead(id: string, data: Partial<Omit<Lead, 'id'>>): Promise<void> {
-  await updateDoc(doc(db, 'leads', id), {
-    ...data,
-    atualizadoEm: new Date().toISOString(),
+  const res = await fetch(`/api/leads?id=${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    // fallback para Firebase SDK se REST falhar
+    await updateDoc(doc(db, 'leads', id), { ...data, atualizadoEm: new Date().toISOString() });
+  }
 }
 
-// ---------- mover etapa ----------
+// ---------- mover etapa via REST ----------
 export async function moverEtapa(id: string, etapa: EtapaFunil): Promise<void> {
-  await updateDoc(doc(db, 'leads', id), {
-    etapa,
-    atualizadoEm: new Date().toISOString(),
+  const res = await fetch(`/api/leads?id=${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ etapa }),
   });
+  if (!res.ok) {
+    await updateDoc(doc(db, 'leads', id), { etapa, atualizadoEm: new Date().toISOString() });
+  }
 }
 
 // ---------- buscar clientes (pre-cadastro) ----------
