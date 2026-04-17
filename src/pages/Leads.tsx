@@ -630,13 +630,19 @@ function PropostaModal({ lead, analisePrevia, onClose }: {
     };
     if (adicionarPropostaDireta) adicionarPropostaDireta(proposta);
     // Abre o HTML da proposta SEMPRE — nao depende de funcoes opcionais do contexto
+    let num: number | undefined;
     try {
-      const num = await proximoNumeroProposta();
+      num = await proximoNumeroProposta();
+    } catch (e) {
+      console.error('Falha ao obter numero sequencial (segue mesmo assim):', e);
+      // Fallback: usa ultimos 4 digitos do timestamp como "numero"
+      num = Date.now() % 10000;
+    }
+    try {
       abrirProposta({ ...dados, numero: num, itens } as PropostaDados);
     } catch (e) {
       console.error('Erro ao abrir proposta:', e);
-      // Fallback: tenta abrir sem numero sequencial
-      abrirProposta({ ...dados, numero: `PROP-${Date.now()}`, itens } as PropostaDados);
+      alert('Não foi possível abrir a proposta: ' + (e as Error).message);
     }
     onClose();
   };
