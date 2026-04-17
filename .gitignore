@@ -10,3 +10,12 @@ coverage/
 commit_msg.txt  
 fix_key.ps1  
 patch_*.py 
+  
+check*.py  
+fix_*.py  
+trigger_*.py  
+msg*.txt  
+*.txt  
+deploy_*.txt  
+groq_*.txt  
+fb_*.txt 
