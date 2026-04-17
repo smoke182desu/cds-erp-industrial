@@ -12,9 +12,10 @@ const GROQ_API_KEY    = process.env.GROQ_API_KEY || '';
 
 const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents`;
 
-// Pega as ultimas N mensagens sem filtro de tempo — clientes frequentemente retomam
-// conversas dias/semanas depois e os dados (CPF, endereco, produto) estao nas mensagens antigas.
-const MAX_MSGS_CONTEXTO   = 50;
+// Mensagens enviadas ao LLM: ultimas N + algumas do inicio (onde o cliente costuma mencionar o produto).
+const MAX_MSGS_CONTEXTO   = 100;
+// Quantas mensagens do INICIO incluir para nao perder o produto mencionado na primeira abordagem.
+const MSGS_INICIAIS       = 15;
 
 // Max de produtos pre-filtrados enviados ao prompt da IA
 const MAX_PRODUTOS_PROMPT = 30;
@@ -246,9 +247,13 @@ async function buscarMensagens(telefone) {
 
 function recortarConversaAtual(mensagens) {
   if (!mensagens.length) return [];
-  // Pega as ultimas MAX_MSGS_CONTEXTO mensagens (ordenadas cronologicamente).
-  // Sem filtro de tempo: se o cliente passou dados ha dias/semanas, ainda queremos usar.
-  return mensagens.slice(-MAX_MSGS_CONTEXTO);
+  // Se couber tudo no limite, usa tudo.
+  if (mensagens.length <= MAX_MSGS_CONTEXTO) return mensagens;
+  // Caso contrario, pega primeiras N_INICIAIS (onde cliente menciona o produto) + ultimas restantes.
+  const iniciais = mensagens.slice(0, MSGS_INICIAIS);
+  const finaisQtd = MAX_MSGS_CONTEXTO - MSGS_INICIAIS;
+  const finais = mensagens.slice(-finaisQtd);
+  return [...iniciais, ...finais];
 }
 
 // Busca produtos relevantes para a conversa (pre-filtro por palavras-chave)
@@ -340,8 +345,9 @@ ${catalogoResumo}
 ${leadContexto}
 
 REGRAS:
-1. Se o cliente mencionar um produto que EXISTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true).
-2. Se o produto NAO existe no catalogo, marque "produtoPadrao": false e estime o preco se mencionado.
+0. NUNCA INVENTE PRODUTOS. Se o cliente nao mencionou um produto especifico, deixe "produtos" como array vazio []. Nao escolha um produto aleatorio do catalogo.
+1. Se o cliente mencionar um produto que EXISTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true). Faca o match literal pelo que foi dito (ex: "tampa de casa de maquina 110cm" -> procure "Tampa Casa de Maquinas 110cm").
+2. Se o produto NAO existe no catalogo mas foi claramente mencionado, marque "produtoPadrao": false e estime o preco se mencionado.
 3. IMPORTANTE - NOME DO PRODUTO: Inclua TODAS as especificacoes mencionadas na conversa (capacidade em litros, dimensoes em mm/cm/m, material como inox/aco carbono/galvanizado, espessura, tipo). Exemplo: "Container 1200L Inox 304" ou "Tampa para casa de maquinas 110cm". NUNCA use nomes genericos como apenas "container" ou "tampa" sem as specs/dimensoes.
 4. DESCRICAO DO PRODUTO: Coloque todos os detalhes tecnicos: dimensoes, material, acabamento, capacidade, quantidade, norma se aplicavel.
 5. Extraia CNPJ, CPF, CEP, endereco, inscricao estadual se mencionados no texto.
@@ -470,15 +476,17 @@ export default async function handler(req, res) {
       .map(m => `[${m.tipo === 'saida' ? 'VENDEDOR' : 'CLIENTE'}]: ${m.texto}`)
       .join('\n');
 
-    // Pre-filtra produtos por palavras-chave da conversa (apenas mensagens do cliente pesam mais)
-    const textoCliente = conversaAtual
+    // Pre-filtra produtos por palavras-chave de TODAS as msgs do cliente (nao so das recortadas).
+    // Cliente costuma mencionar o produto na primeira msg — nao pode ser perdido no slice.
+    const textoCliente = mensagens
       .filter(m => m.tipo === 'entrada')
       .map(m => m.texto)
       .join(' ') || conversaFormatada;
     const { produtos: produtosRelevantes, totalCatalogo, palavrasChave } =
       await buscarProdutosRelevantes(textoCliente);
 
-    // Extrai alternativas (telefones, emails, cnpjs, cpfs, ceps) do texto bruto do cliente
+    // Extrai alternativas (telefones, emails, cnpjs, cpfs, ceps) de TODAS as msgs do cliente.
+    // Nao filtra por recorte — se o dado veio ha dias, ainda queremos oferecer como alternativa.
     const alternativas = extrairAlternativas(textoCliente);
     // Garante que o numero do WhatsApp esteja na lista de telefones alternativos (primeiro)
     if (tel && !alternativas.telefones.includes(tel)) {
