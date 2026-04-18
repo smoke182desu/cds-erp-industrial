@@ -97,10 +97,10 @@ if ($endpoint === 'leads') {
         }
         if($sets){$params[]=$id;$db->prepare("UPDATE leads SET ".implode(',',$sets)." WHERE id=?")->execute($params);}
         echo json_encode(['ok'=>true]);
-    } elseif (\ === 'DELETE') {
-        \ = \['id'] ?? null;
-        if (!\) { http_response_code(400); echo json_encode(['error'=>'id required']); exit; }
-        \->prepare("DELETE FROM leads WHERE id=?")->execute([\]);
+    } elseif ($method === 'DELETE') {
+        $id = $_GET['id'] ?? null;
+        if (!$id) { http_response_code(400); echo json_encode(['error'=>'id required']); exit; }
+        $db->prepare("DELETE FROM leads WHERE id=?")->execute([$id]);
         echo json_encode(['ok'=>true,'deleted'=>true]);
     }
     exit;
@@ -207,10 +207,10 @@ if ($endpoint === 'config') {
         $db->prepare("INSERT INTO config (col_name,doc_name,data) VALUES (?,?,?) ON DUPLICATE KEY UPDATE data=?, atualizado_em=NOW()")
            ->execute([$col,$doc,json_encode($b),json_encode($b)]);
         echo json_encode(['ok'=>true]);
-    } elseif (\ === 'DELETE') {
-        \ = \['id'] ?? null;
-        if (!\) { http_response_code(400); echo json_encode(['error'=>'id required']); exit; }
-        \->prepare("DELETE FROM leads WHERE id=?")->execute([\]);
+    } elseif ($method === 'DELETE') {
+        $id = $_GET['id'] ?? null;
+        if (!$id) { http_response_code(400); echo json_encode(['error'=>'id required']); exit; }
+        $db->prepare("DELETE FROM config WHERE col_name=? AND doc_name=?")->execute([$col,$doc]);
         echo json_encode(['ok'=>true,'deleted'=>true]);
     }
     exit;
