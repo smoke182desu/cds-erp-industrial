@@ -43,9 +43,9 @@ async function buscarProdutos(q, limit = 20) {
 }
 
 async function fetchWooPage(page) {
+  // HostGator strips Basic Auth headers — use query param auth instead
   const resp = await axios.get(`${WC_URL}/wp-json/wc/v3/products`, {
-    params: { per_page: 100, page, status: 'publish' },
-    auth: { username: WC_KEY, password: WC_SECRET },
+    params: { per_page: 100, page, status: 'publish', consumer_key: WC_KEY, consumer_secret: WC_SECRET },
     timeout: 15000,
   });
   return resp.data || [];
