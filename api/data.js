@@ -87,12 +87,64 @@ async function handleEvolutionDiag(req, res) {
   const EVO_KEY = process.env.EVOLUTION_API_KEY || '';
   const EVO_INSTANCE = process.env.EVOLUTION_INSTANCE_NAME || 'cdsind';
   const EXPECTED_WEBHOOK = 'https://erp.cdsind.com.br/api/whatsapp';
+  const PHP_WEBHOOK = 'https://cdsind.com.br/erp-api/api.php?endpoint=webhook';
+  const PHP_API_KEY = process.env.PHP_API_KEY || 'cds-erp-2026-secure-key';
 
   if (!EVO_KEY) {
     return res.status(500).json({ error: 'EVOLUTION_API_KEY nao configurada no Vercel' });
   }
 
   const headers = { apikey: EVO_KEY, 'Content-Type': 'application/json' };
+
+  // POST com action=backfill puxa todas as conversas abertas e importa pro CRM
+  if (String(req.query.action||'').toLowerCase() === 'backfill') {
+    const maxChats = parseInt(req.query.maxChats||'100', 10);
+    const maxMsgs = parseInt(req.query.maxMsgs||'50', 10);
+    try {
+      // 1. Buscar lista de chats
+      const chatsRes = await fetch(`${EVO_URL}/chat/findChats/${EVO_INSTANCE}`, {
+        method: 'POST', headers, body: JSON.stringify({})
+      });
+      const chatsTxt = await chatsRes.text();
+      let chats; try { chats = JSON.parse(chatsTxt); } catch { return res.status(500).json({ error: 'failed to parse chats', raw: chatsTxt.slice(0,500) }); }
+      if (!Array.isArray(chats)) return res.status(500).json({ error: 'chats not array', got: chats });
+
+      const results = { totalChats: chats.length, processedChats: 0, totalMessages: 0, importedMessages: 0, errors: [] };
+      const limited = chats.slice(0, maxChats);
+
+      for (const chat of limited) {
+        const remoteJid = chat.remoteJid || chat.id;
+        if (!remoteJid || remoteJid.includes('@g.us')) continue; // Pula grupos
+        results.processedChats++;
+        // 2. Buscar mensagens do chat
+        try {
+          const mRes = await fetch(`${EVO_URL}/chat/findMessages/${EVO_INSTANCE}`, {
+            method: 'POST', headers,
+            body: JSON.stringify({ where: { key: { remoteJid } }, limit: maxMsgs })
+          });
+          const mTxt = await mRes.text();
+          let mData; try { mData = JSON.parse(mTxt); } catch { results.errors.push({ remoteJid, err: 'parse', raw: mTxt.slice(0,200) }); continue; }
+          const msgs = mData.messages?.records || mData.records || (Array.isArray(mData)?mData:[]);
+          if (!msgs.length) continue;
+          results.totalMessages += msgs.length;
+          // 3. Enviar cada mensagem pro webhook PHP em formato MESSAGES_UPSERT
+          const payload = { event: 'messages.upsert', instance: EVO_INSTANCE, data: msgs };
+          const pRes = await fetch(`${PHP_WEBHOOK}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Api-Key': PHP_API_KEY },
+            body: JSON.stringify(payload)
+          });
+          if (pRes.ok) results.importedMessages += msgs.length;
+          else { const t = await pRes.text(); results.errors.push({ remoteJid, status: pRes.status, body: t.slice(0,200) }); }
+        } catch (e) {
+          results.errors.push({ remoteJid, err: e.message });
+        }
+      }
+      return res.status(200).json({ ok: true, action: 'backfill', ...results });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
 
   // POST com action=set ajusta a URL do webhook (precisa confirmacao explicita do usuario)
   if (req.method === 'POST' && String(req.query.action||'').toLowerCase() === 'set') {
