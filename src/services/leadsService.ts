@@ -50,7 +50,8 @@ async function buscarLeadsREST(): Promise<Lead[]> {
   const res = await fetch('/api/leads');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  return data.leads || [];
+  // /api/leads returns a raw array; fall back to {leads:[]} shape for compat
+  return Array.isArray(data) ? data : (data.leads || []);
 }
 
 // ---------- subscribe leads: REST imediato + polling 20s ----------
