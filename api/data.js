@@ -83,9 +83,9 @@ async function handleCalculadora(req, res) {
 
 // ——— evolution-diag (checar/ajustar webhook do Evolution API) ———
 async function handleEvolutionDiag(req, res) {
-  const EVO_URL = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-903e.up.railway.app';
-  const EVO_KEY = process.env.EVOLUTION_API_KEY || '';
-  const EVO_INSTANCE = process.env.EVOLUTION_INSTANCE_NAME || 'cdsind';
+  const EVO_URL = String(process.env.EVOLUTION_API_URL || 'https://evolution-api-production-903e.up.railway.app').trim().replace(/\s+$/,'').replace(/\/$/,'');
+  const EVO_KEY = String(process.env.EVOLUTION_API_KEY || '').trim();
+  const EVO_INSTANCE = String(process.env.EVOLUTION_INSTANCE_NAME || 'cdsind').trim();
   const EXPECTED_WEBHOOK = 'https://erp.cdsind.com.br/api/whatsapp';
   const PHP_WEBHOOK = 'https://cdsind.com.br/erp-api/api.php?endpoint=webhook';
   const PHP_API_KEY = process.env.PHP_API_KEY || 'cds-erp-2026-secure-key';
