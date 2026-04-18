@@ -100,6 +100,7 @@ async function handleEvolutionDiag(req, res) {
   if (String(req.query.action||'').toLowerCase() === 'backfill') {
     const maxChats = parseInt(req.query.maxChats||'100', 10);
     const maxMsgs = parseInt(req.query.maxMsgs||'50', 10);
+    const offset = parseInt(req.query.offset||'0', 10);
     try {
       // 1. Buscar lista de chats
       const chatsRes = await fetch(`${EVO_URL}/chat/findChats/${EVO_INSTANCE}`, {
@@ -109,8 +110,8 @@ async function handleEvolutionDiag(req, res) {
       let chats; try { chats = JSON.parse(chatsTxt); } catch { return res.status(500).json({ error: 'failed to parse chats', raw: chatsTxt.slice(0,500) }); }
       if (!Array.isArray(chats)) return res.status(500).json({ error: 'chats not array', got: chats });
 
-      const results = { totalChats: chats.length, processedChats: 0, totalMessages: 0, importedMessages: 0, errors: [] };
-      const limited = chats.slice(0, maxChats);
+      const results = { totalChats: chats.length, offset, processedChats: 0, totalMessages: 0, importedMessages: 0, errors: [] };
+      const limited = chats.slice(offset, offset + maxChats);
 
       for (const chat of limited) {
         const remoteJid = chat.remoteJid || chat.id;
