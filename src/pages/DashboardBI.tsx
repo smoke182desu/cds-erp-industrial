@@ -49,7 +49,7 @@ export const DashboardBI: React.FC = () => {
 
   const atividades = useMemo(() => {
     return [
-      ...state.propostas.map(p => ({ desc: `Nova Proposta: ${p.clienteNome || p.empresa || 'Cliente'}`, valor: p.total, date: p.data })),
+      ...state.propostas.map(p => ({ desc: `Nova Proposta: ${p.clienteNome || 'Cliente'}`, valor: p.total, date: p.data })),
       ...state.ordensServico.map(os => ({ desc: `O.S. Gerada: ${os.clienteNome}`, valor: 0, date: os.dataEntrega })),
       ...state.transacoesFinanceiras.map(t => ({ desc: `${t.tipo === 'RECEITA' ? 'Receita' : 'Despesa'}: ${t.descricao}`, valor: t.valor, date: t.dataVencimento }))
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
