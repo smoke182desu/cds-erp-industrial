@@ -46,12 +46,33 @@ export interface Lead {
 }
 
 // ---------- buscar leads via REST ----------
+// Mapeia registro snake_case do MySQL pra shape camelCase que o CRM espera
+function mapLeadFromDB(row: any): Lead {
+  return {
+    id: String(row.id ?? ''),
+    nome: row.nome ?? '',
+    email: row.email ?? undefined,
+    telefone: row.telefone ?? undefined,
+    empresa: row.empresa ?? undefined,
+    mensagem: row.mensagem ?? row.observacoes ?? undefined,
+    origem: (row.origem ?? 'manual') as LeadOrigem,
+    etapa: (row.etapa ?? row.status_funil ?? 'lead_novo') as EtapaFunil,
+    valor: row.valor ?? row.valor_estimado ?? undefined,
+    pedidoId: row.pedidoId ?? row.pedido_id ?? undefined,
+    clienteId: row.clienteId ?? row.cliente_id ?? row.woocommerce_customer_id ?? undefined,
+    observacoes: row.observacoes ?? undefined,
+    criadoEm: row.criadoEm ?? row.criado_em ?? new Date().toISOString(),
+    atualizadoEm: row.atualizadoEm ?? row.atualizado_em ?? undefined,
+  };
+}
+
 async function buscarLeadsREST(): Promise<Lead[]> {
   const res = await fetch('/api/leads');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   // /api/leads returns a raw array; fall back to {leads:[]} shape for compat
-  return Array.isArray(data) ? data : (data.leads || []);
+  const rows = Array.isArray(data) ? data : (data.leads || []);
+  return rows.map(mapLeadFromDB);
 }
 
 // ---------- subscribe leads: REST imediato + polling 20s ----------
