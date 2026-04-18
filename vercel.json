@@ -5,6 +5,18 @@
       "destination": "/api/pncp?path=:path*"
     },
     {
+      "source": "/api/clientes",
+      "destination": "/api/data?resource=clientes"
+    },
+    {
+      "source": "/api/projects",
+      "destination": "/api/data?resource=projects"
+    },
+    {
+      "source": "/api/calculadora",
+      "destination": "/api/data?resource=calculadora"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
