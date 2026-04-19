@@ -43,6 +43,9 @@ export interface Lead {
   observacoes?: string;
   criadoEm: string;
   atualizadoEm?: string;
+  totalMensagens?: number;
+  ultimaMensagem?: string;
+  ultimaHora?: string;
 }
 
 // ---------- buscar leads via REST ----------
@@ -56,13 +59,16 @@ function mapLeadFromDB(row: any): Lead {
     empresa: row.empresa ?? undefined,
     mensagem: row.mensagem ?? row.observacoes ?? undefined,
     origem: (row.origem ?? 'manual') as LeadOrigem,
-    etapa: (row.etapa ?? row.status_funil ?? 'lead_novo') as EtapaFunil,
-    valor: row.valor ?? row.valor_estimado ?? undefined,
+    etapa: (row.etapa || row.status_funil || 'lead_novo') as EtapaFunil,
+    valor: parseFloat(row.valor || row.valor_estimado) || undefined,
     pedidoId: row.pedidoId ?? row.pedido_id ?? undefined,
     clienteId: row.clienteId ?? row.cliente_id ?? row.woocommerce_customer_id ?? undefined,
     observacoes: row.observacoes ?? undefined,
     criadoEm: row.criadoEm ?? row.criado_em ?? new Date().toISOString(),
     atualizadoEm: row.atualizadoEm ?? row.atualizado_em ?? undefined,
+    totalMensagens: parseInt(row.total_mensagens || row.totalMensagens) || 0,
+    ultimaMensagem: row.ultima_mensagem || row.ultimaMensagem || undefined,
+    ultimaHora: row.ultima_hora || row.ultimaHora || undefined,
   };
 }
 
