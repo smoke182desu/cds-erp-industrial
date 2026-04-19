@@ -69,7 +69,13 @@ if ($endpoint === 'leads') {
             $s = $db->prepare("SELECT * FROM leads WHERE id=?"); $s->execute([$id]);
             echo json_encode($s->fetch() ?: null);
         } else {
-            $s = $db->query("SELECT * FROM leads ORDER BY criado_em DESC LIMIT 500");
+            // Include ultima_mensagem + ultima_hora via correlated subqueries (match by telefone inside remote_jid)
+            $s = $db->query("SELECT l.*,
+                (SELECT conteudo FROM mensagens m WHERE l.telefone IS NOT NULL AND l.telefone <> '' AND (m.lead_id = l.id OR m.remote_jid LIKE CONCAT('%', l.telefone, '%')) ORDER BY criado_em DESC LIMIT 1) AS ultima_mensagem,
+                (SELECT criado_em FROM mensagens m WHERE l.telefone IS NOT NULL AND l.telefone <> '' AND (m.lead_id = l.id OR m.remote_jid LIKE CONCAT('%', l.telefone, '%')) ORDER BY criado_em DESC LIMIT 1) AS ultima_hora,
+                (SELECT nome_contato FROM mensagens m WHERE l.telefone IS NOT NULL AND l.telefone <> '' AND nome_contato IS NOT NULL AND nome_contato <> '' AND (m.lead_id = l.id OR m.remote_jid LIKE CONCAT('%', l.telefone, '%')) ORDER BY criado_em DESC LIMIT 1) AS contato_nome
+                FROM leads l
+                ORDER BY ultima_hora DESC, criado_em DESC LIMIT 500");
             $leads = $s->fetchAll();
             echo json_encode(['ok'=>true,'leads'=>$leads,'total'=>count($leads)]);
         }
@@ -266,6 +272,8 @@ if ($endpoint === 'webhook') {
             $tel = preg_replace('/\D/','',$remoteJid);
             $conteudo = $msg['message']['conversation']??$msg['message']['extendedTextMessage']['text']??$msg['body']??'';
             $tipo = ($msg['key']['fromMe']??false) ? 'saida' : 'entrada';
+            $pushName = $msg['pushName']??$msg['key']['pushName']??null;
+            if ($pushName) $pushName = trim($pushName);
             if (!$tel || !$conteudo) continue;
             $msgId = $msg['key']['id']??null;
             // Dedup by message_id
@@ -274,16 +282,21 @@ if ($endpoint === 'webhook') {
                 if ($ck->fetchColumn()) continue;
             }
             try {
-                // Find lead_id by phone
-                $ls=$db->prepare("SELECT id FROM leads WHERE telefone=? LIMIT 1"); $ls->execute([$tel]);
-                $leadId=$ls->fetchColumn()?:null;
+                // Find lead_id + current nome by phone
+                $ls=$db->prepare("SELECT id, nome FROM leads WHERE telefone=? LIMIT 1"); $ls->execute([$tel]);
+                $leadRow=$ls->fetch();
+                $leadId = $leadRow ? $leadRow['id'] : null;
+                $currentNome = $leadRow ? ($leadRow['nome']??'') : '';
                 $id=uuid();
-                $db->prepare("INSERT INTO mensagens (id,remote_jid,conteudo,tipo,lead_id,message_id) VALUES (?,?,?,?,?,?)")
-                   ->execute([$id,$remoteJid,$conteudo,$tipo,$leadId,$msgId]);
-                // Create lead if none
+                $db->prepare("INSERT INTO mensagens (id,remote_jid,conteudo,tipo,lead_id,message_id,nome_contato) VALUES (?,?,?,?,?,?,?)")
+                   ->execute([$id,$remoteJid,$conteudo,$tipo,$leadId,$msgId,$pushName]);
+                // Create or update lead with pushName
                 if (!$leadId) {
                     $db->prepare("INSERT INTO leads (id,nome,telefone,origem,status_funil) VALUES (?,?,?,?,?)")
-                       ->execute([uuid(),$tel,$tel,'whatsapp','lead_novo']);
+                       ->execute([uuid(), $pushName ?: $tel, $tel, 'whatsapp', 'lead_novo']);
+                } elseif ($pushName && ($currentNome === $tel || $currentNome === '' || $currentNome === null)) {
+                    // Lead existia mas sem nome real (nome=telefone ou vazio) → atualizar com pushName
+                    $db->prepare("UPDATE leads SET nome=?, atualizado_em=NOW() WHERE id=?")->execute([$pushName, $leadId]);
                 }
             } catch(Exception $e) {}
         }
