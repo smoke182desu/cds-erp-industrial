@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { phpFetch } from './_lib/php-api.js';
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 
