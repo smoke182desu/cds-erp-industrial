@@ -51,9 +51,18 @@ export interface Lead {
 // ---------- buscar leads via REST ----------
 // Mapeia registro snake_case do MySQL pra shape camelCase que o CRM espera
 function mapLeadFromDB(row: any): Lead {
+  // Nome real: prioriza nome_contato (pushName do WhatsApp) sobre nome quando
+  // o nome atual e igual ao telefone (lead criado s/ pushName)
+  const telRaw = row.telefone ?? '';
+  const nomeRaw = (row.nome ?? '').toString().trim();
+  const contatoNome = (row.contato_nome ?? row.contatoNome ?? '').toString().trim();
+  let nomeFinal = nomeRaw;
+  if (contatoNome && (!nomeRaw || nomeRaw === telRaw || /^\+?\d{6,}$/.test(nomeRaw))) {
+    nomeFinal = contatoNome;
+  }
   return {
     id: String(row.id ?? ''),
-    nome: row.nome ?? '',
+    nome: nomeFinal,
     email: row.email ?? undefined,
     telefone: row.telefone ?? undefined,
     empresa: row.empresa ?? undefined,
@@ -67,8 +76,8 @@ function mapLeadFromDB(row: any): Lead {
     criadoEm: row.criadoEm ?? row.criado_em ?? new Date().toISOString(),
     atualizadoEm: row.atualizadoEm ?? row.atualizado_em ?? undefined,
     totalMensagens: parseInt(row.total_mensagens || row.totalMensagens) || 0,
-    ultimaMensagem: row.ultima_mensagem || row.ultimaMensagem || undefined,
-    ultimaHora: row.ultima_hora || row.ultimaHora || undefined,
+    ultimaMensagem: row.ultimaMensagem ?? row.ultima_mensagem ?? undefined,
+    ultimaHora: row.ultimaHora ?? row.ultima_hora ?? undefined,
   };
 }
 

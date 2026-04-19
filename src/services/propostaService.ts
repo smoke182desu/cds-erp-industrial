@@ -8,7 +8,7 @@ export interface ItemProposta {
 export interface PropostaDados {
   numero?: number;
   data?: string;        // DD/MM/YYYY - preenchido automaticamente se vazio
-  empresa: string;
+  empresa?: string;     // pode vir vazio — sai em branco mas a proposta sai
   ac?: string;
   cnpj?: string;
   email?: string;
@@ -22,7 +22,7 @@ export interface PropostaDados {
   validade?: string;
   frete?: string;
   intro?: string;
-  itens: ItemProposta[];
+  itens?: ItemProposta[]; // pode vir vazio — tabela sai s/ linhas
   pagamento?: string;
   prazoEntrega?: string;
 }
@@ -64,29 +64,45 @@ function refNum(num: number, dataStr?: string): string {
   return pad2(num) + '/' + pad2(mes) + '/' + ano;
 }
 function sub(itens: ItemProposta[]): number {
-  return itens.reduce((s, i) => s + i.qtd * i.valorUnitario, 0);
+  if (!itens || itens.length === 0) return 0;
+  return itens.reduce((s, i) => s + (Number(i.qtd) || 0) * (Number(i.valorUnitario) || 0), 0);
 }
 function il(label: string, value?: string): string {
   return '<div class="info-line"><span class="label">' + label + '</span>' +
     '<span class="value' + (value ? '' : ' auto-dash') + '">' + (value || '') + '</span></div>';
 }
 function rows(itens: ItemProposta[]): string {
+  if (!itens || itens.length === 0) {
+    // Sem itens: emite uma linha em branco pra a estrutura nao quebrar
+    return '<tr><td><span class="item-name">—</span>' +
+      '<span class="item-desc">A definir</span></td>' +
+      '<td class="col-qty">—</td>' +
+      '<td class="col-valor">—</td>' +
+      '<td class="col-valor">—</td></tr>';
+  }
   return itens.map(it => {
-    const t = it.qtd * it.valorUnitario;
-    return '<tr><td><span class="item-name">' + it.nome + '</span>' +
+    const qtd = Number(it.qtd) || 0;
+    const vu  = Number(it.valorUnitario) || 0;
+    const t   = qtd * vu;
+    return '<tr><td><span class="item-name">' + (it.nome || '—') + '</span>' +
       (it.descricao ? '<span class="item-desc">' + it.descricao + '</span>' : '') +
-      '</td><td class="col-qty">' + it.qtd +
-      '</td><td class="col-valor">' + fmtBR(it.valorUnitario) +
+      '</td><td class="col-qty">' + (qtd || '—') +
+      '</td><td class="col-valor">' + fmtBR(vu) +
       '</td><td class="col-valor">' + fmtBR(t) + '</td></tr>';
   }).join('');
 }
 
 // ---------- Gerar HTML completo ----------
+// SEMPRE devolve HTML, mesmo se vier sem empresa, sem itens, sem nada.
+// Campos vazios viram "—" no template.
 export function gerarPropostaHTML(d: PropostaDados): string {
+  d = d || ({} as PropostaDados);
   const dataStr   = d.data || hojeStr();
   const numStr    = d.numero ? refNum(d.numero, d.data) : '—';
   const freteStr  = d.frete || 'À combinar';
-  const subtotal  = sub(d.itens);
+  const itensSeguros: ItemProposta[] = Array.isArray(d.itens) ? d.itens : [];
+  const subtotal  = sub(itensSeguros);
+  const empresaStr = (d.empresa || '').trim();
 
   const hdr = '<header class="header"><div class="logo-box">' +
     '<img src="https://cdsind.com.br/wp-content/uploads/2025/11/cropped-20251105_1919_Logotipo-Azul-Minimalista_remix_01k9b1kffgfqwacrv1sthe5q9f.png?x54102" alt="CDS Industrial">' +
@@ -103,22 +119,23 @@ export function gerarPropostaHTML(d: PropostaDados): string {
     '<div class="footer-center">CDS Industrial - Soluções em Aço e Engenharia • www.cdsind.com.br • Brasília/DF</div>' +
     '<div class="footer-right">Página ' + p + '/2</div></div></footer>';
 
-  const introDefault = 'Prezado(a),<br><br>Em atendimento ao contato realizado, apresentamos nossa proposta comercial para <strong>' +
-    d.empresa + '</strong>, conforme especificação abaixo.';
+  const introDefault = 'Prezado(a),<br><br>Em atendimento ao contato realizado, apresentamos nossa proposta comercial' +
+    (empresaStr ? ' para <strong>' + empresaStr + '</strong>' : '') +
+    ', conforme especificação abaixo.';
 
   const page1 = '<section class="page">' + hdr + '<div class="content">' + topBar +
     '<div class="client-grid"><div><div class="box-title">Destinatário (Cliente)</div>' +
-    il('Empresa:', d.empresa) + il('A/C:', d.ac) + il('CNPJ/CPF:', d.cnpj) +
+    il('Empresa:', empresaStr) + il('A/C:', d.ac) + il('CNPJ/CPF:', d.cnpj) +
     il('Email:', d.email) + il('Telefone:', d.telefone) +
     il('Endereço:', d.endereco) + il('Cidade/UF:', d.cidade) + il('CEP:', d.cep) +
     '</div><div><div class="box-title">Detalhes do Projeto</div>' +
-    il('Local:', d.local || d.empresa) + il('Vendedor:', d.vendedor || 'Jean') +
+    il('Local:', d.local || empresaStr) + il('Vendedor:', d.vendedor || 'Jean') +
     il('Validade:', d.validade || '7 dias corridos') + il('Frete:', freteStr) +
     il('Contato:', d.contato || d.telefone) + '</div></div>' +
     '<div class="intro">' + (d.intro || introDefault) + '</div>' +
     '<table><thead><tr><th>Item / Descrição</th><th class="col-qty">Qtd.</th>' +
     '<th class="col-valor">Unitário</th><th class="col-valor">Total</th></tr></thead>' +
-    '<tbody>' + rows(d.itens) + '</tbody></table>' +
+    '<tbody>' + rows(itensSeguros) + '</tbody></table>' +
     '<div class="totals-area"><div class="totals-box">' +
     '<div class="t-row"><span>Subtotal:</span><span>' + fmtBR(subtotal) + '</span></div>' +
     '<div class="t-row"><span>Frete:</span><span>' + freteStr + '</span></div>' +
@@ -145,7 +162,7 @@ export function gerarPropostaHTML(d: PropostaDados): string {
     '</div></div>' + ft(2) + '</section>';
 
   return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">' +
-    '<title>Proposta - ' + d.empresa + '</title>' +
+    '<title>Proposta - ' + (empresaStr || 'Cliente') + '</title>' +
     '<link rel="preconnect" href="https://fonts.googleapis.com">' +
     '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">' +
     '<style>' + CSS_PROPOSTA + '</style></head><body>' +

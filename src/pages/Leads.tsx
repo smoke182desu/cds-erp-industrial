@@ -443,6 +443,30 @@ function DetalhesPanel({ lead, onUpdate, onCriarProposta }: {
   );
 }
 
+// ─── Formatador de hora pra preview ────────────────────────────────────────
+function fmtHora(s?: string): string {
+  if (!s) return '';
+  const d = new Date(s.replace(' ', 'T'));
+  if (isNaN(d.getTime())) return '';
+  const hoje = new Date();
+  const mesmoDia = d.toDateString() === hoje.toDateString();
+  if (mesmoDia) return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const diff = (hoje.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+  if (diff < 7) return d.toLocaleDateString('pt-BR', { weekday: 'short' });
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+// ─── Nome exibido: usa nome real, cai pra telefone formatado, depois 'Lead' ─
+function nomeExibido(lead: Lead): string {
+  const nome = (lead.nome || '').trim();
+  const tel  = (lead.telefone || '').trim();
+  // Se nome e vazio OU e igual ao telefone OU soh numeros, cai pro telefone
+  if (!nome || nome === tel || /^\+?\d{6,}$/.test(nome)) {
+    return tel ? ('+' + tel.replace(/^\+/, '')) : 'Lead';
+  }
+  return nome;
+}
+
 // ─── Item da lista de leads ────────────────────────────────────────────────
 function LeadItem({ lead, ativo, onClick }: {
   lead: Lead & { ultimaMensagem?: string; ultimaHora?: string };
@@ -450,7 +474,12 @@ function LeadItem({ lead, ativo, onClick }: {
   onClick: () => void;
 }) {
   const etapa = ETAPAS_FUNIL.find(e => e.id === lead.etapa);
-  const inicial = (lead.nome || lead.telefone || '?')[0].toUpperCase();
+  const nomeMostrar = nomeExibido(lead);
+  const inicial = (nomeMostrar || '?')[0].toUpperCase();
+  const preview = (lead.ultimaMensagem && lead.ultimaMensagem.trim())
+    || lead.empresa
+    || lead.email
+    || 'Sem mensagens ainda';
   return (
     <button onClick={onClick}
       className={`w-full text-left px-3 py-3 border-b flex gap-3 items-start hover:bg-gray-50 transition-colors ${ativo ? 'bg-indigo-50 border-l-4 border-l-indigo-500' : 'border-l-4 border-l-transparent'}`}>
@@ -460,10 +489,10 @@ function LeadItem({ lead, ativo, onClick }: {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-1">
-          <p className="font-semibold text-sm text-gray-900 truncate">{lead.nome || lead.telefone || 'Lead'}</p>
-          <span className="text-[10px] text-gray-400 flex-shrink-0 mt-0.5">{lead.ultimaHora || ''}</span>
+          <p className="font-semibold text-sm text-gray-900 truncate">{nomeMostrar}</p>
+          <span className="text-[10px] text-gray-400 flex-shrink-0 mt-0.5">{fmtHora(lead.ultimaHora)}</span>
         </div>
-        <p className="text-xs text-gray-500 truncate mt-0.5">{lead.ultimaMensagem || lead.empresa || lead.email || 'Sem mensagens ainda'}</p>
+        <p className="text-xs text-gray-500 truncate mt-0.5">{preview}</p>
         <span className={`mt-1 inline-block text-[10px] px-1.5 py-0.5 rounded-full ${ETAPA_BADGE[lead.etapa]}`}>{etapa?.label}</span>
       </div>
     </button>
@@ -553,7 +582,12 @@ function PropostaModal({ lead, analisePrevia, onClose }: {
   const remItem = (i: number) => setItens(p => p.filter((_, idx) => idx !== i));
 
   const gerarComIA = async () => {
-    if (!lead.telefone) { setErroIA('Este lead não tem telefone — necessário para buscar a conversa.'); return; }
+    // Sem telefone: nao trava — soh marca aviso e segue (o usuario ainda
+    // consegue gerar a proposta em branco e abrir o HTML)
+    if (!lead.telefone) {
+      setErroIA('Lead sem telefone — IA nao pode buscar conversa, mas a proposta ainda pode ser gerada manualmente.');
+      return;
+    }
     setGerandoIA(true); setErroIA(''); setIaOk(false);
     try {
       const res = await fetch('/api/proposta-ia', {
@@ -562,7 +596,7 @@ function PropostaModal({ lead, analisePrevia, onClose }: {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro desconhecido');
-      const p = json.proposta;
+      const p = json.proposta || {};
       setDados({ empresa: p.empresa || dados.empresa, ac: p.ac || '', telefone: p.telefone || dados.telefone,
         email: p.email || dados.email, cidade: p.cidade || '', vendedor: p.vendedor || 'Jean',
         frete: p.frete || 'À combinar', validade: p.validade || '7 dias corridos',
@@ -570,7 +604,10 @@ function PropostaModal({ lead, analisePrevia, onClose }: {
         prazoEntrega: p.prazoEntrega || 'A confirmar após aceite formal', intro: p.intro || '' });
       if (p.itens?.length > 0) setItens(p.itens.map((it: any) => ({ nome: it.nome || '', descricao: it.descricao || '', qtd: Number(it.qtd) || 1, valorUnitario: Number(it.valorUnitario) || 0 })));
       setIaOk(true);
-    } catch (e: any) { setErroIA(e.message || 'Erro ao chamar IA'); }
+    } catch (e: any) {
+      // Mesmo se a IA falhar, nao bloqueia — registra o erro e segue
+      setErroIA('IA indisponivel (' + (e.message || 'erro') + ') — preencha manualmente ou gere a proposta em branco.');
+    }
     finally { setGerandoIA(false); }
   };
 
