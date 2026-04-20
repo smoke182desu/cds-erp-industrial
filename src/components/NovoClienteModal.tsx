@@ -12,7 +12,7 @@ interface NovoClienteModalProps {
 
 export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose }) => {
   const { adicionarCliente } = useERP();
-  const [activeTab, setActiveTab] = useState<'manual' | 'ia'>('ia');
+  const [activeTab, setActiveTab] = useState<'manual' | 'ia'>('ia');h
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,7 +40,7 @@ export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose }) =
       setNome(data.nome_fantasia || data.razao_social);
       setRazaoSocial(data.razao_social);
       setEndereco(`${data.logradouro}, ${data.numero} - ${data.bairro}, ${data.municipio} - ${data.uf}`);
-      if (data.ddd_telefone_1) setTelefone(data.ddd_telefone_1);
+      if (data.ddd_telefone_1) setTelefone(data.ddd_telefone_1.replace(/\D/g, ''));
     } catch (err) {
       setError('Não foi possível encontrar dados para este CNPJ.');
     } finally {
