@@ -685,10 +685,13 @@ function BuscaProduto({ onSelect }: { onSelect: (p: Produto) => void }) {
 // ---------- Formatters ----------
 function fmtTelefone(v: string): string {
   const d = String(v || '').replace(/\D/g, '');
-  if (d.length === 13) return `+${d.slice(0, 2)} (${d.slice(2, 4)}) ${d.slice(4, 9)}-${d.slice(9)}`;
-  if (d.length === 12) return `+${d.slice(0, 2)} (${d.slice(2, 4)}) ${d.slice(4, 8)}-${d.slice(8)}`;
+  // Formato brasileiro: apenas numeros que comecem com 55
+  if (d.length === 13 && d.startsWith('55')) return `+${d.slice(0, 2)} (${d.slice(2, 4)}) ${d.slice(4, 9)}-${d.slice(9)}`;
+  if (d.length === 12 && d.startsWith('55')) return `+${d.slice(0, 2)} (${d.slice(2, 4)}) ${d.slice(4, 8)}-${d.slice(8)}`;
   if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
   if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  // Internacional: exibe com prefixo + sem mascarar como BR
+  if (d.length >= 10) return `+${d}`;
   return v;
 }
 function fmtCNPJ(v: string): string {

@@ -3,13 +3,16 @@ import { phpFetch } from './_lib/php-api.js';
 function formatarLead(lead) {
     let nome = lead.nome || '';
     const tel = lead.telefone || '';
-    if (/^\d{10,}$/.test(nome)) {
-          if (nome.startsWith('55') && nome.length >= 12 && nome.length <= 13) {
-                  const ddd = nome.substring(2, 4);
-                  const num = nome.substring(4);
+    // Remove "+" inicial para teste numerico, garante sem duplicar prefixo
+    const nomeDigits = nome.replace(/^\+/, '');
+    if (/^\d{10,}$/.test(nomeDigits)) {
+          if (nomeDigits.startsWith('55') && nomeDigits.length >= 12 && nomeDigits.length <= 13) {
+                  const ddd = nomeDigits.substring(2, 4);
+                  const num = nomeDigits.substring(4);
                   nome = '(' + ddd + ') ' + num.substring(0, num.length - 4) + '-' + num.substring(num.length - 4);
           } else {
-                  nome = '+' + nome;
+                  // Internacional: garante prefixo "+" sem duplicar
+                  nome = '+' + nomeDigits;
           }
     }
     return { ...lead, nome, telefone: tel };

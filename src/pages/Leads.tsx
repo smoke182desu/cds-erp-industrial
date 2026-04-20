@@ -892,7 +892,7 @@ export function Leads() {
   const filtrados = leads.filter(l => {
     if (!busca) return true;
     const q = busca.toLowerCase();
-    return [l.nome, l.email, l.telefone, l.empresa].some(v => v?.toLowerCase().includes(q));
+    return [nomeExibido(l), l.nome, l.email, l.telefone, l.empresa].some(v => v?.toLowerCase().includes(q));
   });
   const totalVal = leads.filter(l => l.etapa !== 'fechado_perdido').reduce((s,l) => s+(l.valor||0), 0);
   const ganhos = leads.filter(l => l.etapa === 'fechado_ganho').length;
