@@ -15,8 +15,9 @@ function isLID(digits) {
 function formatarLead(lead) {
   let nome = lead.nome || '';
   const tel = lead.telefone || '';
-  // Fallback: se o registro tiver pushName do WhatsApp, usa como nome prioritario
-  const pushName = lead.push_name || lead.pushName || lead.nome_contato || '';
+  // Fallback: o PHP retorna contato_nome via subquery da tabela mensagens (pushName salvo pelo webhook).
+  // Tambem aceita variacoes: push_name, pushName, nome_contato
+  const pushName = lead.contato_nome || lead.push_name || lead.pushName || lead.nome_contato || '';
 
   // Remove "+" inicial para teste numerico
   const nomeDigits = nome.replace(/^\+/, '');
