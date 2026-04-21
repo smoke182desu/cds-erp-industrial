@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // CDS ERP Industrial — PHP REST API
 // Hosted: cdsind.com.br/erp-api/api.php
 // Auth: X-Api-Key header
@@ -256,6 +256,79 @@ if ($endpoint === 'proposals') {
         echo json_encode($s->fetchAll());
     }
     exit;
+}
+
+// ——— BACKFILL (corrige leads antigos com nome=LID usando pushName da tabela mensagens) ———
+if ($endpoint === 'backfill-lids') {
+  $db = getDB();
+  try {
+    // Atualiza leads onde nome parece LID (15+ digitos) e existe nome_contato nas mensagens
+    $sql = "UPDATE leads l
+            INNER JOIN (
+              SELECT remote_jid, nome_contato
+              FROM mensagens
+              WHERE nome_contato IS NOT NULL AND nome_contato <> ''
+              GROUP BY remote_jid, nome_contato
+            ) m ON m.remote_jid LIKE CONCAT('%', l.telefone, '%')
+            SET l.nome = m.nome_contato, l.atualizado_em = NOW()
+            WHERE (l.nome REGEXP '^[0-9]{14,}
+// mensagens cols: id, remote_jid, message_id, tipo, conteudo, lead_id, criado_em
+if ($endpoint === 'webhook') {
+    $b = body();
+    $db = getDB();
+    $event = $b['event'] ?? $b['type'] ?? '';
+
+    if (in_array($event, ['MESSAGES_UPSERT','messages.upsert','MESSAGE_RECEIVED'])) {
+        $msgs = $b['data'] ?? $b['messages'] ?? [$b];
+        foreach($msgs as $msg) {
+            $remoteJid = $msg['key']['remoteJid']??$msg['from']??'';
+            $tel = preg_replace('/\D/','',$remoteJid);
+            $conteudo = $msg['message']['conversation']??$msg['message']['extendedTextMessage']['text']??$msg['body']??'';
+            $tipo = ($msg['key']['fromMe']??false) ? 'saida' : 'entrada';
+            $pushName = $msg['pushName']??$msg['key']['pushName']??null;
+            if ($pushName) $pushName = trim($pushName);
+            if (!$tel || !$conteudo) continue;
+            $msgId = $msg['key']['id']??null;
+            // Dedup by message_id
+            if ($msgId) {
+                $ck=$db->prepare("SELECT id FROM mensagens WHERE message_id=? LIMIT 1"); $ck->execute([$msgId]);
+                if ($ck->fetchColumn()) continue;
+            }
+            try {
+                // Find lead_id + current nome by phone
+                $ls=$db->prepare("SELECT id, nome FROM leads WHERE telefone=? LIMIT 1"); $ls->execute([$tel]);
+                $leadRow=$ls->fetch();
+                $leadId = $leadRow ? $leadRow['id'] : null;
+                $currentNome = $leadRow ? ($leadRow['nome']??'') : '';
+                $id=uuid();
+                $db->prepare("INSERT INTO mensagens (id,remote_jid,conteudo,tipo,lead_id,message_id,nome_contato) VALUES (?,?,?,?,?,?,?)")
+                   ->execute([$id,$remoteJid,$conteudo,$tipo,$leadId,$msgId,$pushName]);
+                // Create or update lead with pushName
+                if (!$leadId) {
+                    $db->prepare("INSERT INTO leads (id,nome,telefone,origem,status_funil) VALUES (?,?,?,?,?)")
+                       ->execute([uuid(), $pushName ?: $tel, $tel, 'whatsapp', 'lead_novo']);
+                } elseif ($pushName && ($currentNome === $tel || $currentNome === '' || $currentNome === null)) {
+                    // Lead existia mas sem nome real (nome=telefone ou vazio) → atualizar com pushName
+                    $db->prepare("UPDATE leads SET nome=?, atualizado_em=NOW() WHERE id=?")->execute([$pushName, $leadId]);
+                }
+            } catch(Exception $e) {}
+        }
+    }
+    echo json_encode(['ok'=>true,'event'=>$event]);
+    exit;
+}
+
+http_response_code(400);
+echo json_encode(['error'=>'endpoint invalido','endpoints'=>['health','leads','clientes','mensagens','produtos','config','projects','proposals','webhook']]);
+ OR l.nome = l.telefone OR l.nome = '' OR l.nome IS NULL)
+              AND m.nome_contato IS NOT NULL";
+    $affected = $db->exec($sql);
+    echo json_encode(['ok'=>true,'updated'=>$affected,'msg'=>"Leads atualizados: $affected"]);
+  } catch(Exception $e) {
+    http_response_code(500);
+    echo json_encode(['error'=>$e->getMessage()]);
+  }
+  exit;
 }
 
 // ——— WEBHOOK (Evolution API) ———
