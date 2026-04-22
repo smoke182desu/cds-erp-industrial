@@ -77,51 +77,24 @@ function getDbAdmin() {
 }
 
 async function _recarregarCatalogoDoFirestore() {
-  const db = getDbAdmin();
-  if (!db) {
-    // Fallback REST (max 300 docs) — evita quebrar se admin nao estiver configurado
-    const url = `${BASE_URL}/produtos?pageSize=300&key=${FIREBASE_API_KEY}`;
-    const res = await axios.get(url, { timeout: 8000 });
-    return (res.data.documents || []).map(d => {
-      const f = d.fields || {};
-      const get = (k, fb = '') => f[k]?.stringValue ?? f[k]?.doubleValue ?? f[k]?.booleanValue ?? fb;
-      return {
-        id: d.name.split('/').pop(),
-        nome: get('nome'),
-        sku: get('sku'),
-        preco: Number(get('preco', 0)),
-        precoRegular: Number(get('precoRegular', 0)),
-        categoria: get('categoria'),
-        descricao: get('descricao'),
-        tipo: get('tipo'),
-      };
-    });
-  }
-  // firebase-admin: paginacao completa
-  const produtos = [];
-  let last = null;
-  do {
-    let q = db.collection('produtos').orderBy('__name__').limit(500);
-    if (last) q = q.startAfter(last);
-    const snap = await q.get();
-    for (const d of snap.docs) {
-      const data = d.data() || {};
-      produtos.push({
-        id: d.id,
-        nome: data.nome || '',
-        sku: data.sku || '',
-        preco: Number(data.preco || 0),
-        precoRegular: Number(data.precoRegular || 0),
-        categoria: data.categoria || '',
-        descricao: data.descricao || '',
-        tipo: data.tipo || '',
-      });
-    }
-    last = snap.docs.length === 500 ? snap.docs[snap.docs.length - 1] : null;
-  } while (last);
-  return produtos;
+  // Usa backend MySQL (HostGator) em vez de Firestore
+  const url = 'https://cdsind.com.br/erp-api/api.php?endpoint=produtos';
+  const res = await axios.get(url, {
+    headers: { 'X-Api-Key': 'cds-erp-2026-secure-key' },
+    timeout: 10000,
+  });
+  const lista = Array.isArray(res.data) ? res.data : (res.data.produtos || []);
+  return lista.map(p => ({
+    id:           p.id || '',
+    nome:         p.nome || '',
+    sku:          p.sku || '',
+    preco:        Number(p.preco || p.preco_venda || 0),
+    precoRegular: Number(p.preco_regular || p.preco || 0),
+    categoria:    p.categoria || p.category || '',
+    descricao:    p.descricao || p.description || '',
+    tipo:         p.tipo || p.type || '',
+  }));
 }
-
 // Carrega catalogo com stale-while-revalidate compartilhado via Upstash.
 async function carregarCatalogoCompleto() {
   try {
@@ -225,30 +198,22 @@ function extrairAlternativas(textoConversa) {
 }
 
 async function buscarMensagens(telefone) {
-  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents:runQuery?key=${FIREBASE_API_KEY}`;
-  const body = {
-    structuredQuery: {
-      from: [{ collectionId: 'mensagens' }],
-      where: { fieldFilter: { field: { fieldPath: 'telefone' }, op: 'EQUAL', value: { stringValue: telefone } } },
-      orderBy: [{ field: { fieldPath: 'criadoEm' }, direction: 'DESCENDING' }],
-      limit: 200,
-    },
-  };
-  const res = await axios.post(url, body);
-  return (res.data || [])
-    .filter(r => r.document)
-    .map(r => {
-      const f = r.document.fields || {};
-      return {
-        texto:    f.texto?.stringValue || f.mensagem?.stringValue || '',
-        criadoEm: f.criadoEm?.timestampValue || f.timestamp?.timestampValue || '',
-        tipo:     f.tipo?.stringValue || 'entrada',
-      };
-    })
+  // Usa backend MySQL (HostGator) em vez de Firestore
+  const url = `https://cdsind.com.br/erp-api/api.php?endpoint=mensagens&telefone=${encodeURIComponent(telefone)}`;
+  const res = await axios.get(url, {
+    headers: { 'X-Api-Key': 'cds-erp-2026-secure-key' },
+    timeout: 10000,
+  });
+  const msgs = Array.isArray(res.data) ? res.data : [];
+  return msgs
+    .map(m => ({
+      texto:    m.conteudo || m.texto || m.mensagem || '',
+      criadoEm: m.criado_em || m.criadoEm || '',
+      tipo:     m.tipo || 'entrada',
+    }))
     .filter(m => m.texto.trim())
     .sort((a, b) => new Date(a.criadoEm) - new Date(b.criadoEm));
 }
-
 function recortarConversaAtual(mensagens) {
   if (!mensagens.length) return [];
   // Se couber tudo no limite, usa tudo.
@@ -468,9 +433,9 @@ export default async function handler(req, res) {
           produtos: [],
           observacoes: '',
           resumoConversa: 'Sem mensagens recentes',
-          camposFaltando: ['conversa'],
-          confianca: 0,
-          prontoParaProposta: false,
+          camposFaltando: [],
+          confianca: 10,
+          prontoParaProposta: true,
         },
         totalMensagens: 0,
       });
@@ -578,7 +543,8 @@ export default async function handler(req, res) {
     const camposCriticos = ['nome', 'telefone'];
     const temProdutos = analise.produtos?.length > 0;
     const temCliente = camposCriticos.every(c => analise.cliente?.[c]);
-    analise.prontoParaProposta = temCliente && temProdutos && analise.confianca >= 50;
+    // Sempre libera proposta — usuario decide se dados sao suficientes
+    analise.prontoParaProposta = true;
 
     // Limpa camposFaltando: remove tudo que ja esta preenchido no cliente.
     // Evita bug de ter "telefone" como faltando quando temos o numero do WhatsApp.
