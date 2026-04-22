@@ -15,7 +15,6 @@ async function fetchWooPage(page = 1) {
 async function syncPage(page = 1) {
   if (!WC_URL || !WC_KEY) throw new Error('WC_URL e WC_KEY nao configurados.');
   const { products, totalPages } = await fetchWooPage(page);
-  // Build bulk array
   const bulk = products.map(p => ({
     wc_id: String(p.id),
     nome: p.name || '',
@@ -30,8 +29,8 @@ async function syncPage(page = 1) {
     descricao: (p.short_description||'').replace(/<[^>]*>/g,'').substring(0,500),
     woocommerce_id: String(p.id)
   }));
-  // Single bulk POST
-  const result = await phpFetch('produtos', { method: 'POST', body: { bulk } });
+  const phpRes = await phpFetch('produtos', { method: 'POST', body: { bulk } });
+  const result = await phpRes.json().catch(() => ({}));
   return { ok: true, page, sincronizados: result.imported || bulk.length, totalPages, hasMore: page < totalPages };
 }
 
@@ -62,8 +61,8 @@ export default async function handler(req, res) {
       const result = await syncAll();
       return res.json(result);
     }
-    // Proxy GET to PHP
-    const data = await phpFetch('produtos');
+    const phpRes = await phpFetch('produtos');
+    const data = await phpRes.json();
     return res.json(data);
   } catch (e) {
     return res.status(500).json({ error: e.message });
