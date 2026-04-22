@@ -447,7 +447,7 @@ export default function ConversaInteligente({
           <div className="border-t border-gray-100 p-3">
             <button
               onClick={() => onGerarProposta(analise)}
-              disabled={!analise.prontoParaProposta && confianca < 30}
+              disabled={false}
               className={`w-full py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all ${
                 analise.prontoParaProposta
                   ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'
@@ -456,10 +456,12 @@ export default function ConversaInteligente({
                     : 'bg-gray-100 text-gray-400 cursor-not-allowed'
               }`}
             >
-              {analise.prontoParaProposta ? (
+              {confianca >= 70 ? (
                 <><Sparkles className="w-4 h-4" /> Gerar Proposta</>
+              ) : confianca >= 30 ? (
+                <><ShoppingCart className="w-4 h-4" /> Gerar Proposta (parcial)</>
               ) : (
-                <><ShoppingCart className="w-4 h-4" /> {confianca >= 30 ? 'Gerar Proposta (parcial)' : 'Dados insuficientes'}</>
+                <><ShoppingCart className="w-4 h-4" /> Gerar Proposta</>
               )}
             </button>
             <p className="text-center text-[10px] text-gray-400 mt-1">
