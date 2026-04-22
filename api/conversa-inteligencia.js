@@ -579,12 +579,27 @@ export default async function handler(req, res) {
   } catch (err) {
     console.error('Erro conversa-inteligencia:', err.response?.data || err.message);
     const msg = err.message || 'Erro interno';
-    const status429 = err.response?.status === 429;
-    const status = status429 ? 429
-      : (msg.includes('GROQ_API_KEY') ? 503 : 500);
-    return res.status(status).json({
-      error: status429 ? 'Limite de requisicoes da IA atingido. Tente novamente em alguns segundos.' : msg,
-    });
+    const status429 = err.response?.status === 429 || msg.includes('429');
+    // Para 429: retorna 200 com proposta em branco editavel (nao bloqueia o usuario)
+    if (status429) {
+      return res.status(200).json({
+        ok: true,
+        analise: {
+          cliente: { nome: req.body?.leadNome || null, telefone: req.body?.telefone || null, empresa: req.body?.leadEmpresa || null },
+          produtos: [],
+          observacoes: '',
+          resumoConversa: 'IA temporariamente indisponivel (limite de uso). Preencha os dados da proposta manualmente.',
+          camposFaltando: [],
+          confianca: 5,
+          prontoParaProposta: true,
+        },
+        totalMensagens: 0,
+        mensagensUsadas: 0,
+        produtosCatalogo: 0,
+        aviso: 'Limite de requisicoes da IA atingido. Proposta em branco disponivel para preenchimento manual.',
+      });
+    }
+    return res.status(msg.includes('GROQ_API_KEY') ? 503 : 500).json({ error: msg });
   }
 }
 
