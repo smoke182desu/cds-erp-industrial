@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>NOVO ERP CDS INDUSTRIAL</title>
+</head>
+<body><h1>NOVO ERP CDS INDUSTRIAL</h1><p>Carregando...</p></body>
+</html><!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOVO ERP CDS INDUSTRIAL - Sistema de Gestao Completo</title>
+<style>
+:root{--azul:#1a4fba;--azul-escuro:#0d2d6e;--azul-claro:#3b74e8;--laranja:#f97316;--cinza:#f4f6fa;--cinza2:#e8ecf4;--texto:#1e2233;--texto2:#5a6170;--verde:#16a34a;--borda:#dde2ef;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',Arial,sans-serif;color:var(--texto);background:#fff;}
+a{text-decoration:none;color:inherit;}
+nav{position:sticky;top:0;z-index:100;background:#fff;border-bottom:1px solid var(--borda);display:flex;align-items:center;justify-content:space-between;padding:0 40px;height:64px;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.3rem;color:var(--azul-escuro);}
+.logo span{color:var(--laranja);}
+nav ul{list-style:none;display:flex;gap:28px;}
+nav ul li a{font-size:.95rem;color:var(--texto2);font-weight:500;}
+.nav-btns{display:flex;gap:12px;align-items:center;}
+.btn-login{font-size:.9rem;color:var(--azul);font-weight:600;padding:8px 18px;border-radius:6px;border:2px solid var(--azul);}
+.btn-trial{font-size:.9rem;background:var(--laranja);color:#fff;font-weight:700;padding:9px 20px;border-radius:6px;}
+.hero{background:linear-gradient(135deg,var(--azul-escuro),var(--azul),var(--azul-claro));color:#fff;text-align:center;padding:80px 20px 70px;}
+.hero h1{font-size:2.6rem;font-weight:800;max-width:760px;margin:0 auto 18px;line-height:1.2;}
+.hero p{font-size:1.1rem;max-width:680px;margin:0 auto 32px;opacity:.9;line-height:1.7;}
+.hero-features{display:flex;justify-content:center;flex-wrap:wrap;gap:14px;margin-bottom:36px;}
+.hero-features span{background:rgba(255,255,255,.15);border-radius:30px;padding:7px 18px;font-size:.88rem;font-weight:500;}
+.planos-topo{text-align:center;padding:50px 20px 0;}
+.planos-topo h2{font-size:2rem;font-weight:800;margin-bottom:10px;}
+.toggle-wrap{display:flex;justify-content:center;align-items:center;gap:14px;margin-bottom:44px;}
+.toggle{position:relative;width:52px;height:28px;}
+.toggle input{opacity:0;width:0;height:0;}
+.slider{position:absolute;inset:0;background:#ccc;border-radius:28px;cursor:pointer;transition:.3s;}
+.slider:before{content:'';position:absolute;width:20px;height:20px;left:4px;top:4px;background:#fff;border-radius:50%;transition:.3s;}
+input:checked+.slider{background:var(--azul);}
+input:checked+.slider:before{transform:translateX(24px);}
+.eco-tag{background:#dcfce7;color:var(--verde);font-size:.8rem;font-weight:700;padding:4px 10px;border-radius:20px;}
+.planos-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;max-width:1100px;margin:0 auto;padding:0 20px 60px;}
+.card{border:2px solid var(--borda);border-radius:16px;padding:30px 24px;background:#fff;display:flex;flex-direction:column;gap:10px;position:relative;}
+.card.destaque{border-color:var(--azul);box-shadow:0 6px 28px rgba(26,79,186,.18);}
+.badge-destaque{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:var(--azul);color:#fff;font-size:.78rem;font-weight:700;padding:4px 16px;border-radius:20px;white-space:nowrap;}
+.card h3{font-size:1.1rem;font-weight:800;color:var(--azul-escuro);}
+.card .subtitulo{font-size:.82rem;color:var(--texto2);line-height:1.5;}
+.card .preco{font-size:2rem;font-weight:800;margin:8px 0 2px;}
+.card .preco span{font-size:.9rem;font-weight:500;color:var(--texto2);}
+.card .pedidos{font-size:.83rem;color:var(--azul);font-weight:600;background:#eff4ff;padding:5px 10px;border-radius:6px;display:inline-block;}
+.btn-card{display:block;text-align:center;padding:11px;border-radius:8px;font-weight:700;font-size:.95rem;margin-top:6px;}
+.btn-card.outline{border:2px solid var(--azul);color:var(--azul);}
+.btn-card.filled{background:var(--azul);color:#fff;}
+.btn-card.laranja{background:var(--laranja);color:#fff;}
+.sem-cartao{font-size:.75rem;color:var(--texto2);text-align:center;}
+.divider{border:none;border-top:1px solid var(--cinza2);margin:6px 0;}
+.item-plano{display:flex;align-items:center;gap:8px;font-size:.83rem;}
+.item-plano .ico{color:var(--verde);}
+.label-tudo{font-size:.8rem;font-weight:700;color:var(--azul);margin:6px 0 2px;}
+.comparativo{background:var(--cinza);padding:60px 20px;}
+.comparativo h2{text-align:center;font-size:1.8rem;font-weight:800;margin-bottom:32px;}
+.tabela-wrap{max-width:1100px;margin:0 auto;overflow-x:auto;}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;}
+thead th{background:var(--azul-escuro);color:#fff;padding:14px 16px;font-size:.88rem;text-align:center;}
+thead th:first-child{text-align:left;}
+tbody tr:nth-child(even){background:#f8faff;}
+tbody td{padding:11px 16px;font-size:.85rem;border-bottom:1px solid var(--cinza2);}
+tbody td:not(:first-child){text-align:center;}
+tbody tr.grupo td{background:var(--azul-escuro);color:#fff;font-weight:700;}
+.check{color:var(--verde);}
+.cross{color:#dc2626;}
+.suporte{padding:60px 20px;text-align:center;}
+.suporte h2{font-size:1.8rem;font-weight:800;margin-bottom:12px;}
+.suporte-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:900px;margin:0 auto;}
+.suporte-card{background:var(--cinza);border-radius:12px;padding:28px 22px;text-align:left;}
+.suporte-card h4{font-size:1rem;font-weight:700;margin-bottom:6px;}
+.tag-pago{font-size:.72rem;background:#fef3c7;color:#b45309;padding:2px 8px;border-radius:10px;font-weight:700;margin-left:6px;}
+.depo{background:var(--azul-escuro);color:#fff;padding:60px 20px;text-align:center;}
+.depo h2{font-size:1.8rem;font-weight:800;margin-bottom:36px;}
+.depo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;max-width:800px;margin:0 auto;}
+.depo-card{background:rgba(255,255,255,.1);border-radius:14px;padding:28px;text-align:left;}
+.faq{padding:60px 20px;max-width:780px;margin:0 auto;}
+.faq h2{font-size:1.8rem;font-weight:800;margin-bottom:28px;text-align:center;}
+details{border:1px solid var(--borda);border-radius:10px;margin-bottom:10px;}
+details summary{padding:16px 20px;cursor:pointer;font-weight:600;font-size:.95rem;display:flex;justify-content:space-between;align-items:center;}
+details summary::after{content:'+';color:var(--azul);}
+details[open] summary::after{content:'-';}
+details p{padding:0 20px 16px;color:var(--texto2);font-size:.9rem;line-height:1.7;}
+.cta-final{background:linear-gradient(135deg,var(--azul),var(--azul-claro));color:#fff;text-align:center;padding:70px 20px;}
+.cta-final h2{font-size:2rem;font-weight:800;margin-bottom:12px;}
+.cta-btns{display:flex;justify-content:center;gap:16px;flex-wrap:wrap;}
+.cta-btns a{padding:13px 30px;border-radius:8px;font-weight:700;}
+.a1{background:#fff;color:var(--azul);}
+.a2{border:2px solid rgba(255,255,255,.6);color:#fff;}
+footer{background:#0d1a36;color:#aab0c2;padding:48px 40px 28px;}
+.footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:32px;max-width:1100px;margin:0 auto 36px;}
+.footer-col h5{color:#fff;font-size:.88rem;font-weight:700;margin-bottom:14px;}
+.footer-col ul{list-style:none;display:flex;flex-direction:column;gap:8px;}
+.footer-col ul li a{font-size:.83rem;color:#aab0c2;}
+.footer-bottom{border-top:1px solid #1e2d50;padding-top:20px;font-size:.78rem;text-align:center;max-width:1100px;margin:0 auto;}
+@media(max-width:900px){.planos-grid{grid-template-columns:repeat(2,1fr);}.suporte-grid{grid-template-columns:1fr 1fr;}.depo-grid{grid-template-columns:1fr;}.footer-grid{grid-template-columns:1fr 1fr;}nav ul{display:none;}}
+@media(max-width:600px){.planos-grid{grid-template-columns:1fr;}.hero h1{font-size:1.8rem;}.footer-grid{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<nav>
+<div class="logo">CDS<span>ERP</span></div>
+<ul><li><a href="#">Plataforma</a></li><li><a href="#">Solucoes</a></li><li><a href="#">Recursos</a></li><li><a href="#planos">Precos</a></li><li><a href="#contato">Contato</a></li></ul>
+<div class="nav-btns"><a href="#" class="btn-login">Login</a><a href="#" class="btn-trial">Teste gratis</a></div>
+</nav>
+<section class="hero">
+<h1>Planos que acompanham cada etapa do seu crescimento</h1>
+<p>Integre mais de 400 canais, venda com emissao de nota fiscal ilimitada, envie pedidos com impressao automatica de etiquetas e automatize sua conciliacao bancaria.</p>
+<div class="hero-features"><span>+400 integracoes</span><span>NF-e ilimitada</span><span>Gestao de estoque</span><span>Conta Digital PJ</span><span>Dashboards em tempo real</span></div>
+<a href="#planos" class="btn-trial" style="font-size:1rem;padding:13px 32px;">Ver planos</a>
+</section>
+<section id="planos">
+<div class="planos-topo">
+<h2>Escolha o plano ideal para sua empresa</h2>
+<p>Do inicio ao crescimento acelerado, temos o plano certo para cada fase.</p>
+<div class="toggle-wrap"><span>Mensal</span><label class="toggle"><input type="checkbox" id="toggle-anual"><span class="slider"></span></label><span>Anual <span class="eco-tag">Economize ate R$ 1.300</span></span></div>
+</div>
+<div class="planos-grid">
+<div class="card">
+<h3>Cobalto</h3><p class="subtitulo">Para quem esta comecando a vender e precisa organizar a operacao.</p>
+<div class="preco" id="preco-cobalto">R$ 55<span>/mes</span></div>
+<div class="pedidos">Ate 200 pedidos/mes</div>
+<a href="#" class="btn-card outline">Comece gratis</a><p class="sem-cartao">Sem cartao de credito</p><hr class="divider">
+<div class="item-plano"><span class="ico">v</span> 5 usuarios</div>
+<div class="item-plano"><span class="ico">v</span> 60 MB de dados</div>
+<div class="item-plano"><span class="ico">v</span> 1,2 GB de arquivos</div>
+<div class="item-plano"><span class="ico">v</span> Gestao automatica de estoque</div>
+<div class="item-plano"><span class="ico">v</span> Gestao de vendas multicanal</div>
+<div class="item-plano"><span class="ico">v</span> Contas a pagar e receber</div>
+<div class="item-plano"><span class="ico">v</span> Meios de pagamento e Conta PJ</div>
+<div class="item-plano"><span class="ico">v</span> Notas fiscais ilimitadas</div>
+</div>
+<div class="card destaque">
+<div class="badge-destaque">Recomendado</div>
+<h3>Titanio</h3><p class="subtitulo">Para quem busca crescer e automatizar processos alem do essencial.</p>
+<div class="preco" id="preco-titanio">R$ 120<span>/mes</span></div>
+<div class="pedidos">Ate 500 a 5.000 pedidos</div>
+<a href="#" class="btn-card filled">Comece gratis</a><p class="sem-cartao">Sem cartao de credito</p><hr class="divider">
+<div class="item-plano"><span class="ico">v</span> 50 usuarios</div>
+<div class="item-plano"><span class="ico">v</span> 120 MB de dados</div>
+<div class="item-plano"><span class="ico">v</span> 3 GB de arquivos</div>
+<div class="label-tudo">Tudo do Cobalto, mais:</div>
+<div class="item-plano"><span class="ico">v</span> Gestao financeira completa</div>
+<div class="item-plano"><span class="ico">v</span> Dashboards Meu Negocio</div>
+<div class="item-plano"><span class="ico">v</span> Multiempresas ate 3 contas</div>
+<div class="item-plano"><span class="ico">v</span> Emissao de boletos</div>
+</div>
+<div class="card">
+<h3>Diamante</h3><p class="subtitulo">Para quem busca maxima eficiencia operacional e gestao avancada.</p>
+<div class="preco" id="preco-diamante">R$ 650<span>/mes</span></div>
+<div class="pedidos">Ate 10.000 pedidos/mes</div>
+<a href="#" class="btn-card outline">Comece gratis</a><p class="sem-cartao">Sem cartao de credito</p><hr class="divider">
+<div class="item-plano"><span class="ico">v</span> 100 usuarios</div>
+<div class="item-plano"><span class="ico">v</span> 1,8 GB de dados</div>
+<div class="item-plano"><span class="ico">v</span> 45 GB de arquivos</div>
+<div class="label-tudo">Tudo do Titanio, mais:</div>
+<div class="item-plano"><span class="ico">v</span> Dashboards ate 5 contas</div>
+<div class="item-plano"><span class="ico">v</span> Multiempresas ate 5 contas</div>
+<div class="item-plano"><span class="ico">v</span> Suporte Premium incluso</div>
+<div class="item-plano"><span class="ico">v</span> Gerente de Conta Digital</div>
+</div>
+<div class="card">
+<h3>Elite</h3><p class="subtitulo">Para empresas que exigem flexibilidade tecnica e integracoes avancadas.</p>
+<div class="preco">Personalizado</div>
+<div class="pedidos">Pedidos personalizaveis</div>
+<a href="#contato" class="btn-card laranja">Fale com vendas</a><p class="sem-cartao">Sem cartao de credito</p><hr class="divider">
+<div class="item-plano"><span class="ico">v</span> Usuarios ilimitados</div>
+<div class="item-plano"><span class="ico">v</span> 5 GB de dados</div>
+<div class="item-plano"><span class="ico">v</span> 50 GB de arquivos</div>
+<div class="label-tudo">Tudo do Diamante, mais:</div>
+<div class="item-plano"><span class="ico">v</span> Multiempresas ate 7 contas</div>
+<div class="item-plano"><span class="ico">v</span> API flexivel ate 8x maior</div>
+<div class="item-plano"><span class="ico">v</span> Gerente de Conta dedicado</div>
+<div class="item-plano"><span class="ico">v</span> Segregacao de requisicoes</div>
+</div>
+</div>
+</section>
+<section class="comparativo">
+<h2>Compare todos os recursos</h2>
+<div class="tabela-wrap"><table>
+<thead><tr><th>Recurso</th><th>Cobalto R$ 55</th><th>Titanio R$ 120</th><th>Diamante R$ 650</th><th>Elite</th></tr></thead>
+<tbody>
+<tr class="grupo"><td colspan="5">Usuarios e Armazenamento</td></tr>
+<tr><td>Usuarios</td><td>5</td><td>50</td><td>100</td><td>Ilimitados</td></tr>
+<tr><td>Dados</td><td>60 MB</td><td>120 MB+</td><td>1,8 GB</td><td>5 GB</td></tr>
+<tr><td>Arquivos</td><td>1,2 GB</td><td>3 GB+</td><td>45 GB</td><td>50 GB</td></tr>
+<tr><td>API</td><td>Padrao</td><td>Padrao</td><td>Padrao</td><td>Flexivel 8x</td></tr>
+<tr class="grupo"><td colspan="5">Atendimento</td></tr>
+<tr><td>Central de Ajuda</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr><td>Suporte telefone</td><td class="cross">X</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr><td>Suporte Premium</td><td class="cross">X</td><td>+R$ 150/mes</td><td class="check">Incluso</td><td class="check">Incluso</td></tr>
+<tr><td>Gerente de Relacionamento</td><td class="cross">X</td><td class="cross">X</td><td class="cross">X</td><td class="check">OK</td></tr>
+<tr class="grupo"><td colspan="5">Gestao de Estoque</td></tr>
+<tr><td>Controle completo</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr><td>Multiplos depositos</td><td class="cross">X</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr><td>Controle de lotes</td><td class="cross">X</td><td class="cross">X</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr><td>Multiempresas</td><td class="cross">X</td><td>Ate 3</td><td>Ate 5</td><td>Ate 7</td></tr>
+<tr class="grupo"><td colspan="5">Notas Fiscais</td></tr>
+<tr><td>NF-e ilimitada</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr><td>NFS-e Servicos</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr><td>Importacao CT-e</td><td class="cross">X</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr class="grupo"><td colspan="5">Gestao Financeira</td></tr>
+<tr><td>Contas a pagar e receber</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr><td>Emissao de boletos</td><td class="cross">X</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr><td>DRE e Fluxo de caixa</td><td class="cross">X</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr class="grupo"><td colspan="5">Meios de Pagamento</td></tr>
+<tr><td>PIX</td><td>Gratis</td><td>Gratis</td><td>Gratis</td><td>Gratis</td></tr>
+<tr><td>QR Code</td><td>R$ 0,90/tx</td><td>R$ 0,50/tx</td><td>R$ 0,30/tx</td><td>R$ 0,30/tx</td></tr>
+<tr><td>Boletos</td><td>R$ 1,95</td><td>R$ 1,55</td><td>R$ 1,30</td><td>R$ 1,30</td></tr>
+<tr class="grupo"><td colspan="5">Servicos e Producao</td></tr>
+<tr><td>Ordens de servico</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr><td>Contratos de servico</td><td class="cross">X</td><td class="check">OK</td><td class="check">OK</td><td class="check">OK</td></tr>
+<tr><td>Ordens de producao</td><td class="cross">X</td><td class="cross">X</td><td class="check">OK</td><td class="check">OK</td></tr>
+</tbody></table></div>
+</section>
+<section class="suporte">
+<h2>Conte com nosso apoio para chegar mais longe</h2>
+<p>Tudo que voce precisa para configurar e evoluir com o CDS ERP.</p>
+<div class="suporte-grid">
+<div class="suporte-card"><h4>Suporte Humanizado</h4><p>Fale com nosso time via telefone, e-mail ou ticket.</p></div>
+<div class="suporte-card"><h4>CDS Academy</h4><p>Trilhas de aprendizado gratuitas para o ERP.</p></div>
+<div class="suporte-card"><h4>Treinamento ao Vivo</h4><p>Aulas ao vivo e gratuitas para sua equipe.</p></div>
+<div class="suporte-card"><h4>Central de Ajuda</h4><p>Artigos e tutoriais para configurar cada detalhe.</p></div>
+<div class="suporte-card"><h4>Implantacao Guiada <span class="tag-pago">Pago</span></h4><p>Sessao online com especialistas.</p></div>
+<div class="suporte-card"><h4>Parceiros Certificados</h4><p>Consultores para otimizar seus processos.</p></div>
+</div>
+</section>
+<section class="depo">
+<h2>+300.000 usuarios evoluem com o CDS ERP todos os dias</h2>
+<div class="depo-grid">
+<div class="depo-card"><p>O CDS ERP descomplicou minha gestao desde o inicio, organizando processos e otimizando o tempo da equipe.</p><strong>Leticia Vaz</strong><div style="font-size:.78rem;opacity:.7">Fundadora - LV Store</div></div>
+<div class="depo-card"><p>O CDS ERP e essencial para nossa operacao, integrando e-commerce, marketplaces, estoque e notas fiscais com eficiencia.</p><strong>Andrei Amaral</strong><div style="font-size:.78rem;opacity:.7">Fundador - Secret Group</div></div>
+</div>
+</section>
+<section class="faq">
+<h2>Perguntas frequentes</h2>
+<details><summary>Como sei qual e o melhor plano?</summary><p>Os planos sao definidos pela quantidade de pedidos importados por mes. Planos superiores oferecem multiempresas, suporte premium e API maior.</p></details>
+<details><summary>Existe custo de instalacao?</summary><p>Nao. Voce pode comecar gratuitamente sem cartao de credito.</p></details>
+<details><summary>Posso testar antes de decidir?</summary><p>Sim! Todos os planos oferecem periodo de teste gratuito.</p></details>
+<details><summary>Consigo usar mais de um CNPJ?</summary><p>Sim, com Titanio ate 3, Diamante ate 5 e Elite ate 7 contas.</p></details>
+<details><summary>Como mudo de plano?</summary><p>Diretamente pelo painel do CDS ERP, secao Assinatura.</p></details>
+<details><summary>Ha custo adicional por integracao ou notas?</summary><p>Nao. Tudo incluso no plano.</p></details>
+</section>
+<section class="cta-final" id="contato">
+<h2>Escale suas vendas com o CDS ERP</h2>
+<p>Comece gratuitamente e veja sua empresa crescer.</p>
+<div class="cta-btns"><a href="#" class="a1">Teste gratis agora</a><a href="#" class="a2">Escolha o plano ideal</a></div>
+</section>
+<footer>
+<div class="footer-grid">
+<div><div class="logo" style="color:#fff">CDS<span>ERP</span></div><p>O ERP industrial mais completo do Brasil. cdsind.com.br</p></div>
+<div class="footer-col"><h5>Plataforma</h5><ul><li><a href="#">Conheca o CDS ERP</a></li><li><a href="#planos">Planos e Precos</a></li><li><a href="#">Seguranca</a></li><li><a href="#">Termos de Uso</a></li></ul></div>
+<div class="footer-col"><h5>Usando o CDS ERP</h5><ul><li><a href="#">CDS Academy</a></li><li><a href="#">Implantacao Guiada</a></li><li><a href="#">Central de Ajuda</a></li><li><a href="#">Blog</a></li></ul></div>
+<div class="footer-col"><h5>Solucoes</h5><ul><li><a href="#">Vendas Online</a></li><li><a href="#">Loja Fisica PDV</a></li><li><a href="#">Industrias</a></li><li><a href="#">Gestao Financeira</a></li></ul></div>
+</div>
+<div class="footer-bottom">CDS Industrial - 2025 - Todos os direitos reservados - cdsind.com.br</div>
+</footer>
+<script>
+const tg=document.getElementById('toggle-anual');
+const pr={c:{m:'R$ 55',a:'R$ 46'},t:{m:'R$ 120',a:'R$ 100'},d:{m:'R$ 650',a:'R$ 542'}};
+tg.addEventListener('change',()=>{const tp=tg.checked?'a':'m';document.getElementById('preco-cobalto').innerHTML=pr.c[tp]+'<span>/mes</span>';document.getElementById('preco-titanio').innerHTML=pr.t[tp]+'<span>/mes</span>';document.getElementById('preco-diamante').innerHTML=pr.d[tp]+'<span>/mes</span>';});
+document.querySelectorAll('a[href^="#"]').forEach(a=>{a.addEventListener('click',e=>{const el=document.getElementById(a.getAttribute('href').slice(1));if(el){e.preventDefault();el.scrollIntoView({behavior:'smooth'});}});});
+</script>
+</body>
+</html>
