@@ -63,13 +63,13 @@ export default async function handler(req, res) {
 
     // 2. Se for mensagem de entrada, garante que o lead existe (Upsert)
     if (!norm.fromMe && norm.pushName) {
-      await upsertByField('leads', 'telefone', {
+      await upsertByField('leads', {
         telefone: norm.numero,
         nome: norm.pushName,
         etapa: 'lead_novo',
         ultima_mensagem: norm.texto,
         atualizado_em: new Date().toISOString()
-      });
+      }, 'telefone');
     }
 
     return res.status(200).json({ ok: true });

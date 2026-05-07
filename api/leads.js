@@ -100,12 +100,12 @@ async function atualizarLead(id, body) {
   if (body.valor !== undefined) updates.valor = Number(body.valor) || 0;
   if (body.pedidoId !== undefined) updates.pedido_id = String(body.pedidoId);
   
-  await update(TABLE, id, updates);
+  await update(TABLE, 'id', id, updates);
   return id;
 }
 
 async function deletarLead(id) {
-  await remove(TABLE, id);
+  await remove(TABLE, 'id', id);
   return id;
 }
 

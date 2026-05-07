@@ -114,10 +114,10 @@ async function handleEvolutionDiag(req, res) {
 
   const headers = { apikey: EVO_KEY, 'Content-Type': 'application/json' };
 
-  // POST com action=backfill puxa todas as conversas abertas e importa pro CRM
+  // POST com action=backfill puxa todas as conversas abertas e importa pro Supabase
   if (String(req.query.action||'').toLowerCase() === 'backfill') {
-    const maxChats = parseInt(req.query.maxChats||'100', 10);
-    const maxMsgs = parseInt(req.query.maxMsgs||'50', 10);
+    const maxChats = parseInt(req.query.maxChats||'500', 10);
+    const maxMsgs = parseInt(req.query.maxMsgs||'100', 10);
     const offset = parseInt(req.query.offset||'0', 10);
     try {
       const chatsRes = await fetch(`${EVO_URL}/chat/findChats/${EVO_INSTANCE}`, {
@@ -126,13 +126,15 @@ async function handleEvolutionDiag(req, res) {
       const chats = await chatsRes.json();
       if (!Array.isArray(chats)) return res.status(500).json({ error: 'chats not array', got: chats });
 
-      const results = { totalChats: chats.length, offset, processedChats: 0, totalMessages: 0, importedMessages: 0, errors: [] };
+      const results = { totalChats: chats.length, offset, processedChats: 0, totalMessages: 0, importedMessages: 0, leadsCreated: 0, errors: [] };
       const limited = chats.slice(offset, offset + maxChats);
 
       for (const chat of limited) {
         const remoteJid = chat.remoteJid || chat.id;
         if (!remoteJid || remoteJid.includes('@g.us')) continue; 
         results.processedChats++;
+        const numero = remoteJid.split('@')[0];
+        const pushName = chat.pushName || chat.name || '';
         
         try {
           const mRes = await fetch(`${EVO_URL}/chat/findMessages/${EVO_INSTANCE}`, {
@@ -144,17 +146,48 @@ async function handleEvolutionDiag(req, res) {
           if (!msgs.length) continue;
           results.totalMessages += msgs.length;
           
-          // Enviar para o novo webhook local
-          const payload = { event: 'messages.upsert', instance: EVO_INSTANCE, data: msgs };
-          const pRes = await fetch(`${LOCAL_WEBHOOK}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-webhook-secret': WEBHOOK_SECRET },
-            body: JSON.stringify(payload)
-          });
-          if (pRes.ok) results.importedMessages += msgs.length;
-          else { const t = await pRes.text(); results.errors.push({ remoteJid, status: pRes.status, body: t.slice(0,200) }); }
+          // Batch insert direto no Supabase
+          const rows = msgs.map(m => {
+            const key = m.key || {};
+            const message = m.message || {};
+            const texto = message.conversation 
+              || message.extendedTextMessage?.text 
+              || m.content || m.text || '';
+            const ts = m.messageTimestamp 
+              ? new Date(Number(m.messageTimestamp) * 1000).toISOString()
+              : new Date().toISOString();
+            return {
+              telefone: numero,
+              texto: texto,
+              tipo: key.fromMe ? 'saida' : 'entrada',
+              remetente: key.fromMe ? 'CDS' : (m.pushName || pushName || numero),
+              criado_em: ts
+            };
+          }).filter(r => r.texto.trim());
+
+          if (rows.length) {
+            const batchRes = await sb(`/mensagens`, { method: 'POST', body: rows });
+            if (batchRes.ok) {
+              results.importedMessages += rows.length;
+            } else {
+              results.errors.push({ numero, status: batchRes.status, body: JSON.stringify(batchRes.body).slice(0,200) });
+            }
+          }
+
+          // Upsert lead
+          if (pushName) {
+            const lastMsg = rows[rows.length - 1];
+            await upsertByField('leads', {
+              telefone: numero,
+              nome: pushName,
+              etapa: 'lead_novo',
+              ultima_mensagem: lastMsg?.texto || '',
+              atualizado_em: new Date().toISOString()
+            }, 'telefone');
+            results.leadsCreated++;
+          }
         } catch (e) {
-          results.errors.push({ remoteJid, err: e.message });
+          results.errors.push({ numero, err: e.message });
         }
       }
       return res.status(200).json({ ok: true, action: 'backfill', ...results });
