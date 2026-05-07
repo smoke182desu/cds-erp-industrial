@@ -1,5 +1,5 @@
 // api/data.js — dispatcher unificado para clientes/projects/calculadora via Supabase
-import { selectAll, insert, upsertByField } from './_lib/supabase.js';
+import { sb, selectAll, insert, upsertByField } from './_lib/supabase.js';
 
 // ——— clientes ———
 async function handleClientes(req, res) {
