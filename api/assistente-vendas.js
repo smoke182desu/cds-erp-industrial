@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { phpFetch } from './_lib/php-api.js';
+import { selectAll } from './_lib/supabase.js';
 
 const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
@@ -34,12 +34,11 @@ async function buscarContextoExtra() {
 
 async function buscarMensagens(telefone) {
   try {
-    const r = await phpFetch('mensagens', { params: { telefone } });
-    const data = await r.json();
+    const data = await selectAll('mensagens', { filters: { telefone: `eq.${telefone}` } });
     const rows = Array.isArray(data) ? data : [];
     return rows.map(row => ({
       tipo: row.tipo || 'entrada',
-      texto: row.conteudo || '',
+      texto: row.texto || row.conteudo || '',
     })).filter(m => m.texto.trim());
   } catch {
     return [];
@@ -107,4 +106,4 @@ export default async function handler(req, res) {
     console.error('[assistente-vendas] erro:', e.message);
     return res.status(500).json({ error: e.message || 'Erro interno' });
   }
-    }
+}

@@ -1,9 +1,10 @@
 import axios from 'axios';
-import { phpFetch } from './_lib/php-api.js';
+import { selectAll, upsertByField } from './_lib/supabase.js';
 
 const WC_URL = process.env.WC_URL || 'https://lojamgincorporadora.com.br';
 const WC_KEY = process.env.WC_KEY || 'ck_2e4e7c0f24b4915bd4ba0e5a84e7e929e26d7197';
 const WC_SECRET = process.env.WC_SECRET || 'cs_f0cbc8cd0b20aa7a5e9aed546aaaf3b4c74cb83a';
+const TABLE = 'produtos';
 
 async function fetchWooPage(page = 1) {
   const url = WC_URL + '/wp-json/wc/v3/products?per_page=100&page=' + page
@@ -29,9 +30,17 @@ async function syncPage(page = 1) {
     descricao: (p.short_description||'').replace(/<[^>]*>/g,'').substring(0,500),
     woocommerce_id: String(p.id)
   }));
-  const phpRes = await phpFetch('produtos', { method: 'POST', body: { bulk } });
-  const result = await phpRes.json().catch(() => ({}));
-  return { ok: true, page, sincronizados: result.imported || bulk.length, totalPages, hasMore: page < totalPages };
+  
+  // Upsert no Supabase usando woocommerce_id como chave de conflito
+  const result = await upsertByField(TABLE, bulk, 'woocommerce_id');
+  
+  return { 
+    ok: true, 
+    page, 
+    sincronizados: Array.isArray(result) ? result.length : (result ? 1 : 0), 
+    totalPages, 
+    hasMore: page < totalPages 
+  };
 }
 
 async function syncAll() {
@@ -61,10 +70,12 @@ export default async function handler(req, res) {
       const result = await syncAll();
       return res.json(result);
     }
-    const phpRes = await phpFetch('produtos');
-    const data = await phpRes.json();
+    
+    // Lista produtos do Supabase
+    const data = await selectAll(TABLE, { orderBy: 'nome' });
     return res.json(data);
   } catch (e) {
+    console.error('[produtos] erro:', e.message);
     return res.status(500).json({ error: e.message });
   }
 }

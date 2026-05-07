@@ -1,40 +1,9 @@
 // api/leads.js
 // CRUD de leads para o funil CRM
-// Backend: Supabase (Postgres + PostgREST) — usa env vars SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY
-// que ja estao configuradas no projeto Vercel (cds-erp-industrial).
-//
-// Substituiu PHP/MySQL (HostGator estava 500) e nao depende mais de Firestore (sem quota free apertada).
-// Sem dependencia npm nova: usa fetch() puro. Service role key bypassa RLS.
-//
-// Mantem formatarLead (isLID, telefone BR, pushName fallback) e formato array direto pro frontend.
+import { selectAll, insert, update, remove } from './_lib/supabase.js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SECRET_KEY ||
-  '';
 const TABLE = 'leads';
 const WEBHOOK_SECRET = process.env.LEADS_WEBHOOK_SECRET || 'cds-leads-secret';
-
-// ---------- helpers HTTP Supabase ----------
-async function sb(path, opts = {}) {
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
-    throw new Error('Supabase env vars ausentes (SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)');
-  }
-  const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1${path}`;
-  const headers = {
-    'apikey': SUPABASE_KEY,
-    'Authorization': `Bearer ${SUPABASE_KEY}`,
-    'Content-Type': 'application/json',
-    'Prefer': opts.prefer || 'return=representation',
-    ...(opts.headers || {}),
-  };
-  const r = await fetch(url, { ...opts, headers });
-  const text = await r.text();
-  let body = null;
-  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
-  return { ok: r.ok, status: r.status, body };
-}
 
 // ---------- LID detection / formatacao de nome ----------
 function isLID(digits) {
@@ -95,24 +64,13 @@ function normalizar(lead) {
 
 // ---------- CRUD ----------
 async function listarLeads() {
-  // Tenta criado_em desc; se a coluna nao existir, faz fallback sem ordenacao.
-  let { ok, status, body } = await sb(
-    `/${TABLE}?select=*&order=criado_em.desc&limit=300`
-  );
-  if (!ok && status === 400) {
-    const fallback = await sb(`/${TABLE}?select=*&order=created_at.desc&limit=300`);
-    ok = fallback.ok; status = fallback.status; body = fallback.body;
-  }
-  if (!ok && status === 400) {
-    const fallback2 = await sb(`/${TABLE}?select=*&limit=300`);
-    ok = fallback2.ok; status = fallback2.status; body = fallback2.body;
-  }
-  if (!ok) {
-    // Se a tabela nao existe (404) ou erro, devolve vazio — CRM mostra 0 leads em vez de quebrar.
-    console.warn('[leads] supabase select falhou:', status, body);
+  try {
+    const data = await selectAll(TABLE, { orderBy: 'criado_em', limit: 300 });
+    return data;
+  } catch (err) {
+    console.warn('[leads] select falhou:', err.message);
     return [];
   }
-  return Array.isArray(body) ? body : [];
 }
 
 async function inserirLead(data) {
@@ -129,9 +87,7 @@ async function inserirLead(data) {
     cliente_id: data.clienteId || '',
     observacoes: data.observacoes || '',
   };
-  const r = await sb(`/${TABLE}`, { method: 'POST', body: JSON.stringify(payload) });
-  if (!r.ok) throw new Error(`insert falhou ${r.status}: ${JSON.stringify(r.body).slice(0, 200)}`);
-  const inserted = Array.isArray(r.body) ? r.body[0] : r.body;
+  const inserted = await insert(TABLE, payload);
   return inserted?.id;
 }
 
@@ -143,17 +99,13 @@ async function atualizarLead(id, body) {
   }
   if (body.valor !== undefined) updates.valor = Number(body.valor) || 0;
   if (body.pedidoId !== undefined) updates.pedido_id = String(body.pedidoId);
-  const r = await sb(`/${TABLE}?id=eq.${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(updates),
-  });
-  if (!r.ok) throw new Error(`update falhou ${r.status}: ${JSON.stringify(r.body).slice(0, 200)}`);
+  
+  await update(TABLE, id, updates);
   return id;
 }
 
 async function deletarLead(id) {
-  const r = await sb(`/${TABLE}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!r.ok) throw new Error(`delete falhou ${r.status}`);
+  await remove(TABLE, id);
   return id;
 }
 

@@ -1,17 +1,10 @@
 import axios from 'axios';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-import { withCacheSWR } from './_lib/cache.js';
+import { selectAll } from './_lib/supabase.js';
 
 // Groq - modelo gratuito (14.400 req/dia)
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 
-const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || 'AIzaSyCr_o3dEiSExaafhkP57SpTf1wTLQSIiMs';
-const PROJECT_ID      = process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0908948294';
-const DATABASE_ID     = process.env.FIREBASE_DATABASE_ID || 'ai-studio-eb49ab80-1528-409e-b7d5-b3e84e7a358d';
 const GROQ_API_KEY    = process.env.GROQ_API_KEY || '';
-
-const BASE_URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents`;
 
 // Mensagens enviadas ao LLM: ultimas N + algumas do inicio (onde o cliente costuma mencionar o produto).
 const MAX_MSGS_CONTEXTO   = 100;
@@ -21,12 +14,9 @@ const MSGS_INICIAIS       = 15;
 // Max de produtos pre-filtrados enviados ao prompt da IA
 const MAX_PRODUTOS_PROMPT = 30;
 
-// Cache do catalogo compartilhado entre instancias (Upstash Redis).
-// - Fresco 10min.
-// - Stale 24h — serve mesmo se Firestore cair ou quota esgotar.
-const CACHE_KEY_CATALOGO = 'produtos:catalogo';
-const FRESH_S = 10 * 60;
-const STALE_S = 24 * 60 * 60;
+// Cache do catalogo compartilhado entre instancias (TTL 10 min)
+const CACHE_TTL_MS = 10 * 60 * 1000;
+let CACHE_PRODUTOS = { data: null, ts: 0 };
 
 // Stopwords PT-BR (nao usadas como keyword de busca)
 const STOPWORDS = new Set([
@@ -60,58 +50,30 @@ function extrairPalavrasChave(texto) {
   return [...new Set(palavras)];
 }
 
-// Inicializa firebase-admin apenas se FIREBASE_SERVICE_ACCOUNT disponivel
-function getDbAdmin() {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!raw) return null;
-  try {
-    if (!getApps().length) {
-      const serviceAccount = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      initializeApp({ credential: cert(serviceAccount), projectId: serviceAccount.project_id });
-    }
-    const databaseId = process.env.FIRESTORE_DATABASE_ID || DATABASE_ID;
-    return getFirestore(undefined, databaseId);
-  } catch {
-    return null;
-  }
-}
-
-async function _recarregarCatalogoDoFirestore() {
-  // Usa backend MySQL (HostGator) em vez de Firestore
-  const url = 'https://cdsind.com.br/erp-api/api.php?endpoint=produtos';
-  const res = await axios.get(url, {
-    headers: { 'X-Api-Key': 'cds-erp-2026-secure-key' },
-    timeout: 10000,
-  });
-  const lista = Array.isArray(res.data) ? res.data : (res.data.produtos || []);
-  return lista.map(p => ({
-    id:           p.id || '',
-    nome:         p.nome || '',
-    sku:          p.sku || '',
-    preco:        Number(p.preco || p.preco_venda || 0),
-    precoRegular: Number(p.preco_regular || p.preco || 0),
-    categoria:    p.categoria || p.category || '',
-    descricao:    p.descricao || p.description || '',
-    tipo:         p.tipo || p.type || '',
-  }));
-}
-// Carrega catalogo com stale-while-revalidate compartilhado via Upstash.
 async function carregarCatalogoCompleto() {
+  const agora = Date.now();
+  if (CACHE_PRODUTOS.data && (agora - CACHE_PRODUTOS.ts) < CACHE_TTL_MS) return CACHE_PRODUTOS.data;
+
   try {
-    const produtos = await withCacheSWR(
-      CACHE_KEY_CATALOGO,
-      FRESH_S,
-      STALE_S,
-      _recarregarCatalogoDoFirestore
-    );
-    return produtos || [];
-  } catch {
+    const data = await selectAll('produtos', { limit: 1000, orderBy: 'nome' });
+    const produtos = data.map(p => ({
+      id:           p.id || '',
+      nome:         p.nome || '',
+      sku:          p.sku || '',
+      preco:        Number(p.preco || 0),
+      precoRegular: Number(p.preco_regular || p.precoRegular || 0),
+      categoria:    p.categoria || '',
+      descricao:    p.descricao || '',
+    }));
+    CACHE_PRODUTOS = { data: produtos, ts: agora };
+    return produtos;
+  } catch (err) {
+    console.warn('[conversa-inteligencia] falha ao carregar catalogo:', err.message);
     return [];
   }
 }
 
 // Pontua cada produto baseado em quantas palavras-chave da conversa matcham
-// Score = soma de matches em nome (peso 3) + sku (peso 4) + categoria (peso 2) + descricao (peso 1)
 function filtrarProdutosRelevantes(produtos, palavrasChave, limite = MAX_PRODUTOS_PROMPT) {
   if (!palavrasChave.length || !produtos.length) return [];
 
@@ -137,34 +99,27 @@ function filtrarProdutosRelevantes(produtos, palavrasChave, limite = MAX_PRODUTO
     .map(s => s.p);
 }
 
-// ---------- Extrai alternativas (telefones, emails, cnpjs, cpfs, ceps) da conversa bruta ----------
-// Usado no frontend: clicando no campo o usuario ve essas opcoes alem do valor extraido pela IA.
+// Extrai alternativas (telefones, emails, cnpjs, cpfs, ceps) da conversa bruta
 function extrairAlternativas(textoConversa) {
   const texto = String(textoConversa || '');
 
-  // Telefones BR: captura "janelas" de digitos com separadores comuns (SEM ponto — ponto e de CPF/CNPJ).
-  // Aceita fixo (10), celular (11), com/sem DDI 55 (12/13).
   const telefones = new Set();
   const reTel = /\+?[\d][\d\s\-\(\)]{8,18}\d/g;
   let m;
   while ((m = reTel.exec(texto)) !== null) {
     let digits = m[0].replace(/\D/g, '');
-    // Remove DDI 55 se presente e reduz para 10 ou 11 digitos
     if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
       digits = digits.slice(2);
     }
-    // DDDs no Brasil sao 11-99 (nunca comecam com 0). Ignora CPF (11 dig) acidental.
     if (digits.length < 10 || digits.length > 11) continue;
     if (digits.startsWith('0')) continue;
     telefones.add(digits);
   }
 
-  // Emails
   const emails = new Set();
   const reEmail = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
   while ((m = reEmail.exec(texto)) !== null) emails.add(m[0].toLowerCase());
 
-  // CNPJs (com ou sem mascara)
   const cnpjs = new Set();
   const reCNPJ = /\b(\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2})\b/g;
   while ((m = reCNPJ.exec(texto)) !== null) {
@@ -172,7 +127,6 @@ function extrairAlternativas(textoConversa) {
     if (c.length === 14) cnpjs.add(c);
   }
 
-  // CPFs (com mascara — sem mascara conflitaria com outros numeros)
   const cpfs = new Set();
   const reCPF = /\b(\d{3}\.\d{3}\.\d{3}-\d{2})\b/g;
   while ((m = reCPF.exec(texto)) !== null) {
@@ -180,7 +134,6 @@ function extrairAlternativas(textoConversa) {
     if (c.length === 11) cpfs.add(c);
   }
 
-  // CEPs
   const ceps = new Set();
   const reCEP = /\b(\d{5}-?\d{3})\b/g;
   while ((m = reCEP.exec(texto)) !== null) {
@@ -198,41 +151,34 @@ function extrairAlternativas(textoConversa) {
 }
 
 async function buscarMensagens(telefone) {
-  // Usa backend MySQL (HostGator) em vez de Firestore
-  const url = `https://cdsind.com.br/erp-api/api.php?endpoint=mensagens&telefone=${encodeURIComponent(telefone)}`;
-  const res = await axios.get(url, {
-    headers: { 'X-Api-Key': 'cds-erp-2026-secure-key' },
-    timeout: 10000,
-  });
-  const msgs = Array.isArray(res.data) ? res.data : [];
-  return msgs
-    .map(m => ({
-      texto:    m.conteudo || m.texto || m.mensagem || '',
-      criadoEm: m.criado_em || m.criadoEm || '',
+  try {
+    const data = await selectAll('mensagens', { filters: { telefone: `eq.${telefone}` }, orderBy: 'criado_em', limit: 200 });
+    return data.map(m => ({
+      texto:    m.texto || m.conteudo || '',
+      criadoEm: m.criado_em || m.created_at || '',
       tipo:     m.tipo || 'entrada',
     }))
     .filter(m => m.texto.trim())
     .sort((a, b) => new Date(a.criadoEm) - new Date(b.criadoEm));
+  } catch (err) {
+    console.error('[conversa-inteligencia] erro buscarMensagens:', err.message);
+    return [];
+  }
 }
+
 function recortarConversaAtual(mensagens) {
   if (!mensagens.length) return [];
-  // Se couber tudo no limite, usa tudo.
   if (mensagens.length <= MAX_MSGS_CONTEXTO) return mensagens;
-  // Caso contrario, pega primeiras N_INICIAIS (onde cliente menciona o produto) + ultimas restantes.
   const iniciais = mensagens.slice(0, MSGS_INICIAIS);
   const finaisQtd = MAX_MSGS_CONTEXTO - MSGS_INICIAIS;
   const finais = mensagens.slice(-finaisQtd);
   return [...iniciais, ...finais];
 }
 
-// Busca produtos relevantes para a conversa (pre-filtro por palavras-chave)
-// Nao manda 3668 produtos pra IA — so os que realmente podem casar com o que o cliente falou.
 async function buscarProdutosRelevantes(conversaTexto) {
   try {
-    const [todos, palavrasChave] = await Promise.all([
-      carregarCatalogoCompleto(),
-      Promise.resolve(extrairPalavrasChave(conversaTexto)),
-    ]);
+    const todos = await carregarCatalogoCompleto();
+    const palavrasChave = extrairPalavrasChave(conversaTexto);
     if (!todos.length) return { produtos: [], totalCatalogo: 0, palavrasChave };
     const relevantes = filtrarProdutosRelevantes(todos, palavrasChave, MAX_PRODUTOS_PROMPT);
     return { produtos: relevantes, totalCatalogo: todos.length, palavrasChave };
@@ -286,8 +232,6 @@ async function consultarCEP(cep) {
 async function analisarConversaComGroq(conversa, produtosRelevantes, leadInfo, metaCatalogo = {}) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no servidor');
 
-  // IMPORTANTE: produtosRelevantes ja vem pre-filtrado (max 30) por palavras-chave da conversa.
-  // Nao mandamos 3668 produtos pra IA — so os que realmente podem casar com o que o cliente falou.
   const catalogoResumo = produtosRelevantes.length > 0
     ? produtosRelevantes.map(p => {
         const preco = Number(p.preco || p.precoRegular || 0);
@@ -315,56 +259,31 @@ ${leadContexto}
 
 REGRAS:
 0. NUNCA INVENTE PRODUTOS. Se o cliente nao mencionou um produto especifico, deixe "produtos" como array vazio []. Nao escolha um produto aleatorio do catalogo.
-1. Se o cliente mencionar um produto que EXISTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true). Faca o match literal pelo que foi dito (ex: "tampa de casa de maquina 110cm" -> procure "Tampa Casa de Maquinas 110cm").
-2. Se o produto NAO existe no catalogo mas foi claramente mencionado, marque "produtoPadrao": false e estime o preco se mencionado.
-3. IMPORTANTE - NOME DO PRODUTO: Inclua TODAS as especificacoes mencionadas na conversa (capacidade em litros, dimensoes em mm/cm/m, material como inox/aco carbono/galvanizado, espessura, tipo). Exemplo: "Container 1200L Inox 304" ou "Tampa para casa de maquinas 110cm". NUNCA use nomes genericos como apenas "container" ou "tampa" sem as specs/dimensoes.
-4. DESCRICAO DO PRODUTO: Coloque todos os detalhes tecnicos: dimensoes, material, acabamento, capacidade, quantidade, norma se aplicavel.
-5. Extraia CNPJ, CPF, CEP, endereco, inscricao estadual se mencionados no texto.
-6. DADOS ESTRUTURADOS: Se o cliente enviar uma mensagem em formato "Nome: X / Cpf: Y / Endereço: Z / Cep: W", EXTRAIA TODOS esses campos literalmente. O nome do cliente (pessoa fisica) vai em cliente.nome; CPF em cliente.cpf; parseia o endereco em logradouro/numero/bairro/cidade/uf; CEP em cliente.cep.
-7. DIFERENCA CNPJ DO VENDEDOR vs CLIENTE: Se o VENDEDOR mandar "Nossa chave pix CNPJ: X", esse CNPJ e da CDS Industrial (vendedor), NAO do cliente. NAO preencha cliente.cnpj com esse CNPJ.
+1. Se o cliente mencionar um produto que EXISTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true). Faca the match literal pelo que foi dito.
+2. Se o produto NAO existe no catalogo mas foi claramente mencionado, marque "produtoPadrao": false.
+3. NOME DO PRODUTO: Inclua TODAS as especificacoes mencionadas.
+4. DESCRICAO DO PRODUTO: Coloque todos os detalhes tecnicos.
+5. Extraia CNPJ, CPF, CEP, endereco, inscricao estadual se mencionados.
+6. DADOS ESTRUTURADOS: Se o cliente enviar uma mensagem em formato estruturado, EXTRAIA TODOS esses campos.
+7. CNPJ DA EMPRESA vs CLIENTE: Se for o CNPJ da CDS, ignore para o cliente.
 8. Se dados estao incompletos, liste em "camposFaltando".
-9. Avalie "confianca" de 0 a 100 (quao completos estao os dados para gerar proposta).
-10. CLIENTE: O campo "empresa" e para o nome da empresa/CNPJ. O campo "nome" e para a PESSOA de contato (responsavel). Se o lead ja tem dados no CRM, use como base, mas PREFIRA o nome da pessoa que o cliente informou explicitamente na conversa ("Nome: Zilmaria...") sobre o nome do lead no CRM.
+9. Avalie "confianca" de 0 a 100.
+10. CLIENTE: Prefira o nome que o cliente informou na conversa.
 
 Conversa:
 ${conversa}
 
 Responda APENAS com JSON valido no formato:
 {
-  "cliente": {
-    "nome": "string - nome da PESSOA de contato",
-    "empresa": "string - nome da EMPRESA ou null se pessoa fisica",
-    "telefone": "string ou null",
-    "email": "string ou null",
-    "cnpj": "string ou null",
-    "cpf": "string ou null",
-    "inscricaoEstadual": "string ou null",
-    "cep": "string ou null",
-    "logradouro": "string ou null",
-    "numero": "string ou null",
-    "bairro": "string ou null",
-    "cidade": "string ou null",
-    "uf": "string ou null"
-  },
-  "produtos": [
-    {
-      "nome": "string DETALHADO com specs (ex: Container 1200L Inox 304)",
-      "descricao": "descricao tecnica completa com dimensoes/material/capacidade",
-      "quantidade": 1,
-      "unidade": "UN",
-      "precoUnitario": 0,
-      "produtoPadrao": true,
-      "skuCatalogo": "string ou null"
-    }
-  ],
+  "cliente": { "nome": "string", "empresa": "string", "telefone": "string", "email": "string", "cnpj": "string", "cpf": "string", "inscricaoEstadual": "string", "cep": "string", "logradouro": "string", "numero": "string", "bairro": "string", "cidade": "string", "uf": "string" },
+  "produtos": [ { "nome": "string", "descricao": "string", "quantidade": 1, "unidade": "UN", "precoUnitario": 0, "produtoPadrao": true, "skuCatalogo": "string" } ],
   "observacoes": "string",
-  "resumoConversa": "string curto do contexto da negociacao",
-  "camposFaltando": ["nome do campo que falta"],
-  "confianca": 0,
-  "prontoParaProposta": false
+  "resumoConversa": "string",
+  "camposFaltando": ["string"],
+  "confianca": number,
+  "prontoParaProposta": boolean
 }`;
 
-  // Retry em 429 (rate limit). Ate 3 tentativas com backoff.
   const body = {
     model: GROQ_MODEL,
     messages: [{ role: 'user', content: prompt }],
@@ -376,34 +295,26 @@ Responda APENAS com JSON valido no formato:
     'Authorization': `Bearer ${GROQ_API_KEY}`,
     'Content-Type': 'application/json',
   };
+  
   let response;
-  let ultimoErro;
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     try {
-      response = await axios.post(
-        'https://api.groq.com/openai/v1/chat/completions',
-        body,
-        { headers, timeout: 30000 }
-      );
+      response = await axios.post('https://api.groq.com/openai/v1/chat/completions', body, { headers, timeout: 30000 });
       break;
     } catch (err) {
-      ultimoErro = err;
       if (err.response?.status === 429 && tentativa < 3) {
-        const retryAfter = Number(err.response?.headers?.['retry-after']) || (tentativa * 2);
-        await new Promise(r => setTimeout(r, Math.min(retryAfter * 1000, 10000)));
+        await new Promise(r => setTimeout(r, tentativa * 2000));
         continue;
       }
       throw err;
     }
   }
-  if (!response) throw ultimoErro;
 
   const text = response.data?.choices?.[0]?.message?.content || '';
-  const clean = text.replace(/\`\`\`json\s*/g, '').replace(/\`\`\`\s*/g, '').trim();
   try {
-    return JSON.parse(clean);
+    return JSON.parse(text);
   } catch {
-    const match = clean.match(/\{[\s\S]*\}/);
+    const match = text.match(/\{[\s\S]*\}/);
     if (match) return JSON.parse(match[0]);
     throw new Error('Groq retornou resposta invalida.');
   }
@@ -423,8 +334,8 @@ export default async function handler(req, res) {
 
   try {
     const mensagens = await buscarMensagens(tel);
-
     const conversaAtual = recortarConversaAtual(mensagens);
+    
     if (!conversaAtual.length) {
       return res.status(200).json({
         ok: true,
@@ -445,22 +356,16 @@ export default async function handler(req, res) {
       .map(m => `[${m.tipo === 'saida' ? 'VENDEDOR' : 'CLIENTE'}]: ${m.texto}`)
       .join('\n');
 
-    // Pre-filtra produtos por palavras-chave de TODAS as msgs do cliente (nao so das recortadas).
-    // Cliente costuma mencionar o produto na primeira msg — nao pode ser perdido no slice.
     const textoCliente = mensagens
       .filter(m => m.tipo === 'entrada')
       .map(m => m.texto)
       .join(' ') || conversaFormatada;
+      
     const { produtos: produtosRelevantes, totalCatalogo, palavrasChave } =
       await buscarProdutosRelevantes(textoCliente);
 
-    // Extrai alternativas (telefones, emails, cnpjs, cpfs, ceps) de TODAS as msgs do cliente.
-    // Nao filtra por recorte — se o dado veio ha dias, ainda queremos oferecer como alternativa.
     const alternativas = extrairAlternativas(textoCliente);
-    // Garante que o numero do WhatsApp esteja na lista de telefones alternativos (primeiro)
-    if (tel && !alternativas.telefones.includes(tel)) {
-      alternativas.telefones.unshift(tel);
-    }
+    if (tel && !alternativas.telefones.includes(tel)) alternativas.telefones.unshift(tel);
 
     const analise = await analisarConversaComGroq(conversaFormatada, produtosRelevantes, {
       nome: leadNome || '',
@@ -469,17 +374,13 @@ export default async function handler(req, res) {
 
     if (!analise.cliente.nome && leadNome) analise.cliente.nome = leadNome;
     if (!analise.cliente.empresa && leadEmpresa) analise.cliente.empresa = leadEmpresa;
-    // Telefone JA temos — e o numero do WhatsApp. Sempre preenche.
     if (!analise.cliente.telefone) analise.cliente.telefone = tel;
-    // Se a IA nao captou CPF/CNPJ/CEP mas o regex encontrou, usa
     if (!analise.cliente.cpf && alternativas.cpfs[0])  analise.cliente.cpf = alternativas.cpfs[0];
     if (!analise.cliente.cnpj && alternativas.cnpjs[0]) analise.cliente.cnpj = alternativas.cnpjs[0];
     if (!analise.cliente.cep && alternativas.ceps[0])   analise.cliente.cep = alternativas.ceps[0];
     if (!analise.cliente.email && alternativas.emails[0]) analise.cliente.email = alternativas.emails[0];
 
     let dadosCNPJ = null;
-    let dadosCEP = null;
-
     if (analise.cliente?.cnpj) {
       dadosCNPJ = await consultarCNPJ(analise.cliente.cnpj);
       if (dadosCNPJ) {
@@ -494,112 +395,66 @@ export default async function handler(req, res) {
           analise.cliente.uf = dadosCNPJ.uf;
           analise.cliente.cep = dadosCNPJ.cep;
         }
-        const preenchidos = ['cnpj', 'inscricaoEstadual', 'logradouro', 'cidade', 'uf', 'cep'];
-        analise.camposFaltando = (analise.camposFaltando || []).filter(c => !preenchidos.includes(c));
       }
     }
 
     if (analise.cliente?.cep && !dadosCNPJ) {
-      dadosCEP = await consultarCEP(analise.cliente.cep);
-      if (dadosCEP) {
-        analise.cliente.logradouro = analise.cliente.logradouro || dadosCEP.logradouro;
-        analise.cliente.bairro = analise.cliente.bairro || dadosCEP.bairro;
-        analise.cliente.cidade = analise.cliente.cidade || dadosCEP.cidade;
-        analise.cliente.uf = analise.cliente.uf || dadosCEP.uf;
+      const dCEP = await consultarCEP(analise.cliente.cep);
+      if (dCEP) {
+        analise.cliente.logradouro = analise.cliente.logradouro || dCEP.logradouro;
+        analise.cliente.bairro = analise.cliente.bairro || dCEP.bairro;
+        analise.cliente.cidade = analise.cliente.cidade || dCEP.cidade;
+        analise.cliente.uf = analise.cliente.uf || dCEP.uf;
       }
     }
 
     if (analise.produtos?.length) {
-      // Usa catalogo completo cacheado para post-match (nao so os 30 relevantes)
       const catalogoCompleto = CACHE_PRODUTOS.data || produtosRelevantes;
       for (const item of analise.produtos) {
-        if (item.produtoPadrao && item.skuCatalogo) {
-          const match = catalogoCompleto.find(p =>
-            p.sku === item.skuCatalogo || (p.nome || '').toLowerCase() === (item.nome || '').toLowerCase()
-          );
-          if (match) {
-            item.precoUnitario = item.precoUnitario || match.preco || match.precoRegular;
-            item.produtoId = match.id;
-            item.skuCatalogo = match.sku;
-          }
-        } else if (item.produtoPadrao) {
-          const nomeItem = (item.nome || '').toLowerCase();
-          const match = catalogoCompleto.find(p => {
-            const n = (p.nome || '').toLowerCase();
-            return n && (n.includes(nomeItem) || nomeItem.includes(n));
-          });
-          if (match) {
-            item.precoUnitario = item.precoUnitario || match.preco || match.precoRegular;
-            item.produtoId = match.id;
-            item.skuCatalogo = match.sku;
-            item.nomeCatalogo = match.nome;
-          } else {
-            item.produtoPadrao = false;
-          }
+        const nomeItem = (item.nome || '').toLowerCase();
+        const match = catalogoCompleto.find(p => {
+          const n = (p.nome || '').toLowerCase();
+          return n && (n.includes(nomeItem) || nomeItem.includes(n));
+        });
+        if (match) {
+          item.precoUnitario = item.precoUnitario || match.preco || match.precoRegular;
+          item.produtoId = match.id;
+          item.skuCatalogo = match.sku;
+          item.nomeCatalogo = match.nome;
         }
       }
     }
 
-    const camposCriticos = ['nome', 'telefone'];
-    const temProdutos = analise.produtos?.length > 0;
-    const temCliente = camposCriticos.every(c => analise.cliente?.[c]);
-    // Sempre libera proposta — usuario decide se dados sao suficientes
     analise.prontoParaProposta = true;
-
-    // Limpa camposFaltando: remove tudo que ja esta preenchido no cliente.
-    // Evita bug de ter "telefone" como faltando quando temos o numero do WhatsApp.
-    if (Array.isArray(analise.camposFaltando)) {
-      const ehPessoaFisica = !!analise.cliente?.cpf && !analise.cliente?.cnpj;
-      const ehPessoaJuridica = !!analise.cliente?.cnpj;
-      analise.camposFaltando = analise.camposFaltando.filter(c => {
-        const v = analise.cliente?.[c];
-        if (v && String(v).trim() !== '') return false;
-        // Pessoa fisica nao precisa de CNPJ/IE
-        if (ehPessoaFisica && (c === 'cnpj' || c === 'inscricaoEstadual')) return false;
-        // Pessoa juridica nao precisa de CPF
-        if (ehPessoaJuridica && c === 'cpf') return false;
-        return true;
-      });
-    }
 
     return res.status(200).json({
       ok: true,
       analise,
-      alternativas, // { telefones, emails, cnpjs, cpfs, ceps } — usado pelo frontend como opcoes alternativas
+      alternativas,
       totalMensagens: mensagens.length,
       mensagensUsadas: conversaAtual.length,
       produtosCatalogo: totalCatalogo,
       produtosRelevantes: produtosRelevantes.length,
       palavrasChaveBusca: palavrasChave.slice(0, 20),
-      dadosCNPJ: dadosCNPJ ? true : false,
-      dadosCEP: dadosCEP ? true : false,
       modelo: GROQ_MODEL,
     });
 
   } catch (err) {
-    console.error('Erro conversa-inteligencia:', err.response?.data || err.message);
+    console.error('Erro conversa-inteligencia:', err.message);
     const msg = err.message || 'Erro interno';
-    const status429 = err.response?.status === 429 || msg.includes('429');
-    // Para 429: retorna 200 com proposta em branco editavel (nao bloqueia o usuario)
-    if (status429) {
+    if (msg.includes('429')) {
       return res.status(200).json({
         ok: true,
         analise: {
-          cliente: { nome: req.body?.leadNome || null, telefone: req.body?.telefone || null, empresa: req.body?.leadEmpresa || null },
+          cliente: { nome: leadNome || null, telefone: tel, empresa: leadEmpresa || null },
           produtos: [],
-          observacoes: '',
-          resumoConversa: 'IA temporariamente indisponivel (limite de uso). Preencha os dados da proposta manualmente.',
-          camposFaltando: [],
+          resumoConversa: 'IA temporariamente indisponivel (limite de uso).',
           confianca: 5,
           prontoParaProposta: true,
         },
-        totalMensagens: 0,
-        mensagensUsadas: 0,
-        produtosCatalogo: 0,
-        aviso: 'Limite de requisicoes da IA atingido. Proposta em branco disponivel para preenchimento manual.',
+        aviso: 'Limite de requisicoes da IA atingido.',
       });
     }
-    return res.status(msg.includes('GROQ_API_KEY') ? 503 : 500).json({ error: msg });
+    return res.status(500).json({ error: msg });
   }
 }
-

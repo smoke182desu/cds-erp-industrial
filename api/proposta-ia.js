@@ -1,13 +1,9 @@
 import axios from 'axios';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { selectAll } from './_lib/supabase.js';
 
 // Groq - modelo gratuito (14.400 req/dia)
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 
-const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || 'AIzaSyCr_o3dEiSExaafhkP57SpTf1wTLQSIiMs';
-const PROJECT_ID       = process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0908948294';
-const DATABASE_ID      = process.env.FIREBASE_DATABASE_ID || 'ai-studio-eb49ab80-1528-409e-b7d5-b3e84e7a358d';
 const GROQ_API_KEY     = process.env.GROQ_API_KEY || '';
 
 // Tempo em minutos sem trocar mensagem que consideramos ser "outra conversa anterior".
@@ -47,73 +43,27 @@ function extrairPalavrasChave(texto) {
   return [...new Set(palavras)];
 }
 
-function getDbAdmin() {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!raw) return null;
-  try {
-    if (!getApps().length) {
-      const serviceAccount = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      initializeApp({ credential: cert(serviceAccount), projectId: serviceAccount.project_id });
-    }
-    const databaseId = process.env.FIRESTORE_DATABASE_ID || DATABASE_ID;
-    return getFirestore(undefined, databaseId);
-  } catch {
-    return null;
-  }
-}
-
 async function carregarCatalogoCompleto() {
   const agora = Date.now();
   if (CACHE_PRODUTOS.data && (agora - CACHE_PRODUTOS.ts) < CACHE_TTL_MS) return CACHE_PRODUTOS.data;
 
-  const db = getDbAdmin();
-  if (!db) {
-    try {
-      const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/produtos?pageSize=300&key=${FIREBASE_API_KEY}`;
-      const res = await axios.get(url, { timeout: 8000 });
-      const produtos = (res.data.documents || []).map(d => {
-        const f = d.fields || {};
-        const get = (k, fb = '') => f[k]?.stringValue ?? f[k]?.doubleValue ?? f[k]?.booleanValue ?? fb;
-        return {
-          id: d.name.split('/').pop(),
-          nome: get('nome'),
-          sku: get('sku'),
-          preco: Number(get('preco', 0)),
-          precoRegular: Number(get('precoRegular', 0)),
-          categoria: get('categoria'),
-          descricao: get('descricao'),
-        };
-      });
-      CACHE_PRODUTOS = { data: produtos, ts: agora };
-      return produtos;
-    } catch {
-      return [];
-    }
+  try {
+    const data = await selectAll('produtos', { limit: 1000, orderBy: 'nome' });
+    const produtos = data.map(p => ({
+      id: p.id,
+      nome: p.nome || '',
+      sku: p.sku || '',
+      preco: Number(p.preco || 0),
+      precoRegular: Number(p.preco_regular || p.precoRegular || 0),
+      categoria: p.categoria || '',
+      descricao: p.descricao || '',
+    }));
+    CACHE_PRODUTOS = { data: produtos, ts: agora };
+    return produtos;
+  } catch (err) {
+    console.warn('[proposta-ia] falha ao carregar catalogo:', err.message);
+    return [];
   }
-
-  const produtos = [];
-  let last = null;
-  do {
-    let q = db.collection('produtos').orderBy('__name__').limit(500);
-    if (last) q = q.startAfter(last);
-    const snap = await q.get();
-    for (const d of snap.docs) {
-      const data = d.data() || {};
-      produtos.push({
-        id: d.id,
-        nome: data.nome || '',
-        sku: data.sku || '',
-        preco: Number(data.preco || 0),
-        precoRegular: Number(data.precoRegular || 0),
-        categoria: data.categoria || '',
-        descricao: data.descricao || '',
-      });
-    }
-    last = snap.docs.length === 500 ? snap.docs[snap.docs.length - 1] : null;
-  } while (last);
-
-  CACHE_PRODUTOS = { data: produtos, ts: agora };
-  return produtos;
 }
 
 function filtrarProdutosRelevantes(produtos, palavrasChave, limite = MAX_PRODUTOS_PROMPT) {
@@ -152,28 +102,23 @@ async function buscarProdutosRelevantes(textoConversa) {
 }
 
 async function buscarMensagens(telefone) {
-  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents:runQuery?key=${FIREBASE_API_KEY}`;
-  const body = {
-    structuredQuery: {
-      from: [{ collectionId: 'mensagens' }],
-      where: { fieldFilter: { field: { fieldPath: 'telefone' }, op: 'EQUAL', value: { stringValue: telefone } } },
-      orderBy: [{ field: { fieldPath: 'criadoEm' }, direction: 'DESCENDING' }],
-      limit: 50,
-    },
-  };
-  const res = await axios.post(url, body);
-  return (res.data || [])
-    .filter(r => r.document)
-    .map(r => {
-      const f = r.document.fields || {};
-      return {
-        texto:    f.texto?.stringValue || f.mensagem?.stringValue || '',
-        criadoEm: f.criadoEm?.timestampValue || f.timestamp?.timestampValue || '',
-        tipo:     f.tipo?.stringValue || 'entrada',
-      };
-    })
+  try {
+    const data = await selectAll('mensagens', {
+      filters: { telefone: `eq.${telefone}` },
+      orderBy: 'criado_em',
+      limit: 50
+    });
+    return data.map(m => ({
+      texto: m.texto || m.conteudo || '',
+      criadoEm: m.criado_em || m.created_at || '',
+      tipo: m.tipo || 'entrada',
+    }))
     .filter(m => m.texto.trim())
     .sort((a, b) => new Date(a.criadoEm) - new Date(b.criadoEm));
+  } catch (err) {
+    console.error('[proposta-ia] erro buscarMensagens:', err.message);
+    return [];
+  }
 }
 
 function recortarConversaAtual(mensagens) {

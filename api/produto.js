@@ -1,18 +1,9 @@
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+// api/produto.js — CRUD de produto unitario no Supabase
+import { selectAll, insert, update, remove, upsertByField } from './_lib/supabase.js';
+
+const TABLE = 'produtos';
 
 export const config = { maxDuration: 30 };
-
-function getDb() {
-  if (!getApps().length) {
-    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (!raw) throw new Error('FIREBASE_SERVICE_ACCOUNT nao configurado.');
-    const serviceAccount = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    initializeApp({ credential: cert(serviceAccount), projectId: serviceAccount.project_id });
-  }
-  const databaseId = process.env.FIRESTORE_DATABASE_ID || 'ai-studio-eb49ab80-1528-409e-b7d5-b3e84e7a358d';
-  return getFirestore(undefined, databaseId);
-}
 
 // Validações básicas fiscais
 function validar(produto) {
@@ -28,22 +19,22 @@ function validar(produto) {
 // Defaults para MEI (CSOSN 102, PIS/COFINS isento)
 function aplicarDefaultsMEI(p) {
   return {
-    origemMercadoria: '0',
-    csosnIcms: '102',
-    aliqIcms: 0,
-    cstPis: '49',
-    aliqPis: 0,
-    cstCofins: '49',
-    aliqCofins: 0,
-    unidade: 'UN',
-    cfopDentro: '5102',
-    cfopFora: '6102',
-    gerenciarEstoque: true,
-    emEstoque: true,
-    estoque: 0,
-    preco: 0,
-    precoRegular: 0,
-    custo: 0,
+    origem_mercadoria: p.origemMercadoria || '0',
+    csosn_icms: p.csosnIcms || '102',
+    aliq_icms: Number(p.aliqIcms) || 0,
+    cst_pis: p.cstPis || '49',
+    aliq_pis: Number(p.aliqPis) || 0,
+    cst_cofins: p.cstCofins || '49',
+    aliq_cofins: Number(p.aliqCofins) || 0,
+    unidade: p.unidade || 'UN',
+    cfop_dentro: p.cfopDentro || '5102',
+    cfop_fora: p.cfopFora || '6102',
+    gerenciar_estoque: p.gerenciarEstoque ?? true,
+    em_estoque: p.emEstoque ?? true,
+    estoque: Number(p.estoque) || 0,
+    preco: Number(p.preco) || 0,
+    preco_regular: Number(p.precoRegular) || 0,
+    custo: Number(p.custo) || 0,
     ...p,
   };
 }
@@ -57,70 +48,6 @@ function normalizar(p) {
   return nc;
 }
 
-function docIdFor(p) {
-  if (p.wcId) return `wc_${p.wcId}`;
-  if (p.sku) return `sku_${p.sku.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-  return null;
-}
-
-// Normaliza string para comparação (sem acento, minúsculo, só alfanumérico)
-function makeSearchTokens(nome = '', sku = '', categoria = '') {
-  return [...new Set(
-    `${nome} ${sku} ${categoria}`
-      .toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter(t => t.length >= 2)
-  )];
-}
-
-function normStr(s) {
-  return String(s || '').toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-// Busca produto existente no catálogo por SKU ou nome similar
-async function buscarProdutoExistente(db, produto) {
-  const col = db.collection('produtos');
-
-  // 1. Busca por SKU exato
-  if (produto.sku) {
-    const docId = docIdFor(produto);
-    if (docId) {
-      const snap = await col.doc(docId).get();
-      if (snap.exists) return { id: snap.id, ...snap.data() };
-    }
-    // Busca por campo sku
-    const bySku = await col.where('sku', '==', produto.sku).limit(1).get();
-    if (!bySku.empty) {
-      const doc = bySku.docs[0];
-      return { id: doc.id, ...doc.data() };
-    }
-  }
-
-  // 2. Busca por nome exato (case insensitive)
-  if (produto.nome) {
-    const nomeNorm = normStr(produto.nome);
-    // Busca os primeiros 200 produtos e faz matching no servidor
-    const snap = await col.limit(200).get();
-    for (const doc of snap.docs) {
-      const data = doc.data();
-      if (!data.nome) continue;
-      const existNorm = normStr(data.nome);
-      // Match exato ou um contém o outro (produto sob medida pode ter nome ligeiramente diferente)
-      if (existNorm === nomeNorm ||
-          existNorm.includes(nomeNorm) ||
-          nomeNorm.includes(existNorm)) {
-        return { id: doc.id, ...data };
-      }
-    }
-  }
-
-  return null;
-}
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
@@ -128,115 +55,65 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const db = getDb();
-    const col = db.collection('produtos');
     const id = req.query.id || req.body?.id;
 
     // GET /api/produto - listar todos ou buscar um
     if (req.method === 'GET') {
       if (id) {
-        const snap = await col.doc(id).get();
-        if (!snap.exists) return res.status(404).json({ error: 'nao encontrado' });
-        return res.status(200).json({ ok: true, produto: { id: snap.id, ...snap.data() } });
+        const data = await selectAll(TABLE, { filters: { id: `eq.${id}` } });
+        if (!data.length) return res.status(404).json({ error: 'nao encontrado' });
+        return res.status(200).json({ ok: true, produto: data[0] });
       }
-      // GET sem id → listar todos (útil para catálogo)
-      const snap = await col.orderBy('nome').limit(300).get();
-      const produtos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      return res.status(200).json({ ok: true, produtos, total: produtos.length });
+      const products = await selectAll(TABLE, { orderBy: 'nome', limit: 300 });
+      return res.status(200).json({ ok: true, produtos: products, total: products.length });
     }
 
-    // POST /api/produto - criar ou atualizar se já existir no catálogo
+    // POST /api/produto - criar ou atualizar (upsert inteligente)
     if (req.method === 'POST') {
       const body = req.body || {};
-      const produtoRaw = normalizar(body);
-      const produto = aplicarDefaultsMEI(produtoRaw);
+      const normalized = normalizar(body);
+      const product = aplicarDefaultsMEI(normalized);
 
-      const erros = validar(produto);
+      const erros = validar(product);
       if (erros.length) return res.status(400).json({ error: 'validacao', erros });
 
       const now = new Date().toISOString();
-
-      // Buscar se já existe no catálogo (por SKU ou nome similar)
-      const existente = await buscarProdutoExistente(db, produto);
-
-      if (existente) {
-        // Produto já existe — atualiza com novos dados (merge inteligente)
-        const docId = existente.id;
-        const atualizado = {
-          ...existente,
-          // Atualiza apenas campos fiscais e de preço se veio preenchido no request
-          ...(produto.preco > 0 && { preco: produto.preco }),
-          ...(produto.precoRegular > 0 && { precoRegular: produto.precoRegular }),
-          ...(produto.ncm && { ncm: produto.ncm }),
-          ...(produto.unidade && produto.unidade !== 'UN' && { unidade: produto.unidade }),
-          ...(produto.descricao && { descricao: produto.descricao }),
-          ...(produto.categoria && { categoria: produto.categoria }),
-          // Sempre aplica defaults MEI se não tinha
-          csosnIcms: existente.csosnIcms || produto.csosnIcms,
-          cstPis: existente.cstPis || produto.cstPis,
-          cstCofins: existente.cstCofins || produto.cstCofins,
-          cfopDentro: existente.cfopDentro || produto.cfopDentro,
-          cfopFora: existente.cfopFora || produto.cfopFora,
-          atualizadoEm: now,
-          // Preserva SKU existente se não veio um novo
-          sku: produto.sku || existente.sku,
-        };
-
-        await col.doc(docId).set(atualizado, { merge: true });
-        return res.status(200).json({
-          ok: true,
-          id: docId,
-          produto: atualizado,
-          atualizado: true,
-          msg: `Produto "${existente.nome}" atualizado no catálogo existente`,
-        });
-      }
-
-      // Produto novo — cria normalmente
-      let docId = id || docIdFor(produto);
-      if (!docId) {
-        // Sem SKU: gera ID baseado no nome
-        const nomeSlug = normStr(produto.nome).replace(/\s+/g, '_').slice(0, 40);
-        docId = `manual_${nomeSlug}_${Date.now()}`;
-      }
-
-      const data = {
-        ...produto,
-        origem: produto.origem || 'manual',
-        searchTokens: makeSearchTokens(produto.nome, produto.sku, produto.categoria),
-        criadoEm: now,
-        atualizadoEm: now,
+      const payload = {
+        ...product,
+        updated_at: now,
       };
-      await col.doc(docId).set(data, { merge: true });
-      return res.status(201).json({ ok: true, id: docId, produto: data, criado: true });
+      if (!id) payload.created_at = now;
+
+      // Upsert baseado no ID se fornecido, ou SKU se fornecido
+      let conflictField = 'id';
+      if (!id && payload.sku) conflictField = 'sku';
+      if (!id && payload.woocommerce_id) conflictField = 'woocommerce_id';
+
+      const saved = await upsertByField(TABLE, payload, conflictField);
+      return res.status(200).json({ ok: true, id: saved?.id, produto: saved });
     }
 
     // PUT /api/produto?id=xxx - atualizar explicitamente
     if (req.method === 'PUT') {
       if (!id) return res.status(400).json({ error: 'id obrigatorio' });
       const body = req.body || {};
-      const produto = normalizar(body);
-      const snapAtual = await col.doc(id).get();
-      const atual = snapAtual.exists ? snapAtual.data() : {};
-      const erros = validar({ ...atual, ...produto });
-      if (erros.length) return res.status(400).json({ error: 'validacao', erros });
-      produto.atualizadoEm = new Date().toISOString();
-      produto.searchTokens = makeSearchTokens(produto.nome, produto.sku, produto.categoria);
-      await col.doc(id).set(produto, { merge: true });
-      const snap = await col.doc(id).get();
-      return res.status(200).json({ ok: true, id, produto: { id, ...snap.data() } });
+      const product = normalizar(body);
+      product.updated_at = new Date().toISOString();
+      
+      const updated = await update(TABLE, 'id', id, product);
+      return res.status(200).json({ ok: true, id, produto: updated });
     }
 
     // DELETE /api/produto?id=xxx
     if (req.method === 'DELETE') {
       if (!id) return res.status(400).json({ error: 'id obrigatorio' });
-      await col.doc(id).delete();
+      await remove(TABLE, 'id', id);
       return res.status(200).json({ ok: true, id, deletado: true });
     }
 
     return res.status(405).json({ error: 'metodo nao permitido' });
   } catch (err) {
-    console.error('[produto] erro:', err?.message, err?.stack);
+    console.error('[produto] erro:', err?.message);
     return res.status(500).json({ error: err.message });
   }
 }

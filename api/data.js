@@ -1,33 +1,40 @@
-// api/data.js — dispatcher unificado para clientes/projects/calculadora via PHP/MySQL
-import { phpFetch } from './_lib/php-api.js';
+// api/data.js — dispatcher unificado para clientes/projects/calculadora via Supabase
+import { selectAll, insert, upsertByField } from './_lib/supabase.js';
 
 // ——— clientes ———
 async function handleClientes(req, res) {
+  const TABLE = 'clientes';
   if (req.method === 'GET') {
-    const r = await phpFetch('clientes');
-    const data = await r.json();
-    return res.status(r.status).json({ clientes: data });
+    const data = await selectAll(TABLE, { orderBy: 'nome' });
+    return res.status(200).json({ clientes: data });
   }
   if (req.method === 'POST') {
-    const r = await phpFetch('clientes', { method: 'POST', body: req.body || {} });
-    const data = await r.json();
-    return res.status(r.status).json(data);
+    // Upsert por telefone ou email para evitar duplicatas
+    let conflictField = 'id';
+    if (req.body?.telefone) conflictField = 'telefone';
+    else if (req.body?.email) conflictField = 'email';
+    
+    const saved = await upsertByField(TABLE, req.body || {}, conflictField);
+    return res.status(200).json(saved);
   }
   return res.status(405).json({ error: 'Metodo nao permitido' });
 }
 
 // ——— projects ———
 async function handleProjects(req, res) {
+  const TABLE = 'projects';
   const { id } = req.query;
-  if (req.method === 'GET' && id) {
-    const r = await phpFetch('projects', { params: { id } });
-    const data = await r.json();
-    return res.status(r.status).json(data);
+  if (req.method === 'GET') {
+    if (id) {
+      const data = await selectAll(TABLE, { filters: { id: `eq.${id}` } });
+      return res.status(200).json(data[0] || { error: 'Not found' });
+    }
+    const data = await selectAll(TABLE, { orderBy: 'created_at' });
+    return res.status(200).json(data);
   }
   if (req.method === 'POST') {
-    const r = await phpFetch('projects', { method: 'POST', body: req.body || {} });
-    const data = await r.json();
-    return res.status(r.status).json(data);
+    const saved = await insert(TABLE, req.body || {});
+    return res.status(200).json(saved);
   }
   return res.status(405).json({ error: 'Metodo nao permitido' });
 }
@@ -64,21 +71,30 @@ async function handleCalculadora(req, res) {
   if (!data.nome && !data.email && !data.telefone) {
     return res.status(400).json({ error: 'Dados insuficientes (nome, email ou telefone obrigatorio)' });
   }
-  // Upsert cliente
-  const cRes = await phpFetch('clientes', {
-    method: 'POST',
-    body: { nome: data.nome||'Lead Calculadora', email: data.email, telefone: data.telefone, empresa: data.empresa, origem: 'calculadora', tipo: 'pre_cadastro' },
-  });
-  const cJson = await cRes.json();
-  const clienteId = cJson.id || cJson.clienteId;
+  
+  // 1. Upsert cliente no Supabase
+  const cliente = await upsertByField('clientes', { 
+    nome: data.nome || 'Lead Calculadora', 
+    email: data.email, 
+    telefone: data.telefone, 
+    empresa: data.empresa, 
+    origem: 'calculadora', 
+    tipo: 'pre_cadastro' 
+  }, 'telefone');
 
-  // Upsert lead
-  const lRes = await phpFetch('leads', {
-    method: 'POST',
-    body: { nome: data.nome||'Lead Calculadora', email: data.email, telefone: data.telefone, origem: 'calculadora', etapa: 'lead_novo', observacoes: data.observacoes, clienteId, valor: data.valor, erpCreate: true },
+  // 2. Inserir lead no Supabase (tabela leads)
+  const lead = await insert('leads', { 
+    nome: data.nome || 'Lead Calculadora', 
+    email: data.email, 
+    telefone: data.telefone, 
+    origem: 'calculadora', 
+    etapa: 'lead_novo', 
+    observacoes: data.observacoes, 
+    cliente_id: cliente.id, 
+    valor: data.valor 
   });
-  const lJson = await lRes.json();
-  return res.status(200).json({ ok: true, leadId: lJson.leadId || lJson.id, clienteId });
+
+  return res.status(200).json({ ok: true, leadId: lead.id, clienteId: cliente.id });
 }
 
 // ——— evolution-diag (checar/ajustar webhook do Evolution API) ———
@@ -87,8 +103,10 @@ async function handleEvolutionDiag(req, res) {
   const EVO_KEY = String(process.env.EVOLUTION_API_KEY || '').trim();
   const EVO_INSTANCE = String(process.env.EVOLUTION_INSTANCE_NAME || 'cdsind').trim();
   const EXPECTED_WEBHOOK = 'https://erp.cdsind.com.br/api/whatsapp';
-  const PHP_WEBHOOK = 'https://cdsind.com.br/erp-api/api.php?endpoint=webhook';
-  const PHP_API_KEY = process.env.PHP_API_KEY || 'cds-erp-2026-secure-key';
+  
+  // Aponta para o proprio Vercel agora que o PHP morreu
+  const LOCAL_WEBHOOK = 'https://erp.cdsind.com.br/api/whatsapp';
+  const WEBHOOK_SECRET = process.env.WHATSAPP_WEBHOOK_SECRET || '';
 
   if (!EVO_KEY) {
     return res.status(500).json({ error: 'EVOLUTION_API_KEY nao configurada no Vercel' });
@@ -102,12 +120,10 @@ async function handleEvolutionDiag(req, res) {
     const maxMsgs = parseInt(req.query.maxMsgs||'50', 10);
     const offset = parseInt(req.query.offset||'0', 10);
     try {
-      // 1. Buscar lista de chats
       const chatsRes = await fetch(`${EVO_URL}/chat/findChats/${EVO_INSTANCE}`, {
         method: 'POST', headers, body: JSON.stringify({})
       });
-      const chatsTxt = await chatsRes.text();
-      let chats; try { chats = JSON.parse(chatsTxt); } catch { return res.status(500).json({ error: 'failed to parse chats', raw: chatsTxt.slice(0,500) }); }
+      const chats = await chatsRes.json();
       if (!Array.isArray(chats)) return res.status(500).json({ error: 'chats not array', got: chats });
 
       const results = { totalChats: chats.length, offset, processedChats: 0, totalMessages: 0, importedMessages: 0, errors: [] };
@@ -115,24 +131,24 @@ async function handleEvolutionDiag(req, res) {
 
       for (const chat of limited) {
         const remoteJid = chat.remoteJid || chat.id;
-        if (!remoteJid || remoteJid.includes('@g.us')) continue; // Pula grupos
+        if (!remoteJid || remoteJid.includes('@g.us')) continue; 
         results.processedChats++;
-        // 2. Buscar mensagens do chat
+        
         try {
           const mRes = await fetch(`${EVO_URL}/chat/findMessages/${EVO_INSTANCE}`, {
             method: 'POST', headers,
             body: JSON.stringify({ where: { key: { remoteJid } }, limit: maxMsgs })
           });
-          const mTxt = await mRes.text();
-          let mData; try { mData = JSON.parse(mTxt); } catch { results.errors.push({ remoteJid, err: 'parse', raw: mTxt.slice(0,200) }); continue; }
+          const mData = await mRes.json();
           const msgs = mData.messages?.records || mData.records || (Array.isArray(mData)?mData:[]);
           if (!msgs.length) continue;
           results.totalMessages += msgs.length;
-          // 3. Enviar cada mensagem pro webhook PHP em formato MESSAGES_UPSERT
+          
+          // Enviar para o novo webhook local
           const payload = { event: 'messages.upsert', instance: EVO_INSTANCE, data: msgs };
-          const pRes = await fetch(`${PHP_WEBHOOK}`, {
+          const pRes = await fetch(`${LOCAL_WEBHOOK}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Api-Key': PHP_API_KEY },
+            headers: { 'Content-Type': 'application/json', 'x-webhook-secret': WEBHOOK_SECRET },
             body: JSON.stringify(payload)
           });
           if (pRes.ok) results.importedMessages += msgs.length;
@@ -147,7 +163,7 @@ async function handleEvolutionDiag(req, res) {
     }
   }
 
-  // POST com action=set ajusta a URL do webhook (precisa confirmacao explicita do usuario)
+  // POST com action=set ajusta a URL do webhook
   if (req.method === 'POST' && String(req.query.action||'').toLowerCase() === 'set') {
     const webhookUrl = (req.body && req.body.url) || EXPECTED_WEBHOOK;
     const events = (req.body && req.body.events) || ['MESSAGES_UPSERT'];
@@ -156,8 +172,7 @@ async function handleEvolutionDiag(req, res) {
       headers,
       body: JSON.stringify({ url: webhookUrl, enabled: true, webhook_by_events: false, events }),
     });
-    const txt = await r.text();
-    let data; try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
+    const data = await r.json();
     return res.status(r.status).json({ ok: r.ok, action: 'set', sent: { url: webhookUrl, events }, response: data });
   }
 
@@ -167,22 +182,16 @@ async function handleEvolutionDiag(req, res) {
       fetch(`${EVO_URL}/webhook/find/${EVO_INSTANCE}`, { headers }),
       fetch(`${EVO_URL}/instance/connectionState/${EVO_INSTANCE}`, { headers }),
     ]);
-    const wTxt = await wRes.text();
-    const sTxt = await sRes.text();
-    let wData; try { wData = JSON.parse(wTxt); } catch { wData = { raw: wTxt }; }
-    let sData; try { sData = JSON.parse(sTxt); } catch { sData = { raw: sTxt }; }
+    const wData = await wRes.json();
+    const sData = await sRes.json();
     const currentUrl = wData && (wData.url || wData.webhook?.url || wData.Webhook?.url);
     return res.status(200).json({
       ok: true,
       instance: EVO_INSTANCE,
-      evolution_url: EVO_URL,
-      expected_webhook: EXPECTED_WEBHOOK,
       current_webhook: currentUrl || null,
       matches_expected: currentUrl === EXPECTED_WEBHOOK,
       webhook_raw: wData,
-      webhook_status: wRes.status,
       connection_state: sData,
-      connection_status: sRes.status,
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });

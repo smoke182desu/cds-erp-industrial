@@ -18,16 +18,14 @@
   - Evolution API: https://evolution-api-production-903e.up.railway.app
   - Instância: cdsind
 
-- ⬜ **Resolver quota do Firestore (free tier)**
-  - Erro: 429 RESOURCE_EXHAUSTED - quota diária de leitura excedida
-  - Opções: upgrade para plano Blaze (pay-as-you-go) ou otimizar queries
-  - Projeto Firebase: gen-lang-client-0908948294
+- ✅ **Resolver quota do Firestore (free tier)**
+  - Migração realizada para Supabase.
 
 ### 🟡 Prioridade Média
 
 - ⬜ **Formulário de cadastro de produtos (Produtos.tsx)**
   - Criar formulário completo com abas: Dados Gerais, Especificações, Fotos, Preços
-  - Integrar com Firestore collection produtos
+  - Integrar com Supabase table produtos
   - Campos: nome, código, categoria, peso, dimensões, material, acabamento, preço
 
 - ⬜ **Sincronização bidirecional ERP ↔ WooCommerce**
@@ -42,7 +40,7 @@
 ### 🟢 Prioridade Baixa
 
 - ⬜ **Melhorar tratamento de erros no frontend**
-  - Adicionar feedback visual quando Firestore está indisponível
+  - Adicionar feedback visual quando Supabase está indisponível
   - Toast notifications para erros de API
 
 - ⬜ **Dashboard de métricas de vendas**
@@ -52,6 +50,15 @@
 ---
 
 ## ✅ Tarefas Concluídas
+
+### 2026-05-07
+
+- ✅ **Migração Completa para Supabase (Postgres)** — *Antigravity*
+  - Todos os endpoints migrados de Firestore/PHP para Supabase REST API
+  - Implementado helper `api/_lib/supabase.js` com `fetch` nativo (sem dependências)
+  - Removido `firebase-admin` e `phpFetch` do projeto
+  - Endpoints migrados: `leads`, `mensagem`, `produtos`, `produto`, `config`, `data`, `proposta-ia`, `assistente-vendas`, `conversa-inteligencia`, `whatsapp`
+  - Webhook de WhatsApp (`api/whatsapp.js`) agora salva direto no Postgres
 
 ### 2025-04-17
 
@@ -78,6 +85,13 @@
 
 ## 📝 Log de Desenvolvimento
 
+### 2026-05-07 — Antigravity (IA)
+- Realizada migração total do backend para Supabase
+- Eliminada dependência do HostGator (PHP/MySQL) e Firestore
+- Consolidado helper de banco de dados em `api/_lib/supabase.js`
+- Limpeza de arquivos legados: `php-api.js`, `firestore.js`, `cache.js` removidos
+- Webhook de WhatsApp configurado para salvar em `mensagens` e upsertar `leads` no Supabase
+
 ### 2025-04-17 — Claude (IA)
 - Investigado problema de mensagens WhatsApp de saída não aparecendo no ERP
 - Diagnosticado: Evolution API webhook precisa ser configurado para evento MESSAGES_UPSERT
@@ -94,7 +108,7 @@
 |------|-------|
 | Frontend | React + Vite + TypeScript |
 | Backend | Vercel Serverless Functions |
-| Database | Firebase Firestore |
+| Database | Supabase (Postgres) |
 | IA | Groq API (llama-3.1-8b-instant) |
 | WhatsApp | Evolution API v2.3.7 + Z-API |
 | Hosting | Vercel (Hobby plan) |
@@ -110,6 +124,7 @@
 | Nome | Papel | Contato |
 |------|-------|---------|
 | Jean (Clark) | Owner / Dev | clarkjean@hotmail.com |
+| Antigravity | IA Assistant (Supabase Migration) | — |
 | Elton | Dev | — |
 | Claude | IA Assistant | — |
 
