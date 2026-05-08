@@ -114,6 +114,19 @@ async function handleEvolutionDiag(req, res) {
 
   const headers = { apikey: EVO_KEY, 'Content-Type': 'application/json' };
 
+  // POST com action=chats_debug
+  if (String(req.query.action||'').toLowerCase() === 'chats_debug') {
+    try {
+      const chatsRes = await fetch(`${EVO_URL}/chat/findChats/${EVO_INSTANCE}`, {
+        method: 'POST', headers, body: JSON.stringify({})
+      });
+      const chats = await chatsRes.json();
+      return res.status(200).json({ ok: true, chats: chats.slice(0, 100) });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   // POST com action=backfill puxa todas as conversas abertas e importa pro Supabase
   if (String(req.query.action||'').toLowerCase() === 'backfill') {
     const maxChats = parseInt(req.query.maxChats||'500', 10);
