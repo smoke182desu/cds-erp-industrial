@@ -1,4 +1,4 @@
-﻿// ---------- Tipos do funil CRM ----------
+// ---------- Tipos do funil CRM ----------
 export type EtapaFunil =
   | 'lead_novo'
   | 'contato_feito'
@@ -46,6 +46,7 @@ export interface Lead {
   totalMensagens?: number;
   ultimaMensagem?: string;
   ultimaHora?: string;
+  fotoUrl?: string;
 }
 
 // ---------- buscar leads via REST ----------
@@ -78,6 +79,7 @@ function mapLeadFromDB(row: any): Lead {
     totalMensagens: parseInt(row.total_mensagens || row.totalMensagens) || 0,
     ultimaMensagem: row.ultimaMensagem ?? row.ultima_mensagem ?? undefined,
     ultimaHora: row.ultimaHora ?? row.ultima_hora ?? undefined,
+    fotoUrl: row.fotoUrl ?? row.foto_url ?? row.profile_pic_url ?? undefined,
   };
 }
 
