@@ -31,11 +31,22 @@ const STOPWORDS = new Set([
   'ok','okay','blz','beleza','valeu','tudo','aqui','la','ali','entao','agora','depois','antes'
 ]);
 
+// Normaliza dimensoes: "19 x 42", "19X42mm", "19 X 42" -> "19x42"
+function normalizarDimensoes(s) {
+  return String(s || '').replace(/(\d+)\s*[xX×]\s*(\d+)(?:\s*mm|\s*cm|\s*m)?/g, '$1x$2');
+}
+
+// Title Case: capitaliza primeira letra de cada palavra (>= 2 chars)
+function tituloCase(s) {
+  if (!s) return '';
+  return String(s).toLowerCase().replace(/\b([a-zÀ-ſ])([a-zÀ-ſ]+)/g, (_, a, b) => a.toUpperCase() + b);
+}
+
 // Normaliza texto para busca (sem acento, minusculo, apenas alfanumerico+espaco)
 function normalizarTexto(s) {
-  return String(s || '')
+  return normalizarDimensoes(String(s || ''))
     .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -258,7 +269,8 @@ ${leadContexto}
 
 REGRAS:
 0. NUNCA INVENTE PRODUTOS. Se o cliente nao mencionou um produto especifico, deixe "produtos" como array vazio []. Nao escolha um produto aleatorio do catalogo.
-1. Se o cliente mencionar um produto que EXISTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true). Faca the match literal pelo que foi dito.
+1. Se o cliente mencionar um produto que EXISTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true). Faca o match literal pelo que foi dito.
+1.1. SEMPRE escreva o nome do produto em Title Case (Primeira Letra de Cada Palavra Maiuscula). Ex: "Prego 19x42", "Chapa Galvanizada 1.5mm". NUNCA em CAIXA ALTA total nem tudo minusculo.
 2. Se o produto NAO existe no catalogo mas foi claramente mencionado, marque "produtoPadrao": false.
 3. NOME DO PRODUTO: Inclua TODAS as especificacoes mencionadas.
 4. DESCRICAO DO PRODUTO: Coloque todos os detalhes tecnicos.
@@ -408,6 +420,10 @@ export default async function handler(req, res) {
     }
 
     if (analise.produtos?.length) {
+      // Garante Title Case em todos os nomes de produto retornados pela IA
+      for (const item of analise.produtos) {
+        if (item.nome) item.nome = tituloCase(item.nome);
+      }
       const catalogoCompleto = CACHE_PRODUTOS.data || produtosRelevantes;
       for (const item of analise.produtos) {
         const nomeItem = (item.nome || '').toLowerCase();
