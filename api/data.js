@@ -131,8 +131,8 @@ async function handleEvolutionDiag(req, res) {
 
       for (const chat of limited) {
         const remoteJid = chat.remoteJid || chat.id;
-        // Ignorar grupos, LIDs, broadcast e mensagens do sistema (0@)
-        if (!remoteJid || remoteJid.includes('@g.us') || remoteJid.includes('@lid') || remoteJid.includes('@broadcast') || remoteJid.startsWith('0@')) continue; 
+        // Ignorar grupos, broadcast e mensagens do sistema (0@). LIDs (usuarios de comunidades/business) sao mantidos.
+        if (!remoteJid || remoteJid.includes('@g.us') || remoteJid.includes('@broadcast') || remoteJid.startsWith('0@')) continue; 
         results.processedChats++;
         const numero = remoteJid.split('@')[0];
         const pushName = chat.pushName || chat.name || '';
@@ -185,11 +185,11 @@ async function handleEvolutionDiag(req, res) {
           }
 
           // Upsert lead
-          if (pushName && rows.length) {
+          if (rows.length) {
             const lastMsg = rows[rows.length - 1];
             await upsertByField('leads', {
               telefone: numero,
-              nome: pushName,
+              nome: pushName || numero,
               etapa: 'lead_novo',
               ultima_mensagem: lastMsg.texto || '',
               criado_em: lastMsg.criado_em,
