@@ -13,7 +13,7 @@ async function handleClientes(req, res) {
     let conflictField = 'id';
     if (req.body?.telefone) conflictField = 'telefone';
     else if (req.body?.email) conflictField = 'email';
-    
+
     const saved = await upsertByField(TABLE, req.body || {}, conflictField);
     return res.status(200).json(saved);
   }
@@ -42,23 +42,23 @@ async function handleProjects(req, res) {
 // ——— calculadora (webhook escadas) ———
 function parsearPayloadCalc(body, query) {
   const d = { ...query, ...body };
-  const nome     = d.nome     || d.name     || d.cliente  || '';
-  const email    = d.email    || d.mail     || '';
-  const telefone = d.telefone || d.phone    || d.celular  || d.whatsapp || '';
-  const empresa  = d.empresa  || d.company  || '';
-  const tipo     = d.tipo_escada || d.tipo  || '';
-  const largura  = d.largura  || d.width    || '';
-  const altura   = d.altura   || d.height   || '';
-  const degraus  = d.degraus  || d.steps    || '';
+  const nome = d.nome || d.name || d.cliente || '';
+  const email = d.email || d.mail || '';
+  const telefone = d.telefone || d.phone || d.celular || d.whatsapp || '';
+  const empresa = d.empresa || d.company || '';
+  const tipo = d.tipo_escada || d.tipo || '';
+  const largura = d.largura || d.width || '';
+  const altura = d.altura || d.height || '';
+  const degraus = d.degraus || d.steps || '';
   const material = d.material || '';
-  const valor    = parseFloat(d.valor_total || d.total || d.preco || '0');
+  const valor = parseFloat(d.valor_total || d.total || d.preco || '0');
   const partes = [];
-  if (tipo)     partes.push(`Tipo: ${tipo}`);
+  if (tipo) partes.push(`Tipo: ${tipo}`);
   if (material) partes.push(`Material: ${material}`);
-  if (largura)  partes.push(`Largura: ${largura}m`);
-  if (altura)   partes.push(`Altura: ${altura}m`);
-  if (degraus)  partes.push(`Degraus: ${degraus}`);
-  if (valor)    partes.push(`Estimativa: R$ ${valor.toFixed(2)}`);
+  if (largura) partes.push(`Largura: ${largura}m`);
+  if (altura) partes.push(`Altura: ${altura}m`);
+  if (degraus) partes.push(`Degraus: ${degraus}`);
+  if (valor) partes.push(`Estimativa: R$ ${valor.toFixed(2)}`);
   const observacoes = `Orcamento calculadora de escadas\n${partes.join(' | ')}`;
   return { nome, email, telefone: String(telefone).replace(/\D/g,''), empresa, observacoes, valor };
 }
@@ -71,30 +71,65 @@ async function handleCalculadora(req, res) {
   if (!data.nome && !data.email && !data.telefone) {
     return res.status(400).json({ error: 'Dados insuficientes (nome, email ou telefone obrigatorio)' });
   }
-  
-  // 1. Upsert cliente no Supabase
-  const cliente = await upsertByField('clientes', { 
-    nome: data.nome || 'Lead Calculadora', 
-    email: data.email, 
-    telefone: data.telefone, 
-    empresa: data.empresa, 
-    origem: 'calculadora', 
-    tipo: 'pre_cadastro' 
+
+  const cliente = await upsertByField('clientes', {
+    nome: data.nome || 'Lead Calculadora',
+    email: data.email,
+    telefone: data.telefone,
+    empresa: data.empresa,
+    origem: 'calculadora',
+    tipo: 'pre_cadastro'
   }, 'telefone');
 
-  // 2. Inserir lead no Supabase (tabela leads)
-  const lead = await insert('leads', { 
-    nome: data.nome || 'Lead Calculadora', 
-    email: data.email, 
-    telefone: data.telefone, 
-    origem: 'calculadora', 
-    etapa: 'lead_novo', 
-    observacoes: data.observacoes, 
-    cliente_id: cliente.id, 
-    valor: data.valor 
+  const lead = await insert('leads', {
+    nome: data.nome || 'Lead Calculadora',
+    email: data.email,
+    telefone: data.telefone,
+    origem: 'calculadora',
+    etapa: 'lead_novo',
+    observacoes: data.observacoes,
+    cliente_id: cliente.id,
+    valor: data.valor
   });
 
   return res.status(200).json({ ok: true, leadId: lead.id, clienteId: cliente.id });
+}
+
+// ——— relink-leads — renomeia leads antigos usando pushName das mensagens ———
+// Esse endpoint percorre todos os leads e atualiza o nome usando o pushName
+// mais recente armazenado no campo 'remetente' da tabela mensagens.
+// Não apaga nem reagrupa leads — só atualiza o nome de exibição.
+async function handleRelinkLeads(req, res) {
+  try {
+    const todosLeads = await selectAll('leads', { orderBy: 'criado_em' });
+    const result = { totalLeads: todosLeads.length, atualizados: 0, jaCorretos: 0, semNome: 0, errors: [] };
+
+    for (const lead of todosLeads) {
+      try {
+        if (!lead.telefone) { result.semNome++; continue; }
+        const msgs = await selectAll('mensagens', {
+          filters: { telefone: `eq.${lead.telefone}`, tipo: 'eq.entrada' },
+          orderBy: 'criado_em.desc'
+        });
+        const msgComNome = (msgs || []).find(m => m.remetente && String(m.remetente).trim().length > 0);
+        const novoNome = msgComNome ? String(msgComNome.remetente).trim() : null;
+
+        if (!novoNome) { result.semNome++; continue; }
+        if (lead.nome === novoNome) { result.jaCorretos++; continue; }
+
+        await sb(`/leads?id=eq.${lead.id}`, {
+          method: 'PATCH',
+          body: { nome: novoNome, atualizado_em: new Date().toISOString() }
+        });
+        result.atualizados++;
+      } catch (e) {
+        result.errors.push({ leadId: lead.id, err: e.message });
+      }
+    }
+    return res.status(200).json({ ok: true, ...result });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 }
 
 // ——— evolution-diag (checar/ajustar webhook do Evolution API) ———
@@ -103,8 +138,7 @@ async function handleEvolutionDiag(req, res) {
   const EVO_KEY = String(process.env.EVOLUTION_API_KEY || '').trim();
   const EVO_INSTANCE = String(process.env.EVOLUTION_INSTANCE_NAME || 'cdsind').trim();
   const EXPECTED_WEBHOOK = 'https://erp.cdsind.com.br/api/whatsapp';
-  
-  // Aponta para o proprio Vercel agora que o PHP morreu
+
   const LOCAL_WEBHOOK = 'https://erp.cdsind.com.br/api/whatsapp';
   const WEBHOOK_SECRET = process.env.WHATSAPP_WEBHOOK_SECRET || '';
 
@@ -114,7 +148,6 @@ async function handleEvolutionDiag(req, res) {
 
   const headers = { apikey: EVO_KEY, 'Content-Type': 'application/json' };
 
-  // POST com action=chats_debug
   if (String(req.query.action||'').toLowerCase() === 'chats_debug') {
     try {
       const chatsRes = await fetch(`${EVO_URL}/chat/findChats/${EVO_INSTANCE}`, {
@@ -127,7 +160,6 @@ async function handleEvolutionDiag(req, res) {
     }
   }
 
-  // POST com action=backfill puxa todas as conversas abertas e importa pro Supabase
   if (String(req.query.action||'').toLowerCase() === 'backfill') {
     const maxChats = parseInt(req.query.maxChats||'500', 10);
     const maxMsgs = parseInt(req.query.maxMsgs||'100', 10);
@@ -144,12 +176,11 @@ async function handleEvolutionDiag(req, res) {
 
       for (const chat of limited) {
         const remoteJid = chat.remoteJid || chat.id;
-        // Ignorar grupos, broadcast e mensagens do sistema (0@). LIDs (usuarios de comunidades/business) sao mantidos.
-        if (!remoteJid || remoteJid.includes('@g.us') || remoteJid.includes('@broadcast') || remoteJid.startsWith('0@')) continue; 
+        if (!remoteJid || remoteJid.includes('@g.us') || remoteJid.includes('@broadcast') || remoteJid.startsWith('0@')) continue;
         results.processedChats++;
         const numero = remoteJid.split('@')[0];
         const pushName = chat.pushName || chat.name || '';
-        
+
         try {
           const mRes = await fetch(`${EVO_URL}/chat/findMessages/${EVO_INSTANCE}`, {
             method: 'POST', headers,
@@ -157,8 +188,7 @@ async function handleEvolutionDiag(req, res) {
           });
           const mData = await mRes.json();
           let msgs = mData.messages?.records || mData.records || (Array.isArray(mData)?mData:[]);
-          
-          // Filtrar mensagens muito antigas (padrão: 30 dias)
+
           const diasLimite = parseInt(req.query.dias || '30', 10);
           const cutoff = Date.now() - (diasLimite * 24 * 60 * 60 * 1000);
           msgs = msgs.filter(m => {
@@ -168,22 +198,28 @@ async function handleEvolutionDiag(req, res) {
 
           if (!msgs.length) continue;
           results.totalMessages += msgs.length;
-          
-          // Batch insert direto no Supabase
+
           const rows = msgs.map(m => {
             const key = m.key || {};
             const message = m.message || {};
-            const texto = message.conversation 
-              || message.extendedTextMessage?.text 
+            const texto = message.conversation
+              || message.extendedTextMessage?.text
               || m.content || m.text || '';
-            const ts = m.messageTimestamp 
+            const ts = m.messageTimestamp
               ? new Date(Number(m.messageTimestamp) * 1000).toISOString()
               : new Date().toISOString();
-            
-            // Se for LID, tenta pegar o JID real do participant
+
+            // Tenta extrair número real (não-LID) priorizando senderPn / participantPn
             let msgNumero = numero;
-            if (key.participant && typeof key.participant === 'string') {
-               msgNumero = key.participant.split('@')[0];
+            const candidatosJid = [
+              m.senderPn, key.senderPn, key.participantPn, key.remoteJidAlt,
+              key.participant, m.participantPn
+            ];
+            for (const cand of candidatosJid) {
+              if (!cand || typeof cand !== 'string') continue;
+              if (cand.includes('@lid') || cand.includes('@g.us') || cand.includes('@broadcast')) continue;
+              const n = cand.split('@')[0].replace(/\D/g,'');
+              if (/^\d{8,15}$/.test(n)) { msgNumero = n; break; }
             }
 
             return {
@@ -204,12 +240,11 @@ async function handleEvolutionDiag(req, res) {
             }
           }
 
-          // Upsert lead
           if (rows.length) {
             const lastMsg = rows[rows.length - 1];
             await upsertByField('leads', {
               telefone: lastMsg.telefone,
-              nome: pushName || lastMsg.telefone,
+              nome: pushName || lastMsg.remetente || lastMsg.telefone,
               etapa: 'lead_novo',
               ultima_mensagem: lastMsg.texto || '',
               criado_em: lastMsg.criado_em,
@@ -227,7 +262,6 @@ async function handleEvolutionDiag(req, res) {
     }
   }
 
-  // POST com action=set ajusta a URL do webhook
   if (req.method === 'POST' && String(req.query.action||'').toLowerCase() === 'set') {
     const webhookUrl = (req.body && req.body.url) || EXPECTED_WEBHOOK;
     const events = (req.body && req.body.events) || ['MESSAGES_UPSERT'];
@@ -240,7 +274,6 @@ async function handleEvolutionDiag(req, res) {
     return res.status(r.status).json({ ok: r.ok, action: 'set', sent: { url: webhookUrl, events }, response: data });
   }
 
-  // GET (default) — lê webhook atual + estado da instancia
   try {
     const [wRes, sRes] = await Promise.all([
       fetch(`${EVO_URL}/webhook/find/${EVO_INSTANCE}`, { headers }),
@@ -271,11 +304,12 @@ export default async function handler(req, res) {
 
   const resource = String(req.query.resource || '').toLowerCase();
   try {
-    if (resource === 'clientes')       return await handleClientes(req, res);
-    if (resource === 'projects')       return await handleProjects(req, res);
-    if (resource === 'calculadora')    return await handleCalculadora(req, res);
+    if (resource === 'clientes') return await handleClientes(req, res);
+    if (resource === 'projects') return await handleProjects(req, res);
+    if (resource === 'calculadora') return await handleCalculadora(req, res);
     if (resource === 'evolution-diag') return await handleEvolutionDiag(req, res);
-    return res.status(400).json({ error: 'resource invalido (use clientes|projects|calculadora|evolution-diag)' });
+    if (resource === 'relink-leads') return await handleRelinkLeads(req, res);
+    return res.status(400).json({ error: 'resource invalido (use clientes|projects|calculadora|evolution-diag|relink-leads)' });
   } catch (err) {
     console.error(`[data] erro (${resource}):`, err.message);
     return res.status(500).json({ error: err.message });
