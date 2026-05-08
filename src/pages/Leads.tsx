@@ -485,11 +485,17 @@ function LeadItem({ lead, ativo, onClick }: {
   return (
     <button onClick={onClick}
       className={`w-full text-left px-3 py-2.5 border-b flex gap-3 items-center hover:bg-gray-50 transition-colors ${ativo ? 'bg-[#d9fdd3]' : 'bg-white'}`}>
-      {/* Avatar estilo WhatsApp */}
-      <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-xl flex-shrink-0 shadow-sm select-none"
-        style={{ backgroundColor: avatarCor(nome) }}>
-        {inicial}
-      </div>
+      {/* Avatar estilo WhatsApp - foto real ou inicial */}
+      {lead.fotoUrl ? (
+        <img src={lead.fotoUrl} alt={nome}
+          className="w-12 h-12 rounded-full object-cover flex-shrink-0 shadow-sm select-none"
+          onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} />
+      ) : (
+        <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-xl flex-shrink-0 shadow-sm select-none"
+          style={{ backgroundColor: avatarCor(nome) }}>
+          {inicial}
+        </div>
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-1">
           <p className="font-semibold text-sm text-gray-900 truncate">{nome}</p>
