@@ -142,7 +142,16 @@ async function handleEvolutionDiag(req, res) {
             body: JSON.stringify({ where: { key: { remoteJid } }, limit: maxMsgs })
           });
           const mData = await mRes.json();
-          const msgs = mData.messages?.records || mData.records || (Array.isArray(mData)?mData:[]);
+          let msgs = mData.messages?.records || mData.records || (Array.isArray(mData)?mData:[]);
+          
+          // Filtrar mensagens muito antigas (padrão: 30 dias)
+          const diasLimite = parseInt(req.query.dias || '30', 10);
+          const cutoff = Date.now() - (diasLimite * 24 * 60 * 60 * 1000);
+          msgs = msgs.filter(m => {
+            const ts = m.messageTimestamp ? Number(m.messageTimestamp) * 1000 : Date.now();
+            return ts >= cutoff;
+          });
+
           if (!msgs.length) continue;
           results.totalMessages += msgs.length;
           
