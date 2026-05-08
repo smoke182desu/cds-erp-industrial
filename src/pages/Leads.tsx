@@ -549,9 +549,10 @@ function NovoLeadModal({ onClose, onSave }: { onClose: () => void; onSave: (l: O
 }
 
 // ─── Modal Criar Proposta ───────────────────────────────────────────────────
-function PropostaModal({ lead, analisePrevia, onClose }: {
+function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
   lead: Lead;
   analisePrevia?: any;
+  mensagens?: Mensagem[];
   onClose: () => void;
 }) {
   // Se recebemos uma analise ja feita pelo painel Inteligencia, pre-populamos
@@ -599,7 +600,7 @@ function PropostaModal({ lead, analisePrevia, onClose }: {
     try {
       const res = await fetch('/api/proposta-ia', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa }),
+        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa, mensagens: (mensagens || []).map(m => ({ texto: m.texto || m.conteudo || m.body || '', tipo: m.tipo || m.direction || 'entrada', criadoEm: m.criadoEm || m.timestamp || '' })) }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro desconhecido');
@@ -1013,6 +1014,7 @@ export function Leads() {
         <PropostaModal
           lead={propostaLead}
           analisePrevia={propostaAnalise}
+          mensagens={msgsAtivas}
           onClose={() => { setPropostaLead(null); setPropostaAnalise(null); }}
         />
       )}

@@ -236,13 +236,23 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Metodo nao permitido' });
 
-  const { telefone, nome, email, empresa } = req.body || {};
+  const { telefone, nome, email, empresa, mensagens: msgsBody } = req.body || {};
   if (!telefone) return res.status(400).json({ error: 'telefone obrigatorio' });
 
   const tel = String(telefone).replace(/\D/g, '');
 
   try {
-    const mensagens = await buscarMensagens(tel);
+    // Usa mensagens enviadas pelo frontend (ja carregadas no chat) ou busca do Supabase como fallback
+    let mensagens;
+    if (Array.isArray(msgsBody) && msgsBody.length > 0) {
+      mensagens = msgsBody.map(m => ({
+        texto: m.texto || m.conteudo || m.body || '',
+        tipo: m.tipo || m.direction || 'entrada',
+        criadoEm: m.criadoEm || m.timestamp || new Date().toISOString(),
+      })).filter(m => m.texto.trim());
+    } else {
+      mensagens = await buscarMensagens(tel);
+    }
     const conversaAtual = recortarConversaAtual(mensagens);
 
     // Texto do cliente (pondera melhor as palavras-chave)
