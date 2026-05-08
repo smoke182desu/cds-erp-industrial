@@ -2,8 +2,7 @@ import axios from 'axios';
 import { selectAll } from './_lib/supabase.js';
 
 // Groq - modelo gratuito (14.400 req/dia)
-const GROQ_MODEL = 'llama-3.1-8b-instant';
-
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const GROQ_API_KEY    = process.env.GROQ_API_KEY || '';
 
 // Mensagens enviadas ao LLM: ultimas N + algumas do inicio (onde o cliente costuma mencionar o produto).
