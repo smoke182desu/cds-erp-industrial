@@ -179,11 +179,18 @@ async function handleEvolutionDiag(req, res) {
             const ts = m.messageTimestamp 
               ? new Date(Number(m.messageTimestamp) * 1000).toISOString()
               : new Date().toISOString();
+            
+            // Se for LID, tenta pegar o JID real do participant
+            let msgNumero = numero;
+            if (key.participant && typeof key.participant === 'string') {
+               msgNumero = key.participant.split('@')[0];
+            }
+
             return {
-              telefone: numero,
+              telefone: msgNumero,
               texto: texto,
               tipo: key.fromMe ? 'saida' : 'entrada',
-              remetente: key.fromMe ? 'CDS' : (m.pushName || pushName || numero),
+              remetente: key.fromMe ? 'CDS' : (m.pushName || pushName || msgNumero),
               criado_em: ts
             };
           }).filter(r => r.texto.trim());
@@ -201,8 +208,8 @@ async function handleEvolutionDiag(req, res) {
           if (rows.length) {
             const lastMsg = rows[rows.length - 1];
             await upsertByField('leads', {
-              telefone: numero,
-              nome: pushName || numero,
+              telefone: lastMsg.telefone,
+              nome: pushName || lastMsg.telefone,
               etapa: 'lead_novo',
               ultima_mensagem: lastMsg.texto || '',
               criado_em: lastMsg.criado_em,
