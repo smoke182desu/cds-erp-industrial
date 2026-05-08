@@ -609,7 +609,7 @@ function PropostaModal({ lead, analisePrevia, onClose }: {
         frete: p.frete || 'À combinar', validade: p.validade || '7 dias corridos',
         pagamento: p.pagamento || '50% de entrada e 50% na entrega',
         prazoEntrega: p.prazoEntrega || 'A confirmar após aceite formal', intro: p.intro || '' });
-      if (p.itens?.length > 0) setItens(p.itens.map((it: any) => ({ nome: it.nome || '', descricao: it.descricao || '', qtd: Number(it.qtd) || 1, valorUnitario: Number(it.valorUnitario) || 0 })));
+      if (p.itens?.length > 0) setItens(p.itens.map((it: any) => ({ nome: it.nome || it.descricao || 'Item', descricao: it.descricao || '', qtd: Number(it.qtd || it.quantidade) || 1, valorUnitario: Number(it.valorUnitario || it.precoUnitario) || 0 })));
       setIaOk(true);
     } catch (e: any) { setErroIA(e.message || 'Erro ao chamar IA'); }
     finally { setGerandoIA(false); }
