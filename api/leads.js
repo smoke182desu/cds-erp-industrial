@@ -5,7 +5,6 @@ import { selectAll, insert, update, remove } from './_lib/supabase.js';
 const TABLE = 'leads';
 const WEBHOOK_SECRET = process.env.LEADS_WEBHOOK_SECRET || 'cds-leads-secret';
 
-// Nomes que vêm da própria empresa (mensagens enviadas de volta) — não devem ficar como nome do lead
 const NOMES_INVALIDOS = ['cds', 'cds industrial', 'cds ind', 'cdsind'];
 function ehNomeInvalido(nome) {
   if (!nome) return true;
@@ -13,14 +12,15 @@ function ehNomeInvalido(nome) {
   return NOMES_INVALIDOS.includes(n);
 }
 
-// LID detection (Linked IDs anônimos do Meta)
 function isLID(digits) {
   if (digits.length >= 15) return true;
   if (digits.length >= 14 && !digits.startsWith('55') && !digits.startsWith('1')) return true;
+  if (digits.length >= 12 && !digits.startsWith('55') && !digits.startsWith('1')) return true;
+  if (digits.startsWith('55') && digits.length > 13) return true;
+  if (digits.startsWith('1') && digits.length > 11) return true;
   return false;
 }
 
-// Formata um numero E.164 (sem '+') no estilo WhatsApp Web: "+55 31 8498-3060"
 function formatarTelefoneWA(digits) {
   const d = String(digits || '').replace(/\D/g, '');
   if (!d) return '';
@@ -39,55 +39,36 @@ function formatarTelefoneWA(digits) {
 }
 
 function formatarLead(lead) {
+  if (lead.etapa === 'lid_oculto') {
+    return { ...lead, __ocultar: true };
+  }
   let nome = lead.nome || '';
   const tel = lead.telefone || '';
-  const pushName =
-    lead.contato_nome ||
-    lead.push_name ||
-    lead.pushName ||
-    lead.nome_contato ||
-    '';
-
+  const pushName = lead.contato_nome || lead.push_name || lead.pushName || lead.nome_contato || '';
   const nomeDigits = nome.replace(/^\+/, '').replace(/\D/g, '');
   const telDigits = String(tel).replace(/\D/g, '');
 
-  // Caso 1: nome inválido (ex: 'CDS' = sua empresa) — descartar e usar pushName ou telefone
+  if (isLID(telDigits) && (!pushName || ehNomeInvalido(pushName)) && (!nome || ehNomeInvalido(nome) || /^[\d\s+()\-]+$/.test(nome))) {
+    return { ...lead, nome: '', telefone: tel, __ocultar: true };
+  }
   if (ehNomeInvalido(nome)) {
-    if (pushName && pushName.trim() && !ehNomeInvalido(pushName)) {
-      nome = pushName.trim();
-    } else if (telDigits) {
-      if (isLID(telDigits)) {
-        return { ...lead, nome: '', telefone: tel, __ocultar: true };
-      }
+    if (pushName && pushName.trim() && !ehNomeInvalido(pushName)) nome = pushName.trim();
+    else if (telDigits) {
+      if (isLID(telDigits)) return { ...lead, nome: '', telefone: tel, __ocultar: true };
       nome = formatarTelefoneWA(telDigits);
-    } else {
-      return { ...lead, nome: '', telefone: tel, __ocultar: true };
-    }
-  }
-  // Caso 2: nome é só dígitos (LID/numero gravado como nome)
-  else if (nome && /^[\d\s+()\-]+$/.test(nome)) {
+    } else return { ...lead, nome: '', telefone: tel, __ocultar: true };
+  } else if (nome && /^[\d\s+()\-]+$/.test(nome)) {
     if (isLID(nomeDigits)) {
-      if (pushName && pushName.trim() && !ehNomeInvalido(pushName)) {
-        nome = pushName.trim();
-      } else {
-        return { ...lead, nome: '', telefone: tel, __ocultar: true };
-      }
-    } else if (nomeDigits.length >= 10) {
-      nome = formatarTelefoneWA(nomeDigits);
-    }
-  }
-  // Caso 3: nome vazio — tenta pushName, depois telefone formatado
-  else if (!nome || !nome.trim()) {
-    if (pushName && pushName.trim() && !ehNomeInvalido(pushName)) {
-      nome = pushName.trim();
-    } else if (telDigits) {
-      if (isLID(telDigits)) {
-        return { ...lead, nome: '', telefone: tel, __ocultar: true };
-      }
+      if (pushName && pushName.trim() && !ehNomeInvalido(pushName)) nome = pushName.trim();
+      else return { ...lead, nome: '', telefone: tel, __ocultar: true };
+    } else if (nomeDigits.length >= 10) nome = formatarTelefoneWA(nomeDigits);
+  } else if (!nome || !nome.trim()) {
+    if (pushName && pushName.trim() && !ehNomeInvalido(pushName)) nome = pushName.trim();
+    else if (telDigits) {
+      if (isLID(telDigits)) return { ...lead, nome: '', telefone: tel, __ocultar: true };
       nome = formatarTelefoneWA(telDigits);
     }
   }
-
   return { ...lead, nome, telefone: tel };
 }
 
@@ -99,6 +80,8 @@ function normalizar(lead) {
     telefone: lead.telefone || '',
     empresa: lead.empresa || '',
     mensagem: lead.mensagem || '',
+    ultima_mensagem: lead.ultima_mensagem || lead.ultimaMensagem || '',
+    foto_url: lead.foto_url || lead.fotoUrl || lead.profile_pic_url || '',
     origem: lead.origem || 'manual',
     etapa: lead.etapa || 'lead_novo',
     valor: Number(lead.valor) || 0,
@@ -113,7 +96,7 @@ function normalizar(lead) {
 
 async function listarLeads() {
   try {
-    const data = await selectAll(TABLE, { orderBy: 'criado_em', limit: 300 });
+    const data = await selectAll(TABLE, { orderBy: 'atualizado_em', limit: 300 });
     return data;
   } catch (err) {
     console.warn('[leads] select falhou:', err.message);
@@ -142,12 +125,9 @@ async function inserirLead(data) {
 async function atualizarLead(id, body) {
   const updates = {};
   const allowed = ['nome', 'email', 'telefone', 'empresa', 'etapa', 'origem', 'observacoes', 'mensagem'];
-  for (const f of allowed) {
-    if (body[f] !== undefined) updates[f] = String(body[f]);
-  }
+  for (const f of allowed) if (body[f] !== undefined) updates[f] = String(body[f]);
   if (body.valor !== undefined) updates.valor = Number(body.valor) || 0;
   if (body.pedidoId !== undefined) updates.pedido_id = String(body.pedidoId);
-
   await update(TABLE, 'id', id, updates);
   return id;
 }
@@ -163,7 +143,6 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Webhook-Secret, X-Erp-Create');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') return res.status(200).end();
-
   try {
     if (req.method === 'GET') {
       const raw = await listarLeads();
@@ -175,7 +154,6 @@ export default async function handler(req, res) {
         .map(l => { delete l.__ocultar; return l; });
       return res.status(200).json(leads);
     }
-
     if (req.method === 'POST') {
       const erpCreate = req.body?.erpCreate === true || req.headers['x-erp-create'] === '1';
       if (!erpCreate) {
@@ -183,27 +161,22 @@ export default async function handler(req, res) {
         if (secret !== WEBHOOK_SECRET) return res.status(401).json({ error: 'Unauthorized' });
       }
       const body = req.body || {};
-      if (!body.nome && !body.telefone) {
-        return res.status(400).json({ error: 'Nome ou telefone obrigatorios' });
-      }
+      if (!body.nome && !body.telefone) return res.status(400).json({ error: 'Nome ou telefone obrigatorios' });
       const leadId = await inserirLead(body);
       return res.status(201).json({ success: true, leadId });
     }
-
     if (req.method === 'PUT') {
       const id = req.query.id;
       if (!id) return res.status(400).json({ error: 'id obrigatorio' });
       await atualizarLead(id, req.body || {});
       return res.status(200).json({ ok: true, id });
     }
-
     if (req.method === 'DELETE') {
       const id = req.query.id;
       if (!id) return res.status(400).json({ error: 'id obrigatorio' });
       await deletarLead(id);
       return res.status(200).json({ ok: true, id });
     }
-
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('[leads]', req.method, 'erro:', err.message);
