@@ -17,7 +17,11 @@
       "destination": "/api/data?resource=calculadora"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/api/fotos",
+      "destination": "/api/fotos"
+    },
+    {
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
