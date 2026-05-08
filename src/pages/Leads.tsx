@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Lead, EtapaFunil,
   ETAPAS_FUNIL, ORIGEM_LABELS,
@@ -446,6 +446,20 @@ function DetalhesPanel({ lead, onUpdate, onCriarProposta }: {
 // ─── Item da lista de leads ────────────────────────────────────────────────
 // cores avatar estilo WhatsApp
 const WA_COLORS = ['#25D366','#128C7E','#075E54','#34B7F1','#00a884','#6366f1','#ec4899','#f59e0b'];
+function fmtHora(iso: string): string {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const now = new Date();
+    const diff = now.getTime() - d.getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days === 0) return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    if (days === 1) return 'Ontem';
+    if (days < 7) return d.toLocaleDateString('pt-BR', { weekday: 'short' });
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  } catch { return iso; }
+}
 function avatarCor(nome: string) {
   return WA_COLORS[(nome || ' ').charCodeAt(0) % WA_COLORS.length];
 }
