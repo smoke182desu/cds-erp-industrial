@@ -5,11 +5,37 @@ import { selectAll, insert, update, remove } from './_lib/supabase.js';
 const TABLE = 'leads';
 const WEBHOOK_SECRET = process.env.LEADS_WEBHOOK_SECRET || 'cds-leads-secret';
 
-// ---------- LID detection / formatacao de nome ----------
+// Nomes que vêm da própria empresa (mensagens enviadas de volta) — não devem ficar como nome do lead
+const NOMES_INVALIDOS = ['cds', 'cds industrial', 'cds ind', 'cdsind'];
+function ehNomeInvalido(nome) {
+  if (!nome) return true;
+  const n = String(nome).trim().toLowerCase();
+  return NOMES_INVALIDOS.includes(n);
+}
+
+// LID detection (Linked IDs anônimos do Meta)
 function isLID(digits) {
   if (digits.length >= 15) return true;
   if (digits.length >= 14 && !digits.startsWith('55') && !digits.startsWith('1')) return true;
   return false;
+}
+
+// Formata um numero E.164 (sem '+') no estilo WhatsApp Web: "+55 31 8498-3060"
+function formatarTelefoneWA(digits) {
+  const d = String(digits || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('55') && (d.length === 12 || d.length === 13)) {
+    const ddd = d.substring(2, 4);
+    const num = d.substring(4);
+    if (num.length === 9) {
+      return `+55 ${ddd} ${num.slice(0, 5)}-${num.slice(5)}`;
+    }
+    return `+55 ${ddd} ${num.slice(0, 4)}-${num.slice(4)}`;
+  }
+  if (d.startsWith('1') && d.length === 11) {
+    return `+1 (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`;
+  }
+  return `+${d}`;
 }
 
 function formatarLead(lead) {
@@ -22,26 +48,49 @@ function formatarLead(lead) {
     lead.nome_contato ||
     '';
 
-  const nomeDigits = nome.replace(/^\+/, '');
+  const nomeDigits = nome.replace(/^\+/, '').replace(/\D/g, '');
+  const telDigits = String(tel).replace(/\D/g, '');
 
-  if (/^\d{10,}$/.test(nomeDigits)) {
-    if (nomeDigits.startsWith('55') && nomeDigits.length >= 12 && nomeDigits.length <= 13) {
-      const ddd = nomeDigits.substring(2, 4);
-      const num = nomeDigits.substring(4);
-      nome = '(' + ddd + ') ' + num.substring(0, num.length - 4) + '-' + num.substring(num.length - 4);
-    } else if (isLID(nomeDigits)) {
-      nome = pushName && pushName.trim() ? pushName.trim() : 'Aguardando identificacao';
+  // Caso 1: nome inválido (ex: 'CDS' = sua empresa) — descartar e usar pushName ou telefone
+  if (ehNomeInvalido(nome)) {
+    if (pushName && pushName.trim() && !ehNomeInvalido(pushName)) {
+      nome = pushName.trim();
+    } else if (telDigits) {
+      if (isLID(telDigits)) {
+        return { ...lead, nome: '', telefone: tel, __ocultar: true };
+      }
+      nome = formatarTelefoneWA(telDigits);
     } else {
-      nome = '+' + nomeDigits;
+      return { ...lead, nome: '', telefone: tel, __ocultar: true };
     }
-  } else if ((!nome || !nome.trim()) && pushName) {
-    nome = pushName.trim();
+  }
+  // Caso 2: nome é só dígitos (LID/numero gravado como nome)
+  else if (nome && /^[\d\s+()\-]+$/.test(nome)) {
+    if (isLID(nomeDigits)) {
+      if (pushName && pushName.trim() && !ehNomeInvalido(pushName)) {
+        nome = pushName.trim();
+      } else {
+        return { ...lead, nome: '', telefone: tel, __ocultar: true };
+      }
+    } else if (nomeDigits.length >= 10) {
+      nome = formatarTelefoneWA(nomeDigits);
+    }
+  }
+  // Caso 3: nome vazio — tenta pushName, depois telefone formatado
+  else if (!nome || !nome.trim()) {
+    if (pushName && pushName.trim() && !ehNomeInvalido(pushName)) {
+      nome = pushName.trim();
+    } else if (telDigits) {
+      if (isLID(telDigits)) {
+        return { ...lead, nome: '', telefone: tel, __ocultar: true };
+      }
+      nome = formatarTelefoneWA(telDigits);
+    }
   }
 
   return { ...lead, nome, telefone: tel };
 }
 
-// Normaliza saida: aceita Postgres snake_case e camelCase mistos.
 function normalizar(lead) {
   return {
     id: lead.id,
@@ -62,7 +111,6 @@ function normalizar(lead) {
   };
 }
 
-// ---------- CRUD ----------
 async function listarLeads() {
   try {
     const data = await selectAll(TABLE, { orderBy: 'criado_em', limit: 300 });
@@ -99,7 +147,7 @@ async function atualizarLead(id, body) {
   }
   if (body.valor !== undefined) updates.valor = Number(body.valor) || 0;
   if (body.pedidoId !== undefined) updates.pedido_id = String(body.pedidoId);
-  
+
   await update(TABLE, 'id', id, updates);
   return id;
 }
@@ -109,7 +157,6 @@ async function deletarLead(id) {
   return id;
 }
 
-// ---------- handler ----------
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -120,7 +167,12 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const raw = await listarLeads();
-      const leads = raw.map(normalizar).map(formatarLead);
+      const incluirOcultos = req.query.incluirOcultos === '1';
+      const leads = raw
+        .map(normalizar)
+        .map(formatarLead)
+        .filter(l => incluirOcultos ? true : !l.__ocultar)
+        .map(l => { delete l.__ocultar; return l; });
       return res.status(200).json(leads);
     }
 
