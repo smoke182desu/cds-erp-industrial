@@ -1,9 +1,9 @@
 import axios from 'axios';
 import { selectAll, upsertByField } from './_lib/supabase.js';
 
-const WC_URL = process.env.WC_URL || 'https://lojamgincorporadora.com.br';
-const WC_KEY = process.env.WC_KEY || 'ck_2e4e7c0f24b4915bd4ba0e5a84e7e929e26d7197';
-const WC_SECRET = process.env.WC_SECRET || 'cs_f0cbc8cd0b20aa7a5e9aed546aaaf3b4c74cb83a';
+const WC_URL = process.env.WOOCOMMERCE_URL || process.env.WC_URL || '';
+const WC_KEY = process.env.WOOCOMMERCE_CONSUMER_KEY || process.env.WC_KEY || '';
+const WC_SECRET = process.env.WOOCOMMERCE_CONSUMER_SECRET || process.env.WC_SECRET || '';
 const TABLE = 'produtos';
 
 async function fetchWooPage(page = 1) {
