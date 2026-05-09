@@ -471,9 +471,10 @@ function fmtTel(tel?: string): string {
   return tel;
 }
 
-function LeadItem({ lead, ativo, onClick }: {
+function LeadItem({ lead, ativo, naoLido, onClick }: {
   lead: Lead & { ultimaMensagem?: string; ultimaHora?: string };
   ativo: boolean;
+  naoLido: boolean;
   onClick: () => void;
 }) {
   const nome = (lead.nome || lead.telefone || 'Lead').trim();
@@ -482,9 +483,16 @@ function LeadItem({ lead, ativo, onClick }: {
   const preview = temMsg ? lead.ultimaMensagem!.trim() : (lead.empresa || lead.email || 'Sem mensagens ainda');
   const hora = fmtHora(lead.ultimaHora || '');
 
+  // bg: ativo=verde claro, naoLido=verde transparente suave, normal=branco
+  const bgClass = ativo
+    ? 'bg-[#d9fdd3]'
+    : naoLido
+      ? 'bg-[#dcf8c6]/40'
+      : 'bg-white';
+
   return (
     <button onClick={onClick}
-      className={`w-full text-left px-3 py-2.5 border-b flex gap-3 items-center hover:bg-gray-50 transition-colors ${ativo ? 'bg-[#d9fdd3]' : 'bg-white'}`}>
+      className={`w-full text-left px-3 py-2.5 border-b flex gap-3 items-center hover:bg-gray-50 transition-colors ${bgClass}`}>
       {/* Avatar estilo WhatsApp - foto real ou inicial */}
       {lead.fotoUrl ? (
         <img src={lead.fotoUrl} alt={nome}
@@ -498,14 +506,14 @@ function LeadItem({ lead, ativo, onClick }: {
       )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-1">
-          <p className="font-semibold text-sm text-gray-900 truncate">{nome}</p>
-          <span className={`text-[11px] flex-shrink-0 font-medium ${temMsg ? 'text-[#25D366]' : 'text-gray-400'}`}>{hora}</span>
+          <p className={`font-semibold text-sm truncate ${naoLido ? 'text-gray-900' : 'text-gray-700'}`}>{nome}</p>
+          <span className={`text-[11px] flex-shrink-0 font-medium ${naoLido ? 'text-[#25D366] font-bold' : temMsg ? 'text-[#25D366]' : 'text-gray-400'}`}>{hora}</span>
         </div>
         {lead.telefone && (
           <p className="text-[10px] text-gray-400 truncate leading-tight">📱 {fmtTel(lead.telefone)}</p>
         )}
         <div className="flex items-center justify-between gap-1 mt-0.5">
-          <p className="text-xs text-gray-500 truncate">{preview}</p>
+          <p className={`text-xs truncate ${naoLido ? 'text-gray-700 font-medium' : 'text-gray-500'}`}>{preview}</p>
           {(lead.totalMensagens ?? 0) > 0 && !ativo && (
             <span className="flex-shrink-0 bg-[#25D366] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
               {lead.totalMensagens}
@@ -884,6 +892,30 @@ export function Leads() {
   const [tabPainel, setTabPainel] = useState<'detalhes' | 'inteligencia'>('inteligencia');
   const [produtoCadastrar, setProdutoCadastrar] = useState<any>(null);
 
+  // Rastreia quais leads foram lidos (persiste em localStorage)
+  const [lidos, setLidos] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('crm_leads_lidos') || '{}');
+    } catch { return {}; }
+  });
+
+  const marcarComoLido = useCallback((lead: Lead) => {
+    const hora = lead.ultimaHora || lead.criadoEm || new Date().toISOString();
+    setLidos(prev => {
+      const next = { ...prev, [lead.id]: hora };
+      localStorage.setItem('crm_leads_lidos', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const ehNaoLido = useCallback((lead: Lead): boolean => {
+    const ultimaHora = (lead as any).ultimaHora || lead.criadoEm;
+    if (!ultimaHora) return false;
+    const lido = lidos[lead.id];
+    if (!lido) return true; // nunca abriu = nao lido
+    return new Date(ultimaHora).getTime() > new Date(lido).getTime();
+  }, [lidos]);
+
   useEffect(() => { return subscribeLeads(data => { setLeads(data); setLoading(false); }); }, []);
   useEffect(() => {
     if (leadAtivo) { const a = leads.find(l => l.id === leadAtivo.id); if (a) setLeadAtivo(a); }
@@ -948,7 +980,7 @@ export function Leads() {
               </div>
             )}
             {filtrados.map(lead => (
-              <LeadItem key={lead.id} lead={lead as any} ativo={leadAtivo?.id === lead.id} onClick={() => setLeadAtivo(lead)} />
+              <LeadItem key={lead.id} lead={lead as any} ativo={leadAtivo?.id === lead.id} naoLido={ehNaoLido(lead)} onClick={() => { setLeadAtivo(lead); marcarComoLido(lead); }} />
             ))}
           </div>
         </div>
