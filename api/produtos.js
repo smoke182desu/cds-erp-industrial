@@ -6,42 +6,76 @@ const WC_KEY = process.env.WOOCOMMERCE_CONSUMER_KEY || process.env.WC_KEY || '';
 const WC_SECRET = process.env.WOOCOMMERCE_CONSUMER_SECRET || process.env.WC_SECRET || '';
 const TABLE = 'produtos';
 
-// Mapeia produto do Supabase (snake_case) pro shape esperado pelo frontend (camelCase)
 function mapProduto(p) {
-    const estoqueNum = Number(p.estoque ?? p.estoque_atual ?? 0) || 0;
-    return {
-          id: p.id || '',
-          wcId: p.woocommerce_id || (p.wc_product_id != null ? String(p.wc_product_id) : '') || p.wc_id || '',
-          nome: p.nome || '',
-          sku: p.sku || '',
-          preco: Number(p.preco || p.preco_base || 0) || 0,
-          precoRegular: Number(p.preco_regular || 0) || 0,
-          precoPromocional: Number(p.preco_promocional || 0) || 0,
-          estoque: estoqueNum,
-          gerenciarEstoque: false,
-          emEstoque: p.em_estoque === 1 || p.em_estoque === true || (p.em_estoque == null && estoqueNum > 0) || estoqueNum > 0,
-          status: p.status || 'publish',
-          categoria: p.categoria || '',
-          imagem: Array.isArray(p.imagens) && p.imagens[0] ? String(p.imagens[0]) : '',
-          descricao: p.descricao || '',
-          permalink: '',
-          tipo: 'simple',
-          origem: p.origem || (p.woocommerce_id ? 'woocommerce' : 'manual'),
-          sincronizadoEm: p.atualizado_em || p.criado_em || '',
-    };
+      const estoqueNum = Number(p.estoque ?? p.estoque_atual ?? 0) || 0;
+      return {
+              id: p.id || '',
+              wcId: p.woocommerce_id || (p.wc_product_id != null ? String(p.wc_product_id) : '') || p.wc_id || '',
+              nome: p.nome || '',
+              sku: p.sku || '',
+              preco: Number(p.preco || p.preco_base || 0) || 0,
+              precoRegular: Number(p.preco_regular || 0) || 0,
+              precoPromocional: Number(p.preco_promocional || 0) || 0,
+              estoque: estoqueNum,
+              gerenciarEstoque: false,
+              emEstoque: p.em_estoque === 1 || p.em_estoque === true || (p.em_estoque == null && estoqueNum > 0) || estoqueNum > 0,
+              status: p.status || 'publish',
+              categoria: p.categoria || '',
+              imagem: Array.isArray(p.imagens) && p.imagens[0] ? String(p.imagens[0]) : '',
+              descricao: p.descricao || '',
+              permalink: '',
+              tipo: 'simple',
+              origem: p.origem || (p.woocommerce_id ? 'woocommerce' : 'manual'),
+              sincronizadoEm: p.atualizado_em || p.criado_em || '',
+      };
 }
 
 async function fetchWooPage(page = 1) {
-    const url = WC_URL + '/wp-json/wc/v3/products?per_page=100&page=' + page
-      + '&consumer_key=' + WC_KEY + '&consumer_secret=' + WC_SECRET;
-    const { data, headers } = await axios.get(url, { timeout: 30000 });
-    return { products: data, totalPages: parseInt(headers['x-wp-totalpages'] || '1') };
+      const url = WC_URL + '/wp-json/wc/v3/products?per_page=100&page=' + page
+        + '&consumer_key=' + WC_KEY + '&consumer_secret=' + WC_SECRET;
+      const { data, headers } = await axios.get(url, { timeout: 30000 });
+      return { products: data, totalPages: parseInt(headers['x-wp-totalpages'] || '1') };
 }
 
 async function syncPage(page = 1) {
-    if (!WC_URL || !WC_KEY) throw new Error('WC_URL e WC_KEY nao configurados.');
-    const { products, totalPages } = await fetchWooPage(page);
-    const bulk = products.map(p => ({
+      if (!WC_URL || !WC_KEY) throw new Error('WC_URL e WC_KEY nao configurados.');
+      const { products, totalPages } = await fetchWooPage(page);
+      const bulk = products.map(p => ({
+              wc_id: String(p.id),
+              nome: p.name || '',
+              sku: p.sku || '',
+              preco: parseFloat(p.price || '0') || 0,
+              preco_regular: parseFloat(p.regular_price || '0') || 0,
+              preco_promocional: parseFloat(p.sale_price || '0') || 0,
+              estoque: p.stock_quantity || 0,
+              em_estoque: p.in_stock ? 1 : 0,
+              status: p.status || 'publish',
+              categoria: (p.categories || []).map(c => c.name).join(', '),
+              descricao: (p.short_description || '').replace(/<[^>]*>/g, '').substring(0, 500),
+              woocommerce_id: String(p.id),
+              origem: 'woocommerce'
+      }));
+      const result = await upsertByField(TABLE, bulk, 'woocommerce_id');
+      return {
+              ok: true,
+              page,
+              sincronizados: Array.isArray(result) ? result.length : (result ? 1 : 0),
+              totalPages,
+              hasMore: page < totalPages
+      };
+}
+
+// Sincroniza um lote de paginas (startPage ate startPage+batchSize-1)
+// Retorna quantas paginas foram sincronizadas e se ainda ha mais
+async function syncBatch(startPage = 1, batchSize = 5) {
+      if (!WC_URL || !WC_KEY) throw new Error('WC_URL e WC_KEY nao configurados.');
+      const first = await fetchWooPage(startPage);
+      const totalPages = first.totalPages;
+      const endPage = Math.min(startPage + batchSize - 1, totalPages);
+      let totalSincronizados = 0;
+
+  // processa a primeira pagina (ja buscada)
+  const bulk0 = first.products.map(p => ({
           wc_id: String(p.id),
           nome: p.name || '',
           sku: p.sku || '',
@@ -55,64 +89,64 @@ async function syncPage(page = 1) {
           descricao: (p.short_description || '').replace(/<[^>]*>/g, '').substring(0, 500),
           woocommerce_id: String(p.id),
           origem: 'woocommerce'
-    }));
+  }));
+      const r0 = await upsertByField(TABLE, bulk0, 'woocommerce_id');
+      totalSincronizados += Array.isArray(r0) ? r0.length : (r0 ? 1 : 0);
 
-  // Upsert no Supabase usando woocommerce_id como chave de conflito
-  const result = await upsertByField(TABLE, bulk, 'woocommerce_id');
+  for (let p = startPage + 1; p <= endPage; p++) {
+          const r = await syncPage(p);
+          totalSincronizados += r.sincronizados;
+  }
 
   return {
-        ok: true,
-        page,
-        sincronizados: Array.isArray(result) ? result.length : (result ? 1 : 0),
-        totalPages,
-        hasMore: page < totalPages
+          ok: true,
+          startPage,
+          endPage,
+          totalPages,
+          sincronizados: totalSincronizados,
+          hasMore: endPage < totalPages,
+          nextPage: endPage < totalPages ? endPage + 1 : null
   };
 }
 
-async function syncAll() {
-    const first = await fetchWooPage(1);
-    const totalPages = first.totalPages;
-    let total = 0;
-    for (let p = 1; p <= totalPages; p++) {
-          const r = await syncPage(p);
-          total += r.sincronizados;
-    }
-    return { ok: true, totalPages, totalSincronizados: total };
-}
-
 export default async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,X-API-Key');
-    if (req.method === 'OPTIONS') return res.status(200).end();
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,X-API-Key');
+      if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
+          // sync=1&page=N  -> sincroniza uma pagina especifica
         if (req.query.sync === '1') {
-                const page = parseInt(req.query.page) || 1;
-                const result = await syncPage(page);
-                return res.json(result);
-        }
-        if (req.query.sync === 'all') {
-                const result = await syncAll();
-                return res.json(result);
+                  const page = parseInt(req.query.page) || 1;
+                  const result = await syncPage(page);
+                  return res.json(result);
         }
 
-      // Lista produtos do Supabase (com search opcional)
-      const q = (req.query.q || '').toString().trim().toLowerCase();
-        const limit = parseInt(req.query.limit) || 20000;
-        let data = await selectAll(TABLE, { orderBy: 'nome', limit: 20000 });
-        if (q) {
-                data = data.filter(p =>
-                          (p.nome || '').toLowerCase().includes(q) ||
-                          (p.sku || '').toLowerCase().includes(q) ||
-                          (p.categoria || '').toLowerCase().includes(q)
-                                         );
+        // sync=batch&page=N&batch=5 -> sincroniza lote de paginas (padrao 5 por vez)
+        if (req.query.sync === 'batch' || req.query.sync === 'all') {
+                  const startPage = parseInt(req.query.page) || 1;
+                  const batchSize = parseInt(req.query.batch) || 5;
+                  const result = await syncBatch(startPage, batchSize);
+                  return res.json(result);
         }
-        const produtos = data.slice(0, limit).map(mapProduto);
-        return res.json({ produtos, total: produtos.length });
+
+        // Lista produtos do Supabase (com search opcional)
+        const q = (req.query.q || '').toString().trim().toLowerCase();
+          const limit = parseInt(req.query.limit) || 20000;
+          let data = await selectAll(TABLE, { orderBy: 'nome', limit: 20000 });
+          if (q) {
+                    data = data.filter(p =>
+                                (p.nome || '').toLowerCase().includes(q) ||
+                                (p.sku || '').toLowerCase().includes(q) ||
+                                (p.categoria || '').toLowerCase().includes(q)
+                                             );
+          }
+          const produtos = data.slice(0, limit).map(mapProduto);
+          return res.json({ produtos, total: produtos.length });
   } catch (e) {
-        console.error('[produtos] erro:', e.message);
-        return res.status(500).json({ error: e.message });
+          console.error('[produtos] erro:', e.message);
+          return res.status(500).json({ error: e.message });
   }
 }
 
