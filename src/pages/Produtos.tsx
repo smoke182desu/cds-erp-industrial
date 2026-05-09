@@ -126,20 +126,29 @@ export function Produtos() {
 
   // ── Sincronizar ───────────────────────────────────────────────────────────
   const sincronizar = async () => {
-    setSyncing(true); setSyncMsg('Conectando ao WooCommerce...');
+    setSyncing(true);
+    setSyncMsg('Conectando ao WooCommerce...');
     try {
-      const res  = await fetch('/api/produtos?sync=all');
-      const data = await res.json();
-      if (data.ok) {
-        setSyncMsg(`✓ ${data.totalSincronizados} produtos sincronizados`);
-        showToast(`${data.totalSincronizados} produtos sincronizados com sucesso`);
-        await carregar();
-      } else {
-        setSyncMsg(`Erro: ${data.error}`);
-      }
+      let page = 1;
+      let totalPages = 1;
+      let totalSync = 0;
+      const BATCH = 5;
+      do {
+        setSyncMsg(`Sincronizando... ${totalSync} produtos (pag. ${page}/${totalPages})`);
+        const res = await fetch(`/api/produtos?sync=batch&page=${page}&batch=${BATCH}`);
+        const data = await res.json();
+        if (!data.ok) { setSyncMsg(`Erro: ${data.error}`); break; }
+        totalPages = data.totalPages || 1;
+        totalSync += data.sincronizados || 0;
+        page = data.nextPage || (data.endPage + 1);
+        if (!data.hasMore) break;
+      } while (page <= totalPages);
+      setSyncMsg(`✓ ${totalSync} produtos sincronizados!`);
+      showToast(`${totalSync} produtos sincronizados com sucesso!`);
+      await carregar();
     } catch (e: any) { setSyncMsg(`Erro: ${e.message}`); }
-    finally { setSyncing(false); setTimeout(() => setSyncMsg(''), 5000); }
-  };
+    finally { setSyncing(false); setTimeout(() => setSyncMsg(''), 8000); }
+  }
 
   const showToast = (msg: string) => {
     setToast(msg); setTimeout(() => setToast(''), 3500);
