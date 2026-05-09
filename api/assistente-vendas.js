@@ -45,28 +45,13 @@ async function buscarMensagens(telefone) {
   }
 }
 
-// Retry com backoff para lidar com 429 (rate limit)
-async function chamarGroqComRetry(payload, tentativas = 3) {
-  for (let i = 0; i < tentativas; i++) {
-    try {
-      const resp = await axios.post(`${GROQ_BASE_URL}/chat/completions`, payload, {
-        headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-        timeout: 30000,
-      });
-      return resp;
-    } catch (err) {
-      const status = err.response?.status;
-      if (status === 429 && i < tentativas - 1) {
-        // Pega o retry-after do header ou usa backoff exponencial
-        const retryAfter = parseInt(err.response?.headers?.['retry-after'] || '0');
-        const delay = retryAfter > 0 ? retryAfter * 1000 : (i + 1) * 3000;
-        console.warn(`[assistente] 429 rate limit, aguardando ${delay}ms (tentativa ${i + 1}/${tentativas})`);
-        await new Promise(r => setTimeout(r, delay));
-        continue;
-      }
-      throw err;
-    }
-  }
+// Chamada direta sem retry — Vercel tem timeout curto
+async function chamarGroq(payload) {
+  const resp = await axios.post(`${GROQ_BASE_URL}/chat/completions`, payload, {
+    headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+    timeout: 15000,
+  });
+  return resp;
 }
 
 async function analisarConversa(mensagens, lead) {
@@ -129,7 +114,7 @@ REGRAS:
 - Cite produto quando fizer sentido
 - 4 sugestoes diferentes (saudacao/cordial/tecnica/urgencia)`;
 
-  const resp = await chamarGroqComRetry({
+  const resp = await chamarGroq({
     model: GROQ_MODEL,
     messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
     response_format: { type: 'json_object' },

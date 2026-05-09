@@ -309,26 +309,29 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
     setCarregando(true);
     setErro('');
     try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 20000);
       const res = await fetch('/api/assistente-vendas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, empresa: lead.empresa, etapa: lead.etapa }),
+        signal: ctrl.signal,
       });
+      clearTimeout(timer);
       const json = await res.json();
       if (res.status === 429) {
-        setErro('Aguarde um momento... muitas análises seguidas. Tentando de novo em 10s.');
-        setTimeout(() => { analisandoRef.current = false; analisar(); }, 10000);
+        setErro('Muitas requisições. Aguarde uns segundos e clique em 🔄');
         return;
       }
       if (!res.ok) throw new Error(json.error || 'Erro na análise');
       setAnalise(json.analise);
       setTotalMsgs(json.totalMensagens || 0);
     } catch (e: any) {
-      const msg = e.message || '';
-      if (msg.includes('429') || msg.includes('rate') || msg.includes('limit')) {
-        setErro('Muitas requisições. Aguarde uns segundos e clique em atualizar.');
+      if (e.name === 'AbortError') {
+        setErro('Demorou demais. Clique em 🔄 para tentar novamente.');
       } else {
-        setErro(msg);
+        const msg = e.message || '';
+        setErro(msg.includes('429') ? 'Muitas requisições. Aguarde e tente novamente.' : msg || 'Erro ao analisar');
       }
     } finally {
       setCarregando(false);
