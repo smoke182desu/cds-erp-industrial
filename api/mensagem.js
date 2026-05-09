@@ -57,14 +57,13 @@ export default async function handler(req, res) {
             { headers: { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' } }
           );
 
-          // 2. Salva no Supabase
+          // 2. Salva no Supabase (colunas: telefone, texto, tipo, remetente, criado_em)
           const saved = await insert(TABLE, {
                 telefone,
                 texto: textoEnviar,
-                lead_id: leadId || null,
                 tipo: 'saida',
-                origem: 'whatsapp',
-                message_id: evoRes.data?.key?.id || null,
+                remetente: 'CDS Industrial',
+                criado_em: new Date().toISOString(),
           });
 
           return res.status(200).json({ ok: true, id: saved?.id || null });
