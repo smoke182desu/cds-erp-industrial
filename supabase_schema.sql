@@ -59,11 +59,33 @@ CREATE TABLE IF NOT EXISTS public.configuracoes (
     atualizado_em TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 5. Tabela de Propostas
+CREATE TABLE IF NOT EXISTS public.propostas (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    numero SERIAL,
+    lead_id UUID,
+    telefone TEXT,
+    nome_cliente TEXT,
+    empresa TEXT,
+    itens JSONB DEFAULT '[]',
+    valor_total NUMERIC DEFAULT 0,
+    status TEXT DEFAULT 'rascunho',
+    observacoes TEXT,
+    criado_em TIMESTAMPTZ DEFAULT NOW(),
+    atualizado_em TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Inicia numeracao em 1000
+ALTER SEQUENCE propostas_numero_seq RESTART WITH 1000;
+
 -- Cria índices para performance
 CREATE INDEX IF NOT EXISTS idx_leads_telefone ON public.leads(telefone);
 CREATE INDEX IF NOT EXISTS idx_mensagens_telefone ON public.mensagens(telefone);
 CREATE INDEX IF NOT EXISTS idx_mensagens_criado_em ON public.mensagens(criado_em);
 CREATE INDEX IF NOT EXISTS idx_produtos_woocommerce_id ON public.produtos(woocommerce_id);
+CREATE INDEX IF NOT EXISTS idx_propostas_telefone ON public.propostas(telefone);
+CREATE INDEX IF NOT EXISTS idx_propostas_status ON public.propostas(status);
+CREATE INDEX IF NOT EXISTS idx_propostas_criado_em ON public.propostas(criado_em DESC);
 
 -- Recarregar o cache do schema do PostgREST
 NOTIFY pgrst, 'reload schema';

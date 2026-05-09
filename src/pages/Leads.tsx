@@ -838,14 +838,45 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
       data: new Date().toISOString(),
     };
     if (adicionarPropostaDireta) adicionarPropostaDireta(proposta);
-    // Abre o HTML da proposta SEMPRE — nao depende de funcoes opcionais do contexto
-    let num: number | undefined;
+
+    // Persiste proposta no Supabase
+    let numeroBanco: number | undefined;
     try {
-      num = await proximoNumeroProposta();
+      const resProp = await fetch('/api/propostas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telefone: lead.telefone,
+          nome_cliente: lead.nome || dados.empresa || 'Cliente',
+          empresa: dados.empresa || lead.empresa || '',
+          itens: itens.map((it, i) => ({
+            nome: it.nome || 'Item',
+            descricao: it.descricao || '',
+            qtd: it.qtd,
+            valorUnitario: it.valorUnitario,
+          })),
+          valor_total: total,
+          status: 'enviada',
+          observacoes: dados.observacoes || '',
+        }),
+      });
+      const jsonProp = await resProp.json();
+      if (jsonProp.ok && jsonProp.proposta?.numero) {
+        numeroBanco = jsonProp.proposta.numero;
+      }
     } catch (e) {
-      console.error('Falha ao obter numero sequencial (segue mesmo assim):', e);
-      // Fallback: usa ultimos 4 digitos do timestamp como "numero"
-      num = Date.now() % 10000;
+      console.error('Falha ao salvar proposta no banco:', e);
+    }
+
+    // Abre o HTML da proposta — usa numero do banco (1000+) ou fallback
+    let num = numeroBanco;
+    if (!num) {
+      try {
+        num = await proximoNumeroProposta();
+      } catch (e) {
+        console.error('Falha ao obter numero sequencial (segue mesmo assim):', e);
+        num = Date.now() % 10000;
+      }
     }
     try {
       abrirProposta({ ...dados, numero: num, itens } as PropostaDados);
