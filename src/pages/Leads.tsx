@@ -192,7 +192,7 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
             {lead.telefone && <p className="text-xs text-gray-500 mt-1">Aguardando mensagem do cliente ou envie a primeira mensagem abaixo.</p>}
           </div>
         )}
-        {msgs.map(m => (
+        {msgs.filter(m => m.texto?.trim() || m.mediaUrl).map(m => (
           <div key={m.id} className={`flex ${m.tipo === 'saida' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[75%] rounded-2xl px-3 py-2 shadow-sm ${m.tipo === 'saida' ? 'bg-[#dcf8c6] text-gray-800 rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm'}`}>
               {/* Midia inline */}
@@ -627,8 +627,10 @@ function LeadItem({ lead, ativo, naoLido, onClick }: {
 }) {
   const nome = (lead.nome || lead.telefone || 'Lead').trim();
   const inicial = nome[0].toUpperCase();
-  const temMsg = !!(lead.ultimaMensagem?.trim());
-  const preview = temMsg ? lead.ultimaMensagem!.trim() : (lead.empresa || lead.email || 'Sem mensagens ainda');
+  const msgBruta = lead.ultimaMensagem?.trim() || '';
+  const ehMidia = /^\[?(Media|image|video|audio|document)\]?$/i.test(msgBruta);
+  const temMsg = !!(msgBruta && !ehMidia);
+  const preview = temMsg ? msgBruta : ehMidia ? '📷 Midia' : (lead.empresa || lead.email || 'Sem mensagens ainda');
   const hora = fmtHora(lead.ultimaHora || '');
 
   // bg: ativo=verde claro, naoLido=verde transparente suave, normal=branco
