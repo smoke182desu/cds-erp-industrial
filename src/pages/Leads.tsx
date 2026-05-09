@@ -69,6 +69,13 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
   }, [lead.telefone, onMsgsChange]);
 
   useEffect(() => { carregar(); }, [carregar]);
+
+  // Polling: busca novas mensagens a cada 10s automaticamente
+  useEffect(() => {
+    const id = setInterval(() => { carregar(); }, 10000);
+    return () => clearInterval(id);
+  }, [carregar]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs]);
@@ -83,12 +90,18 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
   const enviar = async () => {
     if (!texto.trim() || !lead.telefone || enviando) return;
     setEnviando(true);
+    const textoEnviar = texto.trim();
+    setTexto(''); // limpa imediatamente para feedback visual
     try {
-      await enviarMensagem(lead.telefone, texto.trim(), lead.id);
-      setTexto('');
-      await carregar();
+      const result = await enviarMensagem(lead.telefone, textoEnviar, lead.id);
+      if (!result.ok) {
+        setTexto(textoEnviar); // restaura se falhou
+        alert('Falha ao enviar mensagem: ' + (result.error || 'Erro desconhecido'));
+      }
+      await carregar(); // recarrega para mostrar a mensagem enviada
     } finally { setEnviando(false); }
   };
+
 
   const etapaAtual = ETAPAS_FUNIL.find(e => e.id === lead.etapa);
 

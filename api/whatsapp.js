@@ -19,6 +19,10 @@ function normalizarPayload(body) {
       || data.text 
       || '';
 
+    const ts = data.messageTimestamp || Math.floor(Date.now() / 1000);
+    // Evolution API pode enviar timestamp em segundos ou milliseconds
+    const tsMs = ts > 1e12 ? ts : ts * 1000;
+
     return {
       pushName: pushName || null,
       remoteJid,
@@ -27,7 +31,7 @@ function normalizarPayload(body) {
       fromMe: !!key.fromMe,
       instance: body.instance || data.instance || null,
       event: body.event || null,
-      timestamp: data.messageTimestamp || Math.floor(Date.now() / 1000)
+      timestamp: tsMs
     };
   } catch (e) {
     return null;
@@ -58,14 +62,15 @@ export default async function handler(req, res) {
       remetente: norm.pushName,
       instancia: norm.instance,
       payload_bruto: body,
-      criado_em: new Date(norm.timestamp * 1000).toISOString()
+      criado_em: new Date(norm.timestamp).toISOString()
     });
 
     // 2. Se for mensagem de entrada, garante que o lead existe (Upsert)
-    if (!norm.fromMe && norm.pushName) {
+    // Atualiza mesmo sem pushName — usa numero como fallback de nome
+    if (!norm.fromMe) {
       await upsertByField('leads', {
         telefone: norm.numero,
-        nome: norm.pushName,
+        nome: norm.pushName || norm.numero,
         etapa: 'lead_novo',
         ultima_mensagem: norm.texto,
         atualizado_em: new Date().toISOString()

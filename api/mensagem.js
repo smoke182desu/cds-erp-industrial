@@ -31,11 +31,14 @@ export default async function handler(req, res) {
           const { telefone } = req.query;
           if (!telefone) return res.status(400).json({ error: 'telefone obrigatorio' });
           
-          const data = await selectAll(TABLE, { 
-            filters: { telefone: `eq.${telefone}` },
-            orderBy: 'criado_em'
-          });
-          const mapped = data.map(mapMensagem);
+          // Busca mensagens pelo telefone, ordenadas por data de criação
+          const r = await sb(`/${TABLE}?telefone=eq.${encodeURIComponent(telefone)}&order=criado_em.asc&limit=500`);
+          if (!r.ok) {
+            console.error('[mensagem] GET erro:', r.status, JSON.stringify(r.body).slice(0, 200));
+            return res.status(500).json({ error: 'Erro ao buscar mensagens' });
+          }
+          const rows = Array.isArray(r.body) ? r.body : [];
+          const mapped = rows.map(mapMensagem);
           return res.status(200).json(mapped);
     }
 
