@@ -327,14 +327,24 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
               <div>
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">💬 Respostas Sugeridas</p>
                 <div className="flex flex-col gap-2">
-                  {analise.sugestoes.map((s: any, i: number) => (
+                  {analise.sugestoes.map((s: any, i: number) => {
+                    const labelMap: Record<string, { texto: string; icone: string; cor: string }> = {
+                      saudacao: { texto: 'Saudação Inicial', icone: '👋', cor: 'text-green-600' },
+                      cordial: { texto: 'Cordial', icone: '💬', cor: 'text-blue-600' },
+                      tecnica: { texto: 'Técnico', icone: '🔧', cor: 'text-violet-600' },
+                      urgencia: { texto: 'Oportunidade', icone: '⚡', cor: 'text-amber-600' },
+                      curto: { texto: 'Curto', icone: '💬', cor: 'text-indigo-600' },
+                    };
+                    const info = labelMap[s.label] || { texto: s.label, icone: '💬', cor: 'text-indigo-600' };
+                    return (
                     <button key={i} onClick={() => onUsarSugestao(s.mensagem)}
-                      className="text-left bg-white border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 rounded-xl p-3 transition-all group shadow-sm">
-                      <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-1.5 group-hover:text-indigo-700">{s.label}</p>
+                      className={`text-left bg-white border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 rounded-xl p-3 transition-all group shadow-sm ${i === 0 ? 'ring-1 ring-green-300' : ''}`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 group-hover:opacity-80 ${info.cor}`}>{info.icone} {info.texto}</p>
                       <p className="text-xs text-gray-600 leading-relaxed line-clamp-4 group-hover:text-gray-800">{s.mensagem}</p>
                       <p className="text-[10px] text-indigo-400 mt-2 font-semibold group-hover:text-indigo-600">Clique para usar →</p>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

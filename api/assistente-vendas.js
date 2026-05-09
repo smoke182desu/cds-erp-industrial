@@ -54,11 +54,19 @@ async function analisarConversa(mensagens, lead) {
   const conversaStr = ultimas.length > 0
     ? ultimas.map(m => `[${m.tipo === 'saida' ? 'JEAN' : 'CLIENTE'}]: ${m.texto}`).join('\n')
     : '(sem mensagens ainda)';
+  // Saudacao baseada no horario de Brasilia (UTC-3)
+  const agora = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const hora = agora.getUTCHours();
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+  const nomeCliente = (lead.nome || '').split(' ')[0] || 'cliente';
 
-  const systemPrompt = `Voce e o assistente de vendas de JEAN da CDS Industrial. Analise a conversa e retorne APENAS JSON valido, sem markdown, sem explicacoes.`;
+  const systemPrompt = `Voce e o assistente de vendas de JEAN da CDS Industrial. Analise a conversa e retorne APENAS JSON valido, sem markdown, sem explicacoes.
+IMPORTANTE: As mensagens sugeridas devem ser CORDIAIS, AMIGAVEIS e PROFISSIONAIS. Use um tom caloroso e acolhedor, como um vendedor que se importa genuinamente com o cliente. Nao seja robotico nem frio.`;
   const userPrompt = `Assiste o vendedor JEAN da CDS Industrial.
 ${CONHECIMENTO_EMPRESA}${extra}
 LEAD atual: nome="${lead.nome || ''}" empresa="${lead.empresa || ''}" etapa=${etapa}
+HORARIO ATUAL: ${saudacao} (usar esta saudacao nas mensagens quando apropriado)
+NOME DO CLIENTE (primeiro nome): ${nomeCliente}
 
 CONVERSA:
 ${conversaStr}
@@ -67,9 +75,16 @@ Retorne APENAS JSON:
 {
   "dadosProposta":{"tipoCliente":"empresa|pessoa_fisica|orgao_publico|nao_identificado","nome":"","empresa":"","documento":"","email":"","endereco":"","produtos":["item c/ qtd e medidas"],"valorEstimado":"","prazo":"","observacoes":"1 frase curta p/ proposta"},
   "etapaDetectada":"lead_novo|contato_feito|qualificado|proposta_enviada|negociacao|fechado_ganho|fechado_perdido",
-  "sugestoes":[{"label":"curto","mensagem":"resposta pronta WhatsApp"},{"label":"curto","mensagem":"resposta pronta WhatsApp"},{"label":"curto","mensagem":"resposta pronta WhatsApp"}]
+  "sugestoes":[{"label":"saudacao","mensagem":"saudacao inicial cordial com ${saudacao} e nome do cliente"},{"label":"cordial","mensagem":"resposta cordial e acolhedora"},{"label":"tecnica","mensagem":"resposta com detalhes tecnicos do produto"},{"label":"urgencia","mensagem":"resposta criando senso de oportunidade"}]
 }
-REGRAS: continuacao natural, max 2 linhas <=200 chars, tom Jean WhatsApp, citar produto+tecnica, 3 angulos (tecnica/urgencia/funil), sem emoji no nome.`;
+REGRAS:
+- A PRIMEIRA sugestao DEVE ser uma saudacao inicial usando "${saudacao}, ${nomeCliente}!" seguida de uma frase acolhedora
+- Todas as mensagens devem ser CORDIAIS e AMIGAVEIS, como se Jean fosse um amigo ajudando
+- Use expressoes como "fico feliz", "sera um prazer", "pode contar comigo", "estou aqui pra te ajudar"
+- Tom WhatsApp natural, maximo 3 linhas, <=250 chars
+- Cite produto quando relevante
+- 4 sugestoes com angulos diferentes (saudacao/cordial/tecnica/urgencia)
+- Sem emoji no nome do JSON`;
 
   const resp = await axios.post(`${GROQ_BASE_URL}/chat/completions`, {
     model: GROQ_MODEL,
