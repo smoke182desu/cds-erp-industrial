@@ -206,7 +206,7 @@ Conversa atual:
 ${conversa || '(sem mensagens)'}
 
 REGRAS:
-1. Se o item mencionado pelo cliente corresponde a um produto do catalogo acima, USE o nome e preco exatos do catalogo e preencha "skuCatalogo".
+1. Se o item mencionado pelo cliente corresponde a um produto do catalogo acima, USE o nome e preco exatos do catalogo e preencha "skuCatalogo". Use "nome" para o nome do produto e "valorUnitario" para o preco.
 2. Se nao houver correspondencia, estime preco razoavel e deixe "skuCatalogo" null.
 3. Nomes de produto SEMPRE com specs (capacidade, material, dimensoes). Ex: "Container 1200L Inox 304".
 
@@ -214,7 +214,7 @@ Responda SOMENTE um JSON valido, sem texto antes ou depois, no formato:
 {
   "titulo": "string curto",
   "descricao": "string ate 400 caracteres",
-  "itens": [ { "descricao": "string", "quantidade": number, "unidade": "string", "precoUnitario": number, "skuCatalogo": "string ou null" } ],
+  "itens": [ { "nome": "string (nome do produto)", "descricao": "string (detalhes tecnicos)", "qtd": number, "unidade": "string", "valorUnitario": number, "skuCatalogo": "string ou null" } ],
   "observacoes": "string"
 }`;
 
@@ -236,13 +236,23 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Metodo nao permitido' });
 
-  const { telefone, nome, email, empresa } = req.body || {};
+  const { telefone, nome, email, empresa, mensagens: msgsBody } = req.body || {};
   if (!telefone) return res.status(400).json({ error: 'telefone obrigatorio' });
 
   const tel = String(telefone).replace(/\D/g, '');
 
   try {
-    const mensagens = await buscarMensagens(tel);
+    // Usa mensagens enviadas pelo frontend (ja carregadas no chat) ou busca do Supabase como fallback
+    let mensagens;
+    if (Array.isArray(msgsBody) && msgsBody.length > 0) {
+      mensagens = msgsBody.map(m => ({
+        texto: m.texto || m.conteudo || m.body || '',
+        tipo: m.tipo || m.direction || 'entrada',
+        criadoEm: m.criadoEm || m.timestamp || new Date().toISOString(),
+      })).filter(m => m.texto.trim());
+    } else {
+      mensagens = await buscarMensagens(tel);
+    }
     const conversaAtual = recortarConversaAtual(mensagens);
 
     // Texto do cliente (pondera melhor as palavras-chave)
@@ -269,7 +279,7 @@ export default async function handler(req, res) {
         if (item.skuCatalogo) {
           const match = catalogoCompleto.find(p => p.sku === item.skuCatalogo);
           if (match) {
-            item.precoUnitario = item.precoUnitario || match.preco || match.precoRegular;
+            item.valorUnitario = item.valorUnitario || match.preco || match.precoRegular;
             item.produtoId = match.id;
             item.nomeCatalogo = match.nome;
           }
@@ -277,6 +287,18 @@ export default async function handler(req, res) {
       }
     }
 
+    // Normaliza campos para compatibilidade com o frontend
+    if (proposta) {
+      proposta.intro = proposta.intro || proposta.descricao || '';
+      if (Array.isArray(proposta.itens)) {
+        proposta.itens = proposta.itens.map(it => ({
+          ...it,
+          nome: it.nome || it.descricao || 'Item',
+          qtd: Number(it.qtd || it.quantidade) || 1,
+          valorUnitario: Number(it.valorUnitario || it.precoUnitario) || 0,
+        }));
+      }
+    }
     return res.status(200).json({
       ok: true,
       proposta,
