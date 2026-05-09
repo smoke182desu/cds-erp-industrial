@@ -68,14 +68,7 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
     } finally { setLoading(false); }
   }, [lead.telefone, onMsgsChange]);
 
-  useEffect(() => { carregar(); }, [carregar]);
-
-  // Polling: busca novas mensagens a cada 10s automaticamente
-  useEffect(() => {
-    const id = setInterval(() => { carregar(); }, 10000);
-    return () => clearInterval(id);
-  }, [carregar]);
-
+  useEffect(() => { carregar(); const id = setInterval(carregar, 8000); return () => clearInterval(id); }, [carregar]);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs]);
@@ -90,18 +83,12 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
   const enviar = async () => {
     if (!texto.trim() || !lead.telefone || enviando) return;
     setEnviando(true);
-    const textoEnviar = texto.trim();
-    setTexto(''); // limpa imediatamente para feedback visual
     try {
-      const result = await enviarMensagem(lead.telefone, textoEnviar, lead.id);
-      if (!result.ok) {
-        setTexto(textoEnviar); // restaura se falhou
-        alert('Falha ao enviar mensagem: ' + (result.error || 'Erro desconhecido'));
-      }
-      await carregar(); // recarrega para mostrar a mensagem enviada
+      await enviarMensagem(lead.telefone, texto.trim(), lead.id);
+      setTexto('');
+      await carregar();
     } finally { setEnviando(false); }
   };
-
 
   const etapaAtual = ETAPAS_FUNIL.find(e => e.id === lead.etapa);
 
@@ -456,57 +443,75 @@ function DetalhesPanel({ lead, onUpdate, onCriarProposta }: {
   );
 }
 
-// ─── Formatador de hora pra preview ────────────────────────────────────────
-function fmtHora(s?: string): string {
-  if (!s) return '';
-  const d = new Date(s.replace(' ', 'T'));
-  if (isNaN(d.getTime())) return '';
-  const hoje = new Date();
-  const mesmoDia = d.toDateString() === hoje.toDateString();
-  if (mesmoDia) return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  const diff = (hoje.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
-  if (diff < 7) return d.toLocaleDateString('pt-BR', { weekday: 'short' });
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-}
-
-// ─── Nome exibido: usa nome real, cai pra telefone formatado, depois 'Lead' ─
-function nomeExibido(lead: Lead): string {
-  const nome = (lead.nome || '').trim();
-  const tel  = (lead.telefone || '').trim();
-  // Se nome e vazio OU e igual ao telefone OU soh numeros, cai pro telefone
-  if (!nome || nome === tel || /^\+?\d{6,}$/.test(nome)) {
-    return tel ? ('+' + tel.replace(/^\+/, '')) : 'Lead';
-  }
-  return nome;
-}
-
 // ─── Item da lista de leads ────────────────────────────────────────────────
+// cores avatar estilo WhatsApp
+const WA_COLORS = ['#25D366','#128C7E','#075E54','#34B7F1','#00a884','#6366f1','#ec4899','#f59e0b'];
+function fmtHora(iso: string): string {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const now = new Date();
+    const diff = now.getTime() - d.getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days === 0) return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    if (days === 1) return 'Ontem';
+    if (days < 7) return d.toLocaleDateString('pt-BR', { weekday: 'short' });
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  } catch { return iso; }
+}
+function avatarCor(nome: string) {
+  return WA_COLORS[(nome || ' ').charCodeAt(0) % WA_COLORS.length];
+}
+function fmtTel(tel?: string): string {
+  if (!tel) return '';
+  const d = tel.replace(/\D/g, '');
+  if (d.length >= 12) return '+' + d.slice(0,2) + ' (' + d.slice(2,4) + ') ' + d.slice(4,9) + '-' + d.slice(9);
+  if (d.length === 11) return '(' + d.slice(0,2) + ') ' + d.slice(2,7) + '-' + d.slice(7);
+  return tel;
+}
+
 function LeadItem({ lead, ativo, onClick }: {
   lead: Lead & { ultimaMensagem?: string; ultimaHora?: string };
   ativo: boolean;
   onClick: () => void;
 }) {
-  const etapa = ETAPAS_FUNIL.find(e => e.id === lead.etapa);
-  const nomeMostrar = nomeExibido(lead);
-  const inicial = (nomeMostrar || '?')[0].toUpperCase();
-  const preview = (lead.ultimaMensagem && lead.ultimaMensagem.trim())
-    || lead.empresa
-    || lead.email
-    || 'Sem mensagens ainda';
+  const nome = (lead.nome || lead.telefone || 'Lead').trim();
+  const inicial = nome[0].toUpperCase();
+  const temMsg = !!(lead.ultimaMensagem?.trim());
+  const preview = temMsg ? lead.ultimaMensagem!.trim() : (lead.empresa || lead.email || 'Sem mensagens ainda');
+  const hora = fmtHora(lead.ultimaHora || '');
+
   return (
     <button onClick={onClick}
-      className={`w-full text-left px-3 py-3 border-b flex gap-3 items-start hover:bg-gray-50 transition-colors ${ativo ? 'bg-indigo-50 border-l-4 border-l-indigo-500' : 'border-l-4 border-l-transparent'}`}>
-      <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-base flex-shrink-0"
-        style={{ backgroundColor: ETAPA_COR[lead.etapa] }}>
-        {inicial}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-1">
-          <p className="font-semibold text-sm text-gray-900 truncate">{nomeMostrar}</p>
-          <span className="text-[10px] text-gray-400 flex-shrink-0 mt-0.5">{fmtHora(lead.ultimaHora)}</span>
+      className={`w-full text-left px-3 py-2.5 border-b flex gap-3 items-center hover:bg-gray-50 transition-colors ${ativo ? 'bg-[#d9fdd3]' : 'bg-white'}`}>
+      {/* Avatar estilo WhatsApp - foto real ou inicial */}
+      {lead.fotoUrl ? (
+        <img src={lead.fotoUrl} alt={nome}
+          className="w-12 h-12 rounded-full object-cover flex-shrink-0 shadow-sm select-none"
+          onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} />
+      ) : (
+        <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-xl flex-shrink-0 shadow-sm select-none"
+          style={{ backgroundColor: avatarCor(nome) }}>
+          {inicial}
         </div>
-        <p className="text-xs text-gray-500 truncate mt-0.5">{preview}</p>
-        <span className={`mt-1 inline-block text-[10px] px-1.5 py-0.5 rounded-full ${ETAPA_BADGE[lead.etapa]}`}>{etapa?.label}</span>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-1">
+          <p className="font-semibold text-sm text-gray-900 truncate">{nome}</p>
+          <span className={`text-[11px] flex-shrink-0 font-medium ${temMsg ? 'text-[#25D366]' : 'text-gray-400'}`}>{hora}</span>
+        </div>
+        {lead.telefone && (
+          <p className="text-[10px] text-gray-400 truncate leading-tight">📱 {fmtTel(lead.telefone)}</p>
+        )}
+        <div className="flex items-center justify-between gap-1 mt-0.5">
+          <p className="text-xs text-gray-500 truncate">{preview}</p>
+          {(lead.totalMensagens ?? 0) > 0 && !ativo && (
+            <span className="flex-shrink-0 bg-[#25D366] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+              {lead.totalMensagens}
+            </span>
+          )}
+        </div>
       </div>
     </button>
   );
@@ -550,9 +555,10 @@ function NovoLeadModal({ onClose, onSave }: { onClose: () => void; onSave: (l: O
 }
 
 // ─── Modal Criar Proposta ───────────────────────────────────────────────────
-function PropostaModal({ lead, analisePrevia, onClose }: {
+function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
   lead: Lead;
   analisePrevia?: any;
+  mensagens?: Mensagem[];
   onClose: () => void;
 }) {
   // Se recebemos uma analise ja feita pelo painel Inteligencia, pre-populamos
@@ -595,32 +601,24 @@ function PropostaModal({ lead, analisePrevia, onClose }: {
   const remItem = (i: number) => setItens(p => p.filter((_, idx) => idx !== i));
 
   const gerarComIA = async () => {
-    // Sem telefone: nao trava — soh marca aviso e segue (o usuario ainda
-    // consegue gerar a proposta em branco e abrir o HTML)
-    if (!lead.telefone) {
-      setErroIA('Lead sem telefone — IA nao pode buscar conversa, mas a proposta ainda pode ser gerada manualmente.');
-      return;
-    }
+    if (!lead.telefone) { setErroIA('Este lead não tem telefone — necessário para buscar a conversa.'); return; }
     setGerandoIA(true); setErroIA(''); setIaOk(false);
     try {
       const res = await fetch('/api/proposta-ia', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa }),
+        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa, mensagens: (mensagens || []).map(m => ({ texto: m.texto || m.conteudo || m.body || '', tipo: m.tipo || m.direction || 'entrada', criadoEm: m.criadoEm || m.timestamp || '' })) }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro desconhecido');
-      const p = json.proposta || {};
+      const p = json.proposta;
       setDados({ empresa: p.empresa || dados.empresa, ac: p.ac || '', telefone: p.telefone || dados.telefone,
         email: p.email || dados.email, cidade: p.cidade || '', vendedor: p.vendedor || 'Jean',
         frete: p.frete || 'À combinar', validade: p.validade || '7 dias corridos',
         pagamento: p.pagamento || '50% de entrada e 50% na entrega',
         prazoEntrega: p.prazoEntrega || 'A confirmar após aceite formal', intro: p.intro || '' });
-      if (p.itens?.length > 0) setItens(p.itens.map((it: any) => ({ nome: it.nome || '', descricao: it.descricao || '', qtd: Number(it.qtd) || 1, valorUnitario: Number(it.valorUnitario) || 0 })));
+      if (p.itens?.length > 0) setItens(p.itens.map((it: any) => ({ nome: it.nome || it.descricao || 'Item', descricao: it.descricao || '', qtd: Number(it.qtd || it.quantidade) || 1, valorUnitario: Number(it.valorUnitario || it.precoUnitario) || 0 })));
       setIaOk(true);
-    } catch (e: any) {
-      // Mesmo se a IA falhar, nao bloqueia — registra o erro e segue
-      setErroIA('IA indisponivel (' + (e.message || 'erro') + ') — preencha manualmente ou gere a proposta em branco.');
-    }
+    } catch (e: any) { setErroIA(e.message || 'Erro ao chamar IA'); }
     finally { setGerandoIA(false); }
   };
 
@@ -902,11 +900,17 @@ export function Leads() {
     setLeads(prev => prev.map(l => l.id === leadAtivo.id ? atualizado : l));
   };
 
-  const filtrados = leads.filter(l => {
-    if (!busca) return true;
-    const q = busca.toLowerCase();
-    return [nomeExibido(l), l.nome, l.email, l.telefone, l.empresa].some(v => v?.toLowerCase().includes(q));
-  });
+  const filtrados = leads
+    .filter(l => {
+      if (!busca) return true;
+      const q = busca.toLowerCase();
+      return [l.nome, l.email, l.telefone, l.empresa].some(v => v?.toLowerCase().includes(q));
+    })
+    .sort((a, b) => {
+      const ha = a.ultimaHora || a.criadoEm || '';
+      const hb = b.ultimaHora || b.criadoEm || '';
+      return hb > ha ? 1 : hb < ha ? -1 : 0;
+    });
   const totalVal = leads.filter(l => l.etapa !== 'fechado_perdido').reduce((s,l) => s+(l.valor||0), 0);
   const ganhos = leads.filter(l => l.etapa === 'fechado_ganho').length;
   const taxa = leads.length ? Math.round((ganhos/leads.length)*100) : 0;
@@ -1016,6 +1020,7 @@ export function Leads() {
         <PropostaModal
           lead={propostaLead}
           analisePrevia={propostaAnalise}
+          mensagens={msgsAtivas}
           onClose={() => { setPropostaLead(null); setPropostaAnalise(null); }}
         />
       )}
