@@ -91,6 +91,7 @@ function normalizar(lead) {
     contato_nome: lead.contato_nome || lead.push_name || lead.pushName || '',
     criadoEm: lead.criadoEm ?? lead.criado_em ?? lead.created_at ?? '',
     atualizadoEm: lead.atualizadoEm ?? lead.atualizado_em ?? lead.updated_at ?? '',
+    ultima_hora: lead.atualizado_em ?? lead.atualizadoEm ?? lead.criado_em ?? '',
   };
 }
 

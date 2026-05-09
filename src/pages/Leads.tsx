@@ -454,10 +454,11 @@ function fmtHora(iso: string): string {
     const now = new Date();
     const diff = now.getTime() - d.getTime();
     const days = Math.floor(diff / 86400000);
-    if (days === 0) return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    if (days === 1) return 'Ontem';
-    if (days < 7) return d.toLocaleDateString('pt-BR', { weekday: 'short' });
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    if (days === 0) return hora;
+    if (days === 1) return `Ontem ${hora}`;
+    if (days < 7) return d.toLocaleDateString('pt-BR', { weekday: 'short' }) + ` ${hora}`;
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ` ${hora}`;
   } catch { return iso; }
 }
 function avatarCor(nome: string) {
