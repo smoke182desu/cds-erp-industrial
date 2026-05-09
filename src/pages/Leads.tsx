@@ -68,7 +68,7 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
     } finally { setLoading(false); }
   }, [lead.telefone, onMsgsChange]);
 
-  useEffect(() => { carregar(); }, [carregar]);
+  useEffect(() => { carregar(); const id = setInterval(carregar, 8000); return () => clearInterval(id); }, [carregar]);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs]);
