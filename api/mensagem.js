@@ -1,7 +1,7 @@
 // api/mensagem.js — mensagens via Evolution API + salva no Supabase (Postgres)
 // Suporta texto e midia (imagem/video/documento via base64)
 import axios from 'axios';
-import { sb, insert } from './_lib/supabase.js';
+import { sb, insert, upsertByField } from './_lib/supabase.js';
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-903e.up.railway.app';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
@@ -106,6 +106,13 @@ export default async function handler(req, res) {
           media_type: mediaType,
         });
 
+        // Atualiza ultima_mensagem do lead
+        await upsertByField('leads', {
+          telefone,
+          ultima_mensagem: caption || `[${mediaType}]`,
+          atualizado_em: new Date().toISOString(),
+        }, 'telefone').catch(() => {});
+
         return res.status(200).json({ ok: true, id: saved?.id || null, mediaType });
       }
 
@@ -126,6 +133,13 @@ export default async function handler(req, res) {
         remetente: 'CDS Industrial',
         criado_em: new Date().toISOString(),
       });
+
+      // Atualiza ultima_mensagem do lead
+      await upsertByField('leads', {
+        telefone,
+        ultima_mensagem: textoEnviar,
+        atualizado_em: new Date().toISOString(),
+      }, 'telefone').catch(() => {});
 
       return res.status(200).json({ ok: true, id: saved?.id || null });
     }

@@ -45,6 +45,30 @@ async function buscarMensagens(telefone) {
   }
 }
 
+// Retry com backoff para lidar com 429 (rate limit)
+async function chamarGroqComRetry(payload, tentativas = 3) {
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      const resp = await axios.post(`${GROQ_BASE_URL}/chat/completions`, payload, {
+        headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+        timeout: 30000,
+      });
+      return resp;
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 429 && i < tentativas - 1) {
+        // Pega o retry-after do header ou usa backoff exponencial
+        const retryAfter = parseInt(err.response?.headers?.['retry-after'] || '0');
+        const delay = retryAfter > 0 ? retryAfter * 1000 : (i + 1) * 3000;
+        console.warn(`[assistente] 429 rate limit, aguardando ${delay}ms (tentativa ${i + 1}/${tentativas})`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 async function analisarConversa(mensagens, lead) {
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no servidor.');
   const etapa = ETAPAS_LABEL[lead.etapa] || lead.etapa;
@@ -54,47 +78,63 @@ async function analisarConversa(mensagens, lead) {
   const conversaStr = ultimas.length > 0
     ? ultimas.map(m => `[${m.tipo === 'saida' ? 'JEAN' : 'CLIENTE'}]: ${m.texto}`).join('\n')
     : '(sem mensagens ainda)';
+
   // Saudacao baseada no horario de Brasilia (UTC-3)
   const agora = new Date(Date.now() - 3 * 60 * 60 * 1000);
   const hora = agora.getUTCHours();
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
   const nomeCliente = (lead.nome || '').split(' ')[0] || 'cliente';
 
-  const systemPrompt = `Voce e o assistente de vendas de JEAN da CDS Industrial. Analise a conversa e retorne APENAS JSON valido, sem markdown, sem explicacoes.
-IMPORTANTE: As mensagens sugeridas devem ser CORDIAIS, AMIGAVEIS e PROFISSIONAIS. Use um tom caloroso e acolhedor, como um vendedor que se importa genuinamente com o cliente. Nao seja robotico nem frio.`;
-  const userPrompt = `Assiste o vendedor JEAN da CDS Industrial.
+  const systemPrompt = `Voce e o assistente de vendas de JEAN da CDS Industrial em Brasilia/DF.
+Analise a conversa e retorne APENAS JSON valido, sem markdown, sem explicacoes.
+
+REGRA DE OURO: Escreva EXATAMENTE como um brasileiro de Brasilia escreve no WhatsApp.
+- Use "vc" em vez de "voce", "pra" em vez de "para", "ta" em vez de "esta"
+- Use expressoes naturais: "show", "beleza", "tranquilo", "massa", "fechou", "bora"
+- Seja caloroso e direto, como um amigo que entende do assunto
+- NUNCA use linguagem corporativa ou robotica
+- Escreva como se tivesse mandando audio transcrito: natural, fluido, humano
+- Use "a gente" em vez de "nos", "ce" ou "vc" em vez de "voce"`;
+
+  const userPrompt = `Assiste o vendedor JEAN da CDS Industrial (Brasilia/DF).
 ${CONHECIMENTO_EMPRESA}${extra}
-LEAD atual: nome="${lead.nome || ''}" empresa="${lead.empresa || ''}" etapa=${etapa}
-HORARIO ATUAL: ${saudacao} (usar esta saudacao nas mensagens quando apropriado)
-NOME DO CLIENTE (primeiro nome): ${nomeCliente}
+LEAD: nome="${lead.nome || ''}" empresa="${lead.empresa || ''}" etapa=${etapa}
+HORARIO: ${saudacao} | NOME CLIENTE: ${nomeCliente}
 
 CONVERSA:
 ${conversaStr}
 
 Retorne APENAS JSON:
 {
-  "dadosProposta":{"tipoCliente":"empresa|pessoa_fisica|orgao_publico|nao_identificado","nome":"","empresa":"","documento":"","email":"","endereco":"","produtos":["item c/ qtd e medidas"],"valorEstimado":"","prazo":"","observacoes":"1 frase curta p/ proposta"},
+  "dadosProposta":{"tipoCliente":"empresa|pessoa_fisica|orgao_publico|nao_identificado","nome":"","empresa":"","documento":"","email":"","endereco":"","produtos":["item c/ qtd e medidas"],"valorEstimado":"","prazo":"","observacoes":"1 frase curta"},
   "etapaDetectada":"lead_novo|contato_feito|qualificado|proposta_enviada|negociacao|fechado_ganho|fechado_perdido",
-  "sugestoes":[{"label":"saudacao","mensagem":"saudacao inicial cordial com ${saudacao} e nome do cliente"},{"label":"cordial","mensagem":"resposta cordial e acolhedora"},{"label":"tecnica","mensagem":"resposta com detalhes tecnicos do produto"},{"label":"urgencia","mensagem":"resposta criando senso de oportunidade"}]
+  "sugestoes":[
+    {"label":"saudacao","mensagem":"(saudacao com ${saudacao} + nome)"},
+    {"label":"cordial","mensagem":"(resposta amigavel e natural)"},
+    {"label":"tecnica","mensagem":"(fala sobre o produto de forma simples)"},
+    {"label":"urgencia","mensagem":"(cria senso de oportunidade)"}
+  ]
 }
-REGRAS:
-- A PRIMEIRA sugestao DEVE ser uma saudacao inicial usando "${saudacao}, ${nomeCliente}!" seguida de uma frase acolhedora
-- Todas as mensagens devem ser CORDIAIS e AMIGAVEIS, como se Jean fosse um amigo ajudando
-- Use expressoes como "fico feliz", "sera um prazer", "pode contar comigo", "estou aqui pra te ajudar"
-- Tom WhatsApp natural, maximo 3 linhas, <=250 chars
-- Cite produto quando relevante
-- 4 sugestoes com angulos diferentes (saudacao/cordial/tecnica/urgencia)
-- Sem emoji no nome do JSON`;
 
-  const resp = await axios.post(`${GROQ_BASE_URL}/chat/completions`, {
+EXEMPLO de tom correto:
+- "${saudacao}, ${nomeCliente}! Tudo certo? Vi que vc se interessou pelo nosso material, vou te passar tudo certinho!"
+- "Show, ${nomeCliente}! Essa escada a gente faz sob medida, com ART inclusa. Quer que eu mande as opcoes pra vc?"
+- "Massa! Olha, to com uma condicao especial essa semana - PIX sai 7% OFF. Bora fechar?"
+- "Tranquilo, ${nomeCliente}! A gente entrega no Brasil todo. Me passa as medidas que ja monto o orcamento pra vc"
+
+REGRAS:
+- Primeira sugestao: saudacao usando "${saudacao}, ${nomeCliente}!" + frase natural brasileira
+- Tom: vendedor brasiliense no WhatsApp, como se fosse amigo do cliente
+- Maximo 3 linhas, ate 250 chars
+- Cite produto quando fizer sentido
+- 4 sugestoes diferentes (saudacao/cordial/tecnica/urgencia)`;
+
+  const resp = await chamarGroqComRetry({
     model: GROQ_MODEL,
     messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
     response_format: { type: 'json_object' },
-    temperature: 0.3,
+    temperature: 0.7,
     max_tokens: 800,
-  }, {
-    headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-    timeout: 30000,
   });
 
   const raw = resp.data?.choices?.[0]?.message?.content || '';
@@ -118,6 +158,10 @@ export default async function handler(req, res) {
     const analise = await analisarConversa(mensagens, { nome, empresa, etapa, telefone });
     return res.status(200).json({ analise, totalMensagens: mensagens.length });
   } catch (e) {
+    const is429 = e.response?.status === 429 || e.message?.includes('429');
+    if (is429) {
+      return res.status(429).json({ error: 'Muitas requisicoes. Aguarde alguns segundos e tente novamente.' });
+    }
     console.error('[assistente-vendas] erro:', e.message);
     return res.status(500).json({ error: e.message || 'Erro interno' });
   }

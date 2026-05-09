@@ -315,11 +315,21 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
         body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, empresa: lead.empresa, etapa: lead.etapa }),
       });
       const json = await res.json();
+      if (res.status === 429) {
+        setErro('Aguarde um momento... muitas análises seguidas. Tentando de novo em 10s.');
+        setTimeout(() => { analisandoRef.current = false; analisar(); }, 10000);
+        return;
+      }
       if (!res.ok) throw new Error(json.error || 'Erro na análise');
       setAnalise(json.analise);
       setTotalMsgs(json.totalMensagens || 0);
     } catch (e: any) {
-      setErro(e.message);
+      const msg = e.message || '';
+      if (msg.includes('429') || msg.includes('rate') || msg.includes('limit')) {
+        setErro('Muitas requisições. Aguarde uns segundos e clique em atualizar.');
+      } else {
+        setErro(msg);
+      }
     } finally {
       setCarregando(false);
       analisandoRef.current = false;
@@ -344,7 +354,7 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
   }, [msgs.length, analisar]);
 
   useEffect(() => {
-    const interval = setInterval(() => { if (!analisandoRef.current) analisar(); }, 60000);
+    const interval = setInterval(() => { if (!analisandoRef.current) analisar(); }, 120000);
     return () => clearInterval(interval);
   }, [analisar]);
 
@@ -377,9 +387,9 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
           </div>
         )}
         {erro && !carregando && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-            <p className="text-xs text-red-600 font-medium mb-2">⚠️ {erro}</p>
-            <button onClick={analisar} className="text-xs bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700">Tentar novamente</button>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+            <p className="text-xs text-amber-700 font-medium mb-2">⏳ {erro}</p>
+            <button onClick={analisar} className="text-xs bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700">Tentar novamente</button>
           </div>
         )}
         {analise && !carregando && (
