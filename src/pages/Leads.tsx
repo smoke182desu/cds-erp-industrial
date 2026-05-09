@@ -5,7 +5,7 @@ import {
   subscribeLeads, adicionarLead, atualizarLead,
 } from '../services/leadsService';
 import {
-  Mensagem, buscarMensagens, enviarMensagem,
+  Mensagem, buscarMensagens, enviarMensagem, enviarMidia,
 } from '../services/conversasService';
 import {
   PropostaDados, ItemProposta,
@@ -44,7 +44,7 @@ function horaMsg(iso: string) {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-// ─── Painel de Conversa ───────────────────────────────────────────────────────
+// ─── Painel de Conversa (com suporte a mídias) ───────────────────────────────
 function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
   lead: Lead;
   onEtapaChange: (etapa: EtapaFunil) => void;
@@ -55,7 +55,11 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
   const [loading, setLoading] = useState(false);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [arquivoSelecionado, setArquivoSelecionado] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastN = useRef(0);
 
   const carregar = useCallback(async () => {
@@ -80,14 +84,67 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
     }
   }, [textoInjetado.n]);
 
+  // Limpa preview quando arquivo muda
+  useEffect(() => {
+    if (arquivoSelecionado && arquivoSelecionado.type.startsWith('image/')) {
+      const url = URL.createObjectURL(arquivoSelecionado);
+      setPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setPreviewUrl(null);
+    }
+  }, [arquivoSelecionado]);
+
+  const selecionarArquivo = (file: File) => {
+    if (file.size > 16 * 1024 * 1024) {
+      alert('Arquivo muito grande. Maximo 16MB.');
+      return;
+    }
+    setArquivoSelecionado(file);
+  };
+
+  const cancelarArquivo = () => {
+    setArquivoSelecionado(null);
+    setPreviewUrl(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const enviar = async () => {
-    if (!texto.trim() || !lead.telefone || enviando) return;
+    if (!lead.telefone || enviando) return;
+
+    // Envio de midia
+    if (arquivoSelecionado) {
+      setEnviando(true);
+      try {
+        const result = await enviarMidia(lead.telefone, arquivoSelecionado, texto.trim() || undefined);
+        if (!result.ok) {
+          alert('Falha ao enviar midia: ' + (result.error || 'Erro'));
+        }
+        cancelarArquivo();
+        setTexto('');
+        await carregar();
+      } finally { setEnviando(false); }
+      return;
+    }
+
+    // Envio de texto
+    if (!texto.trim()) return;
     setEnviando(true);
     try {
       await enviarMensagem(lead.telefone, texto.trim(), lead.id);
       setTexto('');
       await carregar();
     } finally { setEnviando(false); }
+  };
+
+  // Drag & drop handlers
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragging(true); };
+  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setDragging(false); };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) selecionarArquivo(file);
   };
 
   const etapaAtual = ETAPAS_FUNIL.find(e => e.id === lead.etapa);
@@ -109,7 +166,22 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
           🔄
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2" style={{ background: '#e5ddd5' }}>
+      <div
+        className={`flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2 transition-colors ${dragging ? 'bg-green-100/50 ring-2 ring-green-400 ring-inset' : ''}`}
+        style={{ background: dragging ? undefined : '#e5ddd5' }}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {dragging && (
+          <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+            <div className="bg-white/90 rounded-2xl px-8 py-6 shadow-lg text-center">
+              <div className="text-4xl mb-2">📎</div>
+              <p className="text-sm font-semibold text-green-700">Solte o arquivo aqui</p>
+              <p className="text-xs text-gray-500">Imagem, video ou documento</p>
+            </div>
+          </div>
+        )}
         {loading && <div className="text-center text-xs text-gray-500 py-8">Carregando mensagens...</div>}
         {!loading && msgs.length === 0 && (
           <div className="text-center py-12">
@@ -123,24 +195,79 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
         {msgs.map(m => (
           <div key={m.id} className={`flex ${m.tipo === 'saida' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[75%] rounded-2xl px-3 py-2 shadow-sm ${m.tipo === 'saida' ? 'bg-[#dcf8c6] text-gray-800 rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm'}`}>
-              <p className="text-sm whitespace-pre-wrap break-words">{m.texto}</p>
+              {/* Midia inline */}
+              {m.mediaUrl && m.mediaType === 'image' && (
+                <img src={m.mediaUrl} alt="imagem" className="rounded-lg max-w-full max-h-64 mb-1 cursor-pointer hover:opacity-90"
+                  onClick={() => window.open(m.mediaUrl, '_blank')} />
+              )}
+              {m.mediaUrl && m.mediaType === 'video' && (
+                <video src={m.mediaUrl} controls className="rounded-lg max-w-full max-h-64 mb-1" />
+              )}
+              {m.mediaUrl && m.mediaType === 'audio' && (
+                <audio src={m.mediaUrl} controls className="mb-1 w-full" />
+              )}
+              {m.mediaUrl && m.mediaType === 'document' && (
+                <a href={m.mediaUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-1 hover:bg-gray-100 transition-colors">
+                  <span className="text-2xl">📄</span>
+                  <span className="text-xs text-blue-600 font-medium underline">Abrir documento</span>
+                </a>
+              )}
+              {/* Indicador de midia sem URL (fallback texto) */}
+              {!m.mediaUrl && m.texto && /^\[(image|video|audio|document)\]$/.test(m.texto) && (
+                <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-1">
+                  <span className="text-lg">{m.texto.includes('image') ? '🖼️' : m.texto.includes('video') ? '🎬' : m.texto.includes('audio') ? '🎵' : '📄'}</span>
+                  <span className="text-xs text-gray-500 italic">Midia recebida</span>
+                </div>
+              )}
+              {/* Texto da mensagem */}
+              {m.texto && !/^\[(image|video|audio|document)\]$/.test(m.texto) && (
+                <p className="text-sm whitespace-pre-wrap break-words">{m.texto}</p>
+              )}
               <p className="text-[10px] text-gray-500 mt-1 text-right">{horaMsg(m.criadoEm)}{m.tipo === 'saida' && ' ✓✓'}</p>
             </div>
           </div>
         ))}
         <div ref={bottomRef} />
       </div>
+
+      {/* Preview de arquivo selecionado */}
+      {arquivoSelecionado && (
+        <div className="px-3 py-2 bg-white border-t flex items-center gap-3">
+          {previewUrl ? (
+            <img src={previewUrl} alt="preview" className="w-16 h-16 rounded-lg object-cover flex-shrink-0 shadow-sm" />
+          ) : (
+            <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+              <span className="text-2xl">{arquivoSelecionado.type.startsWith('video/') ? '🎬' : '📄'}</span>
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-800 truncate">{arquivoSelecionado.name}</p>
+            <p className="text-[10px] text-gray-400">{(arquivoSelecionado.size / 1024).toFixed(0)} KB</p>
+          </div>
+          <button onClick={cancelarArquivo} className="text-red-400 hover:text-red-600 text-lg flex-shrink-0" title="Cancelar">✕</button>
+        </div>
+      )}
+
       <div className="px-3 py-2 bg-gray-100 border-t">
         {!lead.telefone ? (
           <p className="text-xs text-center text-red-500 py-2">Adicione um telefone ao lead para enviar mensagens.</p>
         ) : (
           <div className="flex gap-2 items-end">
+            {/* Botao de anexo */}
+            <input ref={fileInputRef} type="file" className="hidden" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+              onChange={e => { const f = e.target.files?.[0]; if (f) selecionarArquivo(f); }} />
+            <button onClick={() => fileInputRef.current?.click()}
+              className="w-10 h-10 bg-white hover:bg-gray-50 border border-gray-200 text-gray-500 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
+              title="Enviar arquivo, imagem ou documento">
+              📎
+            </button>
             <textarea rows={1} value={texto} onChange={e => setTexto(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } }}
-              placeholder="Digite uma mensagem..."
+              placeholder={arquivoSelecionado ? "Legenda (opcional)..." : "Digite uma mensagem..."}
               className="flex-1 border-0 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
               style={{ maxHeight: '100px' }} />
-            <button onClick={enviar} disabled={enviando || !texto.trim()}
+            <button onClick={enviar} disabled={enviando || (!texto.trim() && !arquivoSelecionado)}
               className="w-10 h-10 bg-green-500 hover:bg-green-600 disabled:opacity-40 text-white rounded-full flex items-center justify-center flex-shrink-0 transition-colors">
               {enviando ? '⏳' : '➤'}
             </button>

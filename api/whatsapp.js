@@ -47,7 +47,7 @@ function normalizarPayload(body) {
     const remoteJid = key.remoteJid || data.remoteJid || '';
     const pushName = data.pushName || data.notifyName || body.pushName || '';
 
-    // Texto da mensagem (suporta vários formatos da Evolution API)
+    // Texto da mensagem (suporta varios formatos da Evolution API)
     const texto = message.conversation
       || message.extendedTextMessage?.text
       || message.imageMessage?.caption
@@ -57,17 +57,47 @@ function normalizarPayload(body) {
       || data.text
       || '';
 
+    // Midia: extrai URL e tipo se presente
+    let mediaUrl = null;
+    let mediaType = null;
+    if (message.imageMessage) {
+      mediaType = 'image';
+      mediaUrl = message.imageMessage.url || data.mediaUrl || null;
+    } else if (message.videoMessage) {
+      mediaType = 'video';
+      mediaUrl = message.videoMessage.url || data.mediaUrl || null;
+    } else if (message.documentMessage) {
+      mediaType = 'document';
+      mediaUrl = message.documentMessage.url || data.mediaUrl || null;
+    } else if (message.audioMessage) {
+      mediaType = 'audio';
+      mediaUrl = message.audioMessage.url || data.mediaUrl || null;
+    } else if (message.stickerMessage) {
+      mediaType = 'image';
+      mediaUrl = message.stickerMessage.url || data.mediaUrl || null;
+    }
+    // Fallback: Evolution API v2 pode enviar mediaUrl no data diretamente
+    if (!mediaUrl && data.mediaUrl) {
+      mediaUrl = data.mediaUrl;
+      if (!mediaType) mediaType = data.mediaType || 'image';
+    }
+
+    // Normaliza para ms: Evolution pode enviar segundos ou milliseconds
+    const ts = data.messageTimestamp || Math.floor(Date.now() / 1000);
+    const tsMs = ts > 1e12 ? ts : ts * 1000;
+
     return {
       pushName: pushName || null,
       remoteJid,
       numero,
-      texto,
+      texto: texto || (mediaType ? `[${mediaType}]` : ''),
       fromMe: !!key.fromMe,
       instance: body.instance || data.instance || null,
       event: body.event || null,
-      // Normaliza para ms: Evolution pode enviar segundos ou milliseconds
-      timestamp: (() => { const ts = data.messageTimestamp || Math.floor(Date.now() / 1000); return ts > 1e12 ? ts : ts * 1000; })(),
+      timestamp: tsMs,
       ehLid: jidEhInvalido(remoteJid),
+      mediaUrl,
+      mediaType,
     };
   } catch (e) {
     return null;
@@ -95,7 +125,7 @@ export default async function handler(req, res) {
     if (!norm.numero) {
       const lidPuro = (norm.remoteJid || '').split('@')[0].replace(/\D/g, '');
       if (lidPuro) {
-        await insert('mensagens', {
+        const msgData = {
           telefone: lidPuro,
           texto: norm.texto,
           tipo: norm.fromMe ? 'saida' : 'entrada',
@@ -103,13 +133,20 @@ export default async function handler(req, res) {
           instancia: norm.instance,
           payload_bruto: body,
           criado_em: new Date(norm.timestamp).toISOString()
-        }).catch(() => {});
+        };
+        if (norm.mediaUrl) { msgData.media_url = norm.mediaUrl; msgData.media_type = norm.mediaType; }
+        await insert('mensagens', msgData).catch(async (err) => {
+          if (err.message?.includes('PGRST204')) {
+            delete msgData.media_url; delete msgData.media_type;
+            return insert('mensagens', msgData).catch(() => {});
+          }
+        });
       }
       return res.status(200).json({ ok: true, skipped: 'sem numero real (LID)' });
     }
 
     // 1. Salva a mensagem
-    await insert('mensagens', {
+    const msgData = {
       telefone: norm.numero,
       texto: norm.texto,
       tipo: norm.fromMe ? 'saida' : 'entrada',
@@ -117,6 +154,14 @@ export default async function handler(req, res) {
       instancia: norm.instance,
       payload_bruto: body,
       criado_em: new Date(norm.timestamp).toISOString()
+    };
+    if (norm.mediaUrl) { msgData.media_url = norm.mediaUrl; msgData.media_type = norm.mediaType; }
+    await insert('mensagens', msgData).catch(async (err) => {
+      if (err.message?.includes('PGRST204')) {
+        delete msgData.media_url; delete msgData.media_type;
+        return insert('mensagens', msgData);
+      }
+      throw err;
     });
 
     // 2. Se for mensagem de entrada, garante que o lead existe (Upsert)
