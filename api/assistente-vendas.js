@@ -45,6 +45,30 @@ async function buscarMensagens(telefone) {
   }
 }
 
+// Cache simples em memoria para evitar rate limit
+// Em serverless, vive durante warm instances (~5-15min)
+const cache = new Map();
+const CACHE_TTL = 60000; // 60 segundos
+
+function getCacheKey(telefone) { return `assistente_${telefone}`; }
+
+function getCache(telefone) {
+  const key = getCacheKey(telefone);
+  const entry = cache.get(key);
+  if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data;
+  cache.delete(key);
+  return null;
+}
+
+function setCache(telefone, data) {
+  cache.set(getCacheKey(telefone), { data, ts: Date.now() });
+  // Limpa cache antigo (max 50 entries)
+  if (cache.size > 50) {
+    const oldest = [...cache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+    if (oldest) cache.delete(oldest[0]);
+  }
+}
+
 // Chamada direta sem retry — Vercel tem timeout curto
 async function chamarGroq(payload) {
   const resp = await axios.post(`${GROQ_BASE_URL}/chat/completions`, payload, {
@@ -139,9 +163,21 @@ export default async function handler(req, res) {
   try {
     const { telefone, nome, empresa, etapa } = req.body || {};
     if (!GROQ_API_KEY) return res.status(503).json({ error: 'GROQ_API_KEY nao configurada no servidor.' });
+
+    // Verifica cache antes de chamar Groq
+    const cached = telefone ? getCache(telefone) : null;
+    if (cached) {
+      return res.status(200).json(cached);
+    }
+
     const mensagens = telefone ? await buscarMensagens(telefone) : [];
     const analise = await analisarConversa(mensagens, { nome, empresa, etapa, telefone });
-    return res.status(200).json({ analise, totalMensagens: mensagens.length });
+    const resultado = { analise, totalMensagens: mensagens.length };
+
+    // Armazena no cache
+    if (telefone) setCache(telefone, resultado);
+
+    return res.status(200).json(resultado);
   } catch (e) {
     const is429 = e.response?.status === 429 || e.message?.includes('429');
     if (is429) {
