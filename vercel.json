@@ -9,6 +9,10 @@
       "destination": "/api/data?resource=clientes"
     },
     {
+      "source": "/api/config",
+      "destination": "/api/data?resource=config"
+    },
+    {
       "source": "/api/projects",
       "destination": "/api/data?resource=projects"
     },
