@@ -205,7 +205,7 @@ export interface Cliente {
   nome: string;
   email: string;
   telefone: string;
-  tipo: 'PF' | 'PJ' | 'GOV';
+  tipo: 'PF' | 'PJ' | 'GOV' | 'FUNC' | 'FORN' | 'PES';
   documento: string; // CPF or CNPJ or UASG
   cep: string;
   logradouro: string;
