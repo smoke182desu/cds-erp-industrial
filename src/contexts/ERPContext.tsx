@@ -73,6 +73,7 @@ interface ERPContextType {
   totalCarrinho: number;
   validarConciliacao: (pedidoId: string, itensConciliados: { itemId: string; qtd: number; preco: number }[]) => void;
   adicionarCliente: (cliente: Cliente) => void;
+  atualizarCliente: (id: string, cliente: Partial<Cliente>) => void;
   adicionarProposta: (proposta: Proposta) => void;
   darEntradaEstoque: (itemId: string, quantidade: number, novoCusto: number) => void;
   registrarTransacao: (transacao: TransacaoFinanceira) => void;
@@ -658,6 +659,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
+  const atualizarCliente = (id: string, atualizacao: Partial<Cliente>) => {
+    setState(prev => ({
+      ...prev,
+      clientes: prev.clientes.map(c => c.id === id ? { ...c, ...atualizacao } : c)
+    }));
+  };
+
   const adicionarProposta = (proposta: Proposta) => {
     setState(prev => ({
       ...prev,
@@ -762,7 +770,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   return (
-    <ERPContext.Provider value={{ state, adicionarAoCarrinho, removerDoCarrinho, fecharProposta, aprovarVenda, salvarRascunho, gerarOS, moverEtapaOS, updateInventory, calculateBOM, moverEtapaProjeto, totalCarrinho, validarConciliacao, limparCarrinho, adicionarCliente, adicionarProposta, darEntradaEstoque, registrarTransacao, atualizarStatusTransacao, enviarMensagemAoAgente }}>
+    <ERPContext.Provider value={{ state, adicionarAoCarrinho, removerDoCarrinho, fecharProposta, aprovarVenda, salvarRascunho, gerarOS, moverEtapaOS, updateInventory, calculateBOM, moverEtapaProjeto, totalCarrinho, validarConciliacao, limparCarrinho, adicionarCliente, atualizarCliente, adicionarProposta, darEntradaEstoque, registrarTransacao, atualizarStatusTransacao, enviarMensagemAoAgente }}>
       {children}
     </ERPContext.Provider>
   );

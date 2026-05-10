@@ -789,7 +789,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
     try {
       const res = await fetch('/api/proposta-ia', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa, mensagens: (mensagens || []).map(m => ({ texto: m.texto || m.conteudo || m.body || '', tipo: m.tipo || m.direction || 'entrada', criadoEm: m.criadoEm || m.timestamp || '' })) }),
+        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa, mensagens: (mensagens || []).map((m: any) => ({ texto: m.texto || m.conteudo || m.body || '', tipo: m.tipo || m.direction || 'entrada', criadoEm: m.criadoEm || m.timestamp || '' })) }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro desconhecido');
@@ -879,7 +879,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
           })),
           valor_total: total,
           status: 'enviada',
-          observacoes: dados.observacoes || '',
+          observacoes: (dados as any).observacoes || '',
         }),
       });
       const jsonProp = await resProp.json();

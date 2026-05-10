@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useERP } from '../contexts/ERPContext';
 import { Cliente } from '../types';
 import { useDropzone } from 'react-dropzone';
@@ -61,7 +61,7 @@ export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose, ini
     setLoading(true);
     setError(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
       
       let parts: any[] = [];
       if (typeof content === 'string') {
