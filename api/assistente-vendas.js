@@ -94,49 +94,60 @@ async function analisarConversa(mensagens, lead) {
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
   const nomeCliente = (lead.nome || '').split(' ')[0] || 'cliente';
 
-  const systemPrompt = `Voce e o assistente de vendas de JEAN da CDS Industrial em Brasilia/DF.
-Analise a conversa e retorne APENAS JSON valido, sem markdown, sem explicacoes.
+  const systemPrompt = `Você é o estrategista de vendas de elite da CDS Industrial, especialista nas metodologias SPIN Selling e Inside Sales da V4 Company.
+Seu objetivo é analisar a conversa do WhatsApp e fornecer as melhores respostas para o vendedor JEAN enviar.
+O funil de vendas V4/SPIN segue os passos:
+1. Rapport & Saudação
+2. Situação (Entender o cenário atual)
+3. Problema & Implicação (Descobrir a dor/necessidade e aumentar a percepção do problema)
+4. Solução (Apresentar o produto como a cura exata, gerando valor antes do preço)
+5. Objeções (Contornar resistências de preço, prazo ou confiança)
+6. Fechamento (Chamada para ação clara, criando urgência/escassez)
 
-REGRA DE OURO: Escreva EXATAMENTE como um brasileiro de Brasilia escreve no WhatsApp.
-- Use "vc" em vez de "voce", "pra" em vez de "para", "ta" em vez de "esta"
-- Use expressoes naturais: "show", "beleza", "tranquilo", "massa", "fechou", "bora"
-- Seja caloroso e direto, como um amigo que entende do assunto
-- NUNCA use linguagem corporativa ou robotica
-- Escreva como se tivesse mandando audio transcrito: natural, fluido, humano
-- Use "a gente" em vez de "nos", "ce" ou "vc" em vez de "voce"`;
+REGRA DE OURO: Escreva EXATAMENTE como um brasileiro de Brasília conversando no WhatsApp.
+- Textos curtos, 1 a 3 linhas no máximo. NUNCA envie textões.
+- Use "vc" (nunca "você"), "pra", "tá", "a gente".
+- Use expressões naturais: "show", "beleza", "tranquilo", "massa", "fechou", "bora".
+- MANTENHA O CONTROLE DA CONVERSA: Termine 90% das suas sugestões com UMA PERGUNTA. Quem pergunta domina a negociação.
+- Foque em fazer o cliente falar as medidas, necessidades e prazos antes de atirar preço.
 
-  const userPrompt = `Assiste o vendedor JEAN da CDS Industrial (Brasilia/DF).
+Analise o momento exato da conversa e retorne APENAS um JSON válido.`;
+
+  const userPrompt = `Contexto da CDS Industrial (Brasília/DF - Vendedor: JEAN):
 ${CONHECIMENTO_EMPRESA}${extra}
 LEAD: nome="${lead.nome || ''}" empresa="${lead.empresa || ''}" etapa=${etapa}
-HORARIO: ${saudacao} | NOME CLIENTE: ${nomeCliente}
+HORÁRIO: ${saudacao} | NOME CLIENTE: ${nomeCliente}
 
-CONVERSA:
+CONVERSA ATUAL:
 ${conversaStr}
 
-Retorne APENAS JSON:
+Sua tarefa:
+1. Identifique em que passo da venda a conversa está.
+2. Formule 4 sugestões de resposta para avançar a venda para a próxima etapa (ex: de Problema para Solução, ou de Objeção para Fechamento).
+
+Retorne APENAS o JSON:
 {
-  "dadosProposta":{"tipoCliente":"empresa|pessoa_fisica|orgao_publico|nao_identificado","nome":"","empresa":"","documento":"","email":"","endereco":"","produtos":["item c/ qtd e medidas"],"valorEstimado":"","prazo":"","observacoes":"1 frase curta"},
+  "dadosProposta":{"tipoCliente":"empresa|pessoa_fisica|orgao_publico|nao_identificado","nome":"","empresa":"","documento":"","email":"","endereco":"","produtos":["item c/ qtd"],"valorEstimado":"","prazo":"","observacoes":""},
   "etapaDetectada":"lead_novo|contato_feito|qualificado|proposta_enviada|negociacao|fechado_ganho|fechado_perdido",
+  "parecer": "Sua análise breve de 2 linhas sobre o momento do cliente e qual a estratégia agora.",
+  "tecnicaRecomendada": "Ex: SPIN - Focar na implicação do problema",
   "sugestoes":[
-    {"label":"saudacao","mensagem":"(saudacao com ${saudacao} + nome)"},
-    {"label":"cordial","mensagem":"(resposta amigavel e natural)"},
-    {"label":"tecnica","mensagem":"(fala sobre o produto de forma simples)"},
-    {"label":"urgencia","mensagem":"(cria senso de oportunidade)"}
+    {"label":"Qualificação", "mensagem":"..."},
+    {"label":"Focar na Dor", "mensagem":"..."},
+    {"label":"Apresentar Solução", "mensagem":"..."},
+    {"label":"Fechamento Direto", "mensagem":"..."}
   ]
 }
 
-EXEMPLO de tom correto:
-- "${saudacao}, ${nomeCliente}! Tudo certo? Vi que vc se interessou pelo nosso material, vou te passar tudo certinho!"
-- "Show, ${nomeCliente}! Essa escada a gente faz sob medida, com ART inclusa. Quer que eu mande as opcoes pra vc?"
-- "Massa! Olha, to com uma condicao especial essa semana - PIX sai 7% OFF. Bora fechar?"
-- "Tranquilo, ${nomeCliente}! A gente entrega no Brasil todo. Me passa as medidas que ja monto o orcamento pra vc"
-
-REGRAS:
-- Primeira sugestao: saudacao usando "${saudacao}, ${nomeCliente}!" + frase natural brasileira
-- Tom: vendedor brasiliense no WhatsApp, como se fosse amigo do cliente
-- Maximo 3 linhas, ate 250 chars
-- Cite produto quando fizer sentido
-- 4 sugestoes diferentes (saudacao/cordial/tecnica/urgencia)`;
+EXEMPLOS de tom e labels (Adapte ao momento da conversa):
+[MOMENTO: INÍCIO / SITUAÇÃO]
+- label: "Saudação + Situação" | mensagem: "${saudacao}, ${nomeCliente}! Tudo certo? Vi que vc tem interesse nos nossos materiais. Me conta, é pra uma obra nova ou reforma?"
+[MOMENTO: PROBLEMA / IMPLICAÇÃO]
+- label: "Explorar Problema" | mensagem: "Entendi. E hoje como vcs tão resolvendo essa questão do acesso? Pq se demorar muito atrasa a obra toda, né?"
+[MOMENTO: OBJEÇÃO DE PREÇO]
+- label: "Contornar Preço" | mensagem: "Cara, eu entendo que o orçamento tá apertado. Mas essa escada já vai com ART e garantia de 10 anos. Se pegar uma mais barata sem laudo e der BO, o prejuízo é gigante. Conseguimos fechar no PIX com 7% de desconto pra te ajudar?"
+[MOMENTO: FECHAMENTO]
+- label: "Fechamento Imediato" | mensagem: "Show, ${nomeCliente}! O projeto tá redondo. Consigo colocar na produção amanhã cedo se a gente fechar hoje. Bora passar o cartão ou prefere PIX?"`;
 
   const resp = await chamarGroq({
     model: GROQ_MODEL,
