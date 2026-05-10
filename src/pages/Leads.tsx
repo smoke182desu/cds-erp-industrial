@@ -51,6 +51,7 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
   onEtapaChange: (etapa: EtapaFunil) => void;
   textoInjetado: { v: string; n: number };
   onMsgsChange: (msgs: Mensagem[]) => void;
+  onUpdateLead: (l: Lead) => void;
 }) {
   const [msgs, setMsgs] = useState<Mensagem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -187,11 +188,13 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
           onClose={() => setModalClienteOpen(false)}
           onSave={async (clienteSalvo) => {
             if (lead.nome !== clienteSalvo.nome || lead.email !== clienteSalvo.email || lead.empresa !== clienteSalvo.razaoSocial) {
-              await atualizarLead(lead.id, {
+              const novosDados = {
                 nome: clienteSalvo.nome,
                 email: clienteSalvo.email || lead.email,
                 empresa: clienteSalvo.razaoSocial || lead.empresa
-              });
+              };
+              await atualizarLead(lead.id, novosDados);
+              onUpdateLead({ ...lead, ...novosDados });
             }
           }}
           initialData={clienteRelacionado || { nome: lead.nome, telefone: lead.telefone, email: lead.email }}
@@ -1202,7 +1205,13 @@ export function Leads() {
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           {leadAtivo ? (
-            <ConversaPanel lead={leadAtivo} onEtapaChange={handleMudarEtapa} textoInjetado={textoInjetado} onMsgsChange={setMsgsAtivas} />
+            <ConversaPanel 
+              lead={leadAtivo} 
+              onEtapaChange={handleMudarEtapa} 
+              textoInjetado={textoInjetado} 
+              onMsgsChange={setMsgsAtivas} 
+              onUpdateLead={handleUpdateLead}
+            />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-8" style={{ background: '#e5ddd5' }}>
               <div className="text-6xl mb-4">💬</div>
