@@ -12,12 +12,12 @@ interface NovoClienteModalProps {
 
 export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose }) => {
   const { adicionarCliente } = useERP();
-  const [activeTab, setActiveTab] = useState<'manual' | 'ia'>('ia');h
+  const [activeTab, setActiveTab] = useState<'manual' | 'ia'>('ia');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Estados do formulário
-  const [tipo, setTipo] = useState<'PF' | 'PJ' | 'GOV'>('PF');
+  const [tipo, setTipo] = useState<'PF' | 'PJ' | 'GOV' | 'FUNC' | 'FORN' | 'PES'>('PF');
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState('');
@@ -218,14 +218,14 @@ export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose }) =
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 flex gap-2 p-1 bg-slate-100 rounded-lg">
-                  {(['PF', 'PJ', 'GOV'] as const).map((t) => (
+                  {(['PF', 'PJ', 'GOV', 'FUNC', 'FORN', 'PES'] as const).map((t) => (
                     <button
                       key={t}
                       type="button"
                       onClick={() => setTipo(t)}
                       className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${tipo === t ? 'bg-slate-200 text-emerald-400 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}
                     >
-                      {t === 'PF' ? 'Pessoa Física' : t === 'PJ' ? 'Pessoa Jurídica' : 'Governo'}
+                      {t === 'PF' ? 'Pessoa Física' : t === 'PJ' ? 'Pessoa Jurídica' : t === 'GOV' ? 'Governo' : t === 'FUNC' ? 'Funcionário' : t === 'FORN' ? 'Fornecedor' : 'Pessoal'}
                     </button>
                   ))}
                 </div>
