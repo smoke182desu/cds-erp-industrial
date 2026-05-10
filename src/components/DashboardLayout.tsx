@@ -26,7 +26,7 @@ const sections: SidebarSection[] = [
     ],
   },
   {
-    title: 'Produção & Operações',
+    title: 'Cadastros', items: [ { name: 'Clientes', icon: Users, id: 'cadastro-clientes' }, { name: 'Fornecedores', icon: Truck, id: 'cadastro-fornecedores' }, { name: 'Governo', icon: Building2, id: 'cadastro-governo' }, { name: 'Funcionários', icon: Users, id: 'cadastro-funcionarios' }, ], }, {    title: 'Produção & Operações',
     items: [
       { name: 'PCP - Kanban', icon: LayoutDashboard, id: 'pcp-kanban' },
       { name: 'Plano de Corte', icon: Scissors, id: 'corte' },
