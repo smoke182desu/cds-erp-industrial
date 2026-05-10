@@ -273,16 +273,54 @@ export default async function handler(req, res) {
     );
 
     // Pos-match: aplica preco e skuCatalogo do catalogo completo quando possivel
+    // Tenta: 1) match exato por SKU 2) match exato por nome 3) match fuzzy por palavras-chave do nome
     if (proposta.itens?.length) {
       const catalogoCompleto = CACHE_PRODUTOS.data || produtosRelevantes;
       for (const item of proposta.itens) {
+        let match = null;
+
+        // 1) Match por SKU (caminho mais confiavel quando a IA preenche)
         if (item.skuCatalogo) {
-          const match = catalogoCompleto.find(p => p.sku === item.skuCatalogo);
-          if (match) {
-            item.valorUnitario = item.valorUnitario || match.preco || match.precoRegular;
-            item.produtoId = match.id;
-            item.nomeCatalogo = match.nome;
+          match = catalogoCompleto.find(p => p.sku === item.skuCatalogo);
+        }
+
+        // 2) Match exato por nome (case-insensitive, normalizado)
+        if (!match && item.nome) {
+          const nomeItem = normalizarTexto(item.nome);
+          match = catalogoCompleto.find(p => normalizarTexto(p.nome) === nomeItem);
+        }
+
+        // 3) Match fuzzy: produto do catalogo cujo nome tem maior sobreposicao de palavras com o item
+        if (!match && item.nome) {
+          const palavrasItem = extrairPalavrasChave(item.nome);
+          if (palavrasItem.length) {
+            let melhor = { score: 0, produto: null };
+            for (const p of catalogoCompleto) {
+              const palavrasProd = new Set(extrairPalavrasChave(p.nome));
+              if (!palavrasProd.size) continue;
+              let score = 0;
+              for (const pal of palavrasItem) {
+                if (palavrasProd.has(pal)) score += 1;
+              }
+              // Exige que pelo menos metade das palavras do item batam com o produto
+              const limiar = Math.max(2, Math.ceil(palavrasItem.length / 2));
+              if (score >= limiar && score > melhor.score) {
+                melhor = { score, produto: p };
+              }
+            }
+            if (melhor.produto) match = melhor.produto;
           }
+        }
+
+        if (match) {
+          const precoCatalogo = Number(match.preco) || Number(match.precoRegular) || 0;
+          // So sobrescreve o preco se a IA nao tinha ou veio zerado
+          if (!item.valorUnitario || Number(item.valorUnitario) === 0) {
+            item.valorUnitario = precoCatalogo;
+          }
+          item.produtoId = match.id;
+          item.nomeCatalogo = match.nome;
+          item.skuCatalogo = item.skuCatalogo || match.sku;
         }
       }
     }
