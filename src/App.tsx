@@ -64,7 +64,7 @@ function AppContent() {
       case 'dashboard':         return <DashboardBI />;
       case 'assistente-ia':     return <AssistenteIA onTabChange={setActiveTab} />;
       case 'projetos-3d':       return <Configurador project={project} onUpdate={handleUpdateProject} />;
-      case 'crm': case 'cadastro-clientes': case 'cadastro-fornecedores': case 'cadastro-governo': case 'cadastro-funcionarios': return <Clientes />;
+      case 'crm': case 'cadastro-clientes': return <Clientes filtroTipo="PF,PJ" />; case 'cadastro-fornecedores': return <Clientes filtroTipo="FORN" />; case 'cadastro-governo': return <Clientes filtroTipo="GOV" />; case 'cadastro-funcionarios': return <Clientes filtroTipo="FUNC" />;
       case 'leads':             return <Leads />;
       case 'produtos':          return <Produtos />;
       case 'propostas':         return <Propostas />;
