@@ -14,6 +14,7 @@ import {
 import { useERP } from '../contexts/ERPContext';
 import { Cliente, Proposta } from '../types';
 import ConversaInteligente from '../components/ConversaInteligente';
+import { NovoClienteModal } from '../components/NovoClienteModal';
 
 // ─── cores por etapa ─────────────────────────────────────────────────────────
 const ETAPA_COR: Record<EtapaFunil, string> = {
@@ -53,6 +54,9 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
 }) {
   const [msgs, setMsgs] = useState<Mensagem[]>([]);
   const [loading, setLoading] = useState(false);
+  const { state } = useERP();
+  const clienteRelacionado = state.clientes.find((c: Cliente) => (lead.telefone && c.telefone === lead.telefone) || (lead.clienteId && c.id === lead.clienteId));
+  const [modalClienteOpen, setModalClienteOpen] = useState(false);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [arquivoSelecionado, setArquivoSelecionado] = useState<File | null>(null);
@@ -157,15 +161,33 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 truncate">{lead.nome || 'Sem nome'}</p>
-          <p className="text-xs text-gray-500">{lead.telefone || 'Sem telefone'}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-xs text-gray-500">{lead.telefone || 'Sem telefone'}</p>
+            {clienteRelacionado && (
+              <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold uppercase">
+                {clienteRelacionado.tipo === 'PF' ? 'Física' : clienteRelacionado.tipo === 'PJ' ? 'Jurídica' : clienteRelacionado.tipo === 'GOV' ? 'Governo' : clienteRelacionado.tipo === 'FUNC' ? 'Funcionário' : clienteRelacionado.tipo === 'FORN' ? 'Fornecedor' : clienteRelacionado.tipo === 'PES' ? 'Pessoal' : clienteRelacionado.tipo}
+              </span>
+            )}
+          </div>
         </div>
-        <span className={`text-xs px-2 py-1 rounded-full font-medium ${ETAPA_BADGE[lead.etapa]}`}>
-          {etapaAtual?.label}
-        </span>
-        <button onClick={carregar} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400">
-          🔄
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setModalClienteOpen(true)} className="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg transition-colors">
+            {clienteRelacionado ? '✏️ Editar Cliente' : '💾 Salvar Cliente'}
+          </button>
+          <span className={`text-xs px-2 py-1.5 rounded-lg font-medium ${ETAPA_BADGE[lead.etapa]}`}>
+            {etapaAtual?.label}
+          </span>
+          <button onClick={carregar} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400">
+            🔄
+          </button>
+        </div>
       </div>
+      {modalClienteOpen && (
+        <NovoClienteModal
+          onClose={() => setModalClienteOpen(false)}
+          initialData={clienteRelacionado || { nome: lead.nome, telefone: lead.telefone, email: lead.email }}
+        />
+      )}
       <div
         className={`flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2 transition-colors ${dragging ? 'bg-green-100/50 ring-2 ring-green-400 ring-inset' : ''}`}
         style={{ background: dragging ? undefined : '#e5ddd5' }}

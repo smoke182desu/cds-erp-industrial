@@ -8,23 +8,31 @@ import axios from 'axios';
 
 interface NovoClienteModalProps {
   onClose: () => void;
+  initialData?: Partial<Cliente>;
 }
 
-export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose }) => {
-  const { adicionarCliente } = useERP();
+export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose, initialData }) => {
+  const { adicionarCliente, atualizarCliente } = useERP();
   const [activeTab, setActiveTab] = useState<'manual' | 'ia'>('ia');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Estados do formulário
-  const [tipo, setTipo] = useState<'PF' | 'PJ' | 'GOV' | 'FUNC' | 'FORN' | 'PES'>('PF');
-  const [nome, setNome] = useState('');
-  const [email, setEmail] = useState('');
-  const [telefone, setTelefone] = useState('');
-  const [documento, setDocumento] = useState('');
-  const [endereco, setEndereco] = useState('');
-  const [orgao, setOrgao] = useState('');
-  const [razaoSocial, setRazaoSocial] = useState('');
+  const [tipo, setTipo] = useState<'PF' | 'PJ' | 'GOV' | 'FUNC' | 'FORN' | 'PES'>((initialData?.tipo as any) || 'PF');
+  const [nome, setNome] = useState(initialData?.nome || '');
+  const [email, setEmail] = useState(initialData?.email || '');
+  const [telefone, setTelefone] = useState(initialData?.telefone || '');
+  const [documento, setDocumento] = useState(initialData?.documento || '');
+  const [endereco, setEndereco] = useState(initialData?.endereco || '');
+  const [orgao, setOrgao] = useState(initialData?.orgao || '');
+  const [razaoSocial, setRazaoSocial] = useState(initialData?.razaoSocial || '');
+
+  // Se tem dados iniciais, abre direto na aba manual
+  useEffect(() => {
+    if (initialData?.nome || initialData?.telefone) {
+      setActiveTab('manual');
+    }
+  }, [initialData]);
 
   // Busca de dados por CNPJ (BrasilAPI)
   const buscarCNPJ = async (cnpj: string) => {
@@ -132,23 +140,27 @@ export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose }) =
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const novoCliente: Cliente = {
-      id: Date.now().toString(),
+      id: initialData?.id || Date.now().toString(),
       nome,
       email,
       telefone,
       tipo,
       documento,
       endereco,
-      cep: '',
-      logradouro: '',
-      numero: '',
-      bairro: '',
-      cidade: '',
-      uf: '',
+      cep: initialData?.cep || '',
+      logradouro: initialData?.logradouro || '',
+      numero: initialData?.numero || '',
+      bairro: initialData?.bairro || '',
+      cidade: initialData?.cidade || '',
+      uf: initialData?.uf || '',
       orgao: tipo === 'GOV' ? orgao : undefined,
       razaoSocial: tipo === 'PJ' ? razaoSocial : undefined,
     };
-    adicionarCliente(novoCliente);
+    if (initialData?.id && atualizarCliente) {
+      atualizarCliente(initialData.id, novoCliente);
+    } else {
+      adicionarCliente(novoCliente);
+    }
     onClose();
   };
 
