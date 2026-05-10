@@ -1,45 +1,44 @@
-import React, { useState } from 'react';
-import { Phone, Plus, MoreVertical, Calendar, Briefcase, DollarSign, MessageCircle } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Phone, Plus, MessageCircle, Edit, Search, User } from 'lucide-react';
 import { useERP } from '../contexts/ERPContext';
 import { NovoClienteModal } from '../components/NovoClienteModal';
 import { WhatsAppAnalyzerModal } from '../components/WhatsAppAnalyzerModal';
 import { Cliente } from '../types';
-
-const columns = [
-  { id: 'Novo Contato', label: '🆕 Novo Contato' },
-  { id: 'Em Negociação', label: '⏳ Em Negociação' },
-  { id: 'Proposta Enviada', label: '📄 Proposta Enviada' },
-  { id: 'Fechado (Ganha)', label: '✅ Fechado (Ganha)' },
-  { id: 'Perdido', label: '❌ Perdido' },
-];
 
 export const Clientes: React.FC<{ filtroTipo?: string }> = ({ filtroTipo }) => {
   const { state } = useERP();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [clienteParaAnalisar, setClienteParaAnalisar] = useState<Cliente | undefined>(undefined);
+  const [clienteParaEditar, setClienteParaEditar] = useState<Cliente | undefined>(undefined);
+  const [busca, setBusca] = useState('');
 
-  const crmClients = state.clientes.filter(c => !filtroTipo || filtroTipo.split(',').includes(c.tipo)).map(c => {
-    const proposta = state.propostas.find(p => p.clienteId === c.id);
-    return {
-      id: c.id,
-      name: c.nome,
-      project: proposta ? (proposta.items[0]?.name || 'Projeto em Definição') : 'Sem Projeto Ativo',
-      status: (proposta?.status === 'Rascunho' ? 'Novo Contato' :
-               proposta?.status === 'Em Negociação' ? 'Em Negociação' :
-               proposta?.status === 'Proposta Enviada' ? 'Proposta Enviada' :
-               proposta?.status === 'Aprovada/Produção' ? 'Fechado (Ganha)' :
-               proposta?.status === 'Perdida' ? 'Perdido' : 'Novo Contato') as any,
-      value: proposta?.total || 0,
-      date: proposta ? new Date(proposta.data).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'),
-      phone: c.telefone,
-      clienteOriginal: c,
-    };
-  });
+  // Helper para formatar ID numérico curto a partir do ID real (ex: CLI-173... -> #173...)
+  const getShortId = (id: string) => {
+    const numbers = id.replace(/\D/g, '');
+    return numbers ? `#${numbers.slice(-5)}` : `#${id.slice(-5).toUpperCase()}`;
+  };
 
-  const openWhatsApp = (client: any) => {
-    const message = encodeURIComponent(`Olá ${client.name}, aqui está o resumo do seu projeto ${client.project} no valor de R$ ${client.value.toLocaleString('pt-BR')}.`);
-    window.open(`https://wa.me/${client.phone}?text=${message}`, '_blank');
+  const clientesFiltrados = useMemo(() => {
+    return state.clientes
+      .filter(c => !filtroTipo || filtroTipo.split(',').includes(c.tipo))
+      .filter(c => {
+        if (!busca) return true;
+        const termo = busca.toLowerCase();
+        return (
+          (c.nome || '').toLowerCase().includes(termo) ||
+          (c.telefone || '').includes(termo) ||
+          (c.documento || '').includes(termo) ||
+          (c.razaoSocial || '').toLowerCase().includes(termo)
+        );
+      })
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [state.clientes, filtroTipo, busca]);
+
+  const openWhatsApp = (client: Cliente) => {
+    if (!client.telefone) return;
+    const phone = client.telefone.replace(/\D/g, '');
+    window.open(`https://wa.me/${phone}`, '_blank');
   };
 
   const abrirAnalisadorWhatsApp = (cliente?: Cliente) => {
@@ -47,85 +46,141 @@ export const Clientes: React.FC<{ filtroTipo?: string }> = ({ filtroTipo }) => {
     setIsWhatsAppModalOpen(true);
   };
 
+  const abrirModalEdicao = (cliente?: Cliente) => {
+    setClienteParaEditar(cliente);
+    setIsModalOpen(true);
+  };
+
   return (
-    <div className="h-full overflow-x-auto">
-      <div className="flex items-center justify-between mb-4 px-1">
-        <h2 className="text-lg font-bold text-slate-800">CRM de Clientes</h2>
-        <button
-          onClick={() => abrirAnalisadorWhatsApp()}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-emerald-900/20 transition-all"
-        >
-          <MessageCircle size={16} />
-          📲 Novo Cliente via WhatsApp
-        </button>
+    <div className="h-full flex flex-col overflow-hidden bg-slate-50 p-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800">Cadastro de Clientes</h2>
+          <p className="text-sm text-slate-500">Gerencie todos os seus contatos e clientes em um só lugar</p>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="Buscar por nome, telefone ou documento..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 w-full sm:w-80 shadow-sm"
+            />
+          </div>
+          <button
+            onClick={() => abrirAnalisadorWhatsApp()}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-xl shadow-lg transition-all"
+            title="Importar do WhatsApp usando Inteligência Artificial"
+          >
+            <MessageCircle size={16} />
+            <span className="hidden sm:inline">IA WhatsApp</span>
+          </button>
+          <button
+            onClick={() => abrirModalEdicao()}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-emerald-900/20 transition-all"
+          >
+            <Plus size={16} />
+            <span className="hidden sm:inline">Novo Cliente</span>
+          </button>
+        </div>
       </div>
 
-      <div className="flex gap-6 min-w-max pb-4">
-        {columns.map((column) => (
-          <div key={column.id} className="w-80 flex-shrink-0 bg-white rounded-xl p-4 border border-slate-200">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-slate-800 text-sm">{column.label}</h3>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => abrirAnalisadorWhatsApp()}
-                  title="Novo cliente via análise de WhatsApp"
-                  className="p-1 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-500 transition-colors"
-                >
-                  <MessageCircle size={16} />
-                </button>
-                <button
-                  onClick={() => setIsModalOpen(true)}
-                  title="Novo cliente manual"
-                  className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-emerald-400 transition-colors"
-                >
-                  <Plus size={18} />
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {crmClients.filter(c => c.status === column.id).map((client) => (
-                <div key={client.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 transition-colors">
-                  <div className="flex justify-between items-start mb-3">
-                    <h4 className="font-semibold text-slate-900">{client.name}</h4>
-                    <MoreVertical size={16} className="text-slate-600" />
-                  </div>
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <Briefcase size={14} />{client.project}
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <DollarSign size={14} />R$ {client.value.toLocaleString('pt-BR')}
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <Calendar size={14} />{client.date}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => openWhatsApp(client)}
-                      className="flex-1 flex items-center justify-center gap-2 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg transition-all shadow-md shadow-emerald-900/20"
-                    >
-                      <Phone size={14} /> Chamar
-                    </button>
-                    <button
-                      onClick={() => abrirAnalisadorWhatsApp(client.clienteOriginal)}
-                      title="Analisar conversa do WhatsApp e atualizar cadastro"
-                      className="flex items-center justify-center gap-1 text-xs font-semibold bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 px-3 py-2 rounded-lg border border-slate-200 hover:border-emerald-300 transition-all"
-                    >
-                      <MessageCircle size={14} />
-                      🤖 IA
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+      <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-100/50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold">
+                <th className="px-6 py-4 rounded-tl-2xl">ID</th>
+                <th className="px-6 py-4">Cliente / Empresa</th>
+                <th className="px-6 py-4">Contato</th>
+                <th className="px-6 py-4">Tipo</th>
+                <th className="px-6 py-4">Localidade</th>
+                <th className="px-6 py-4 text-right rounded-tr-2xl">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {clientesFiltrados.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                    <User size={48} className="mx-auto mb-4 text-slate-300" />
+                    <p className="text-lg font-medium">Nenhum cliente encontrado</p>
+                    <p className="text-sm">Tente mudar os filtros ou cadastre um novo cliente.</p>
+                  </td>
+                </tr>
+              ) : (
+                clientesFiltrados.map((cliente, index) => (
+                  <tr key={cliente.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 align-middle">
+                      <span className="text-xs font-mono font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded">
+                        {getShortId(cliente.id)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 align-middle">
+                      <div className="font-semibold text-slate-800">{cliente.nome || 'Sem Nome'}</div>
+                      {cliente.razaoSocial && (
+                        <div className="text-xs text-slate-500 truncate max-w-[200px]" title={cliente.razaoSocial}>
+                          {cliente.razaoSocial}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 align-middle">
+                      <div className="text-sm font-medium text-slate-700">{cliente.telefone || '-'}</div>
+                      <div className="text-xs text-slate-500 truncate max-w-[150px]">{cliente.email || ''}</div>
+                    </td>
+                    <td className="px-6 py-4 align-middle">
+                      <span className="inline-flex items-center justify-center px-2 py-1 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-600 border border-blue-100">
+                        {cliente.tipo === 'PF' ? 'Física' : cliente.tipo === 'PJ' ? 'Jurídica' : cliente.tipo === 'GOV' ? 'Governo' : cliente.tipo === 'FUNC' ? 'Funcionário' : cliente.tipo === 'FORN' ? 'Fornecedor' : cliente.tipo === 'PES' ? 'Pessoal' : cliente.tipo}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 align-middle text-sm text-slate-600">
+                      {cliente.cidade ? `${cliente.cidade} - ${cliente.uf}` : '-'}
+                    </td>
+                    <td className="px-6 py-4 align-middle text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {cliente.telefone && (
+                          <button
+                            onClick={() => openWhatsApp(cliente)}
+                            title="Chamar no WhatsApp"
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors border border-transparent hover:border-emerald-200"
+                          >
+                            <Phone size={18} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => abrirAnalisadorWhatsApp(cliente)}
+                          title="Analisar IA do WhatsApp"
+                          className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-200"
+                        >
+                          <MessageCircle size={18} />
+                        </button>
+                        <button
+                          onClick={() => abrirModalEdicao(cliente)}
+                          title="Ver Informações Completas / Editar"
+                          className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-300"
+                        >
+                          <Edit size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {isModalOpen && (
-        <NovoClienteModal onClose={() => setIsModalOpen(false)} />
+        <NovoClienteModal
+          onClose={() => {
+            setIsModalOpen(false);
+            setClienteParaEditar(undefined);
+          }}
+          initialData={clienteParaEditar}
+        />
       )}
 
       {isWhatsAppModalOpen && (
@@ -140,3 +195,4 @@ export const Clientes: React.FC<{ filtroTipo?: string }> = ({ filtroTipo }) => {
     </div>
   );
 };
+
