@@ -13,13 +13,13 @@ const columns = [
   { id: 'Perdido', label: '❌ Perdido' },
 ];
 
-export const Clientes: React.FC = () => {
+export const Clientes: React.FC<{ filtroTipo?: string }> = ({ filtroTipo }) => {
   const { state } = useERP();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [clienteParaAnalisar, setClienteParaAnalisar] = useState<Cliente | undefined>(undefined);
 
-  const crmClients = state.clientes.map(c => {
+  const crmClients = state.clientes.filter(c => !filtroTipo || filtroTipo.split(',').includes(c.tipo)).map(c => {
     const proposta = state.propostas.find(p => p.clienteId === c.id);
     return {
       id: c.id,
