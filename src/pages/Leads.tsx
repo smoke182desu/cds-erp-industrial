@@ -157,10 +157,10 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 px-4 py-3 border-b bg-white">
         <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-          {(lead.nome || '?')[0].toUpperCase()}
+          {(clienteRelacionado?.nome || lead.nome || '?')[0].toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-900 truncate">{lead.nome || 'Sem nome'}</p>
+          <p className="font-semibold text-gray-900 truncate">{clienteRelacionado?.nome || lead.nome || 'Sem nome'}</p>
           <div className="flex items-center gap-2 mt-0.5">
             <p className="text-xs text-gray-500">{lead.telefone || 'Sem telefone'}</p>
             {clienteRelacionado && (
@@ -185,6 +185,15 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
       {modalClienteOpen && (
         <NovoClienteModal
           onClose={() => setModalClienteOpen(false)}
+          onSave={async (clienteSalvo) => {
+            if (lead.nome !== clienteSalvo.nome || lead.email !== clienteSalvo.email || lead.empresa !== clienteSalvo.razaoSocial) {
+              await atualizarLead(lead.id, {
+                nome: clienteSalvo.nome,
+                email: clienteSalvo.email || lead.email,
+                empresa: clienteSalvo.razaoSocial || lead.empresa
+              });
+            }
+          }}
           initialData={clienteRelacionado || { nome: lead.nome, telefone: lead.telefone, email: lead.email }}
         />
       )}

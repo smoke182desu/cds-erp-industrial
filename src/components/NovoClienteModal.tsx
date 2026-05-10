@@ -8,10 +8,11 @@ import axios from 'axios';
 
 interface NovoClienteModalProps {
   onClose: () => void;
+  onSave?: (cliente: Cliente) => void;
   initialData?: Partial<Cliente>;
 }
 
-export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose, initialData }) => {
+export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose, onSave, initialData }) => {
   const { adicionarCliente, atualizarCliente } = useERP();
   const [activeTab, setActiveTab] = useState<'manual' | 'ia'>('ia');
   const [loading, setLoading] = useState(false);
@@ -161,6 +162,7 @@ export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose, ini
     } else {
       adicionarCliente(novoCliente);
     }
+    if (onSave) onSave(novoCliente);
     onClose();
   };
 
@@ -251,7 +253,6 @@ export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose, ini
                       value={documento} 
                       onChange={(e) => setDocumento(e.target.value)} 
                       className="w-full bg-slate-100 border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none pr-10" 
-                      required 
                     />
                     {tipo === 'PJ' && (
                       <button 
@@ -280,7 +281,7 @@ export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose, ini
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 ml-1">Email</label>
-                  <input type="email" placeholder="email@exemplo.com" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-100 border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" required />
+                  <input type="email" placeholder="email@exemplo.com" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-100 border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" />
                 </div>
 
                 <div>
@@ -290,7 +291,7 @@ export const NovoClienteModal: React.FC<NovoClienteModalProps> = ({ onClose, ini
 
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 ml-1">Endereço Completo</label>
-                  <input type="text" placeholder="Rua, Número, Bairro, Cidade - UF" value={endereco} onChange={(e) => setEndereco(e.target.value)} className="w-full bg-slate-100 border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" required />
+                  <input type="text" placeholder="Rua, Número, Bairro, Cidade - UF" value={endereco} onChange={(e) => setEndereco(e.target.value)} className="w-full bg-slate-100 border border-slate-300 p-3 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" />
                 </div>
 
                 {tipo === 'GOV' && (
