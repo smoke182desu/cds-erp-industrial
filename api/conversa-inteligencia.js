@@ -5,8 +5,8 @@ const GROQ_API_KEY    = process.env.GROQ_API_KEY || '';
 const GEMINI_API_KEY  = process.env.GEMINI_API_KEY || '';
 const OPENAI_API_KEY  = process.env.OPENAI_API_KEY || '';
 const GEMINI_MODELS = [
-  'gemini-2.0-flash',
-  'gemini-1.5-flash'
+  'gemini-2.5-flash',
+  'gemini-2.0-flash-lite'
 ];
 const GROQ_MODELS = [
   'llama-3.3-70b-versatile',

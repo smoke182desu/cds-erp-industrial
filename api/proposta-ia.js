@@ -6,8 +6,8 @@ const GEMINI_API_KEY   = process.env.GEMINI_API_KEY || '';
 const OPENAI_API_KEY   = process.env.OPENAI_API_KEY || '';
 
 const GEMINI_MODELS = [
-  'gemini-2.0-flash',
-  'gemini-1.5-flash'
+  'gemini-2.5-flash',
+  'gemini-2.0-flash-lite'
 ];
 
 const FALLBACK_MODELS = [
@@ -388,7 +388,7 @@ export default async function handler(req, res) {
       produtosCatalogo: totalCatalogo,
       produtosRelevantes: produtosRelevantes.length,
       palavrasChaveBusca: palavrasChave.slice(0, 20),
-      modelo: 'gemini-2.0-flash-fallback',
+      modelo: 'multi-provedor',
     });
   } catch (err) {
     console.error('Erro proposta-ia:', err.response?.data || err.message);

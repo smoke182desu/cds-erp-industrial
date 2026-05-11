@@ -7,8 +7,8 @@ const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 
 const GEMINI_MODELS = [
-  'gemini-2.0-flash',
-  'gemini-1.5-flash'
+  'gemini-2.5-flash',
+  'gemini-2.0-flash-lite'
 ];
 
 const GROQ_MODELS = [
@@ -309,8 +309,9 @@ export default async function handler(req, res) {
     return res.status(200).json(resultado);
   } catch (e) {
     const rawError = e.response?.data?.error?.message || e.message || 'Erro desconhecido';
-    const msgFinal = `[DEBUG Groq] ${rawError}`;
+    const msgFinal = `[DEBUG IA] ${rawError}`;
     console.error('[assistente-vendas] erro:', msgFinal);
-    return res.status(429).json({ error: msgFinal });
+    const status = e.response?.status === 429 ? 429 : 500;
+    return res.status(status).json({ error: msgFinal });
   }
 }
