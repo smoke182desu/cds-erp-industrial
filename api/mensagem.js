@@ -14,7 +14,18 @@ export const config = {
 };
 
 // Mapeia campos do Supabase para o formato esperado pelo frontend
+function inferMediaType(row) {
+  if (row.media_type) return row.media_type;
+  const texto = String(row.texto || row.conteudo || '').toLowerCase();
+  if (texto.includes('[image]') || texto.includes('imagem')) return 'image';
+  if (texto.includes('[video]')) return 'video';
+  if (texto.includes('[audio]')) return 'audio';
+  if (row.media_url) return 'image';
+  return undefined;
+}
+
 function mapMensagem(row) {
+  const mediaType = inferMediaType(row);
   return {
     id: String(row.id),
     telefone: (row.telefone || row.remote_jid || '').replace('@s.whatsapp.net', ''),
@@ -23,8 +34,8 @@ function mapMensagem(row) {
     origem: row.origem || 'whatsapp',
     leadId: row.lead_id || row.leadId || '',
     criadoEm: row.criado_em || row.created_at || new Date().toISOString(),
-    mediaUrl: row.media_url || undefined,
-    mediaType: row.media_type || undefined,
+    mediaUrl: mediaType ? `/api/media?id=${encodeURIComponent(row.id)}` : undefined,
+    mediaType,
   };
 }
 
@@ -88,7 +99,7 @@ export default async function handler(req, res) {
         const mediaType = detectMediaType(mimetype);
 
         // Envia via Evolution API sendMedia
-        await axios.post(
+        const evoResp = await axios.post(
           `${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`,
           {
             number: numero,
@@ -108,6 +119,8 @@ export default async function handler(req, res) {
           tipo: 'saida',
           remetente: 'CDS Industrial',
           criado_em: new Date().toISOString(),
+          payload_bruto: evoResp.data || null,
+          media_url: media,
           media_type: mediaType,
         });
 

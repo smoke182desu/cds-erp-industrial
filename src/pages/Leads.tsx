@@ -46,6 +46,62 @@ function horaMsg(iso: string) {
 }
 
 // ─── Painel de Conversa (com suporte a mídias) ───────────────────────────────
+function textoSomenteMidia(texto?: string) {
+  return /^\[?(image|video|audio|document|media|midia|imagem)\]?$/i.test(String(texto || '').trim());
+}
+
+function MidiaMensagem({ mensagem }: { mensagem: Mensagem }) {
+  const [erro, setErro] = useState(false);
+  const url = mensagem.mediaUrl;
+  const tipo = mensagem.mediaType || 'document';
+
+  if (!url || erro) {
+    return (
+      <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-1 border border-gray-100">
+        <span className="text-xs font-bold uppercase text-gray-400">{tipo === 'image' ? 'img' : tipo === 'video' ? 'vid' : tipo === 'audio' ? 'aud' : 'doc'}</span>
+        <div className="min-w-0">
+          <p className="text-xs text-gray-600 font-medium">Midia recebida</p>
+          <p className="text-[10px] text-gray-400">
+            {erro ? 'Nao foi possivel carregar automaticamente.' : 'Arquivo sem URL disponivel.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (tipo === 'image') {
+    return (
+      <img
+        src={url}
+        alt="imagem"
+        className="rounded-lg max-w-full max-h-64 mb-1 cursor-pointer hover:opacity-90 bg-gray-100"
+        onClick={() => window.open(url, '_blank')}
+        onError={() => setErro(true)}
+      />
+    );
+  }
+
+  if (tipo === 'video') {
+    return <video src={url} controls className="rounded-lg max-w-full max-h-64 mb-1" onError={() => setErro(true)} />;
+  }
+
+  if (tipo === 'audio') {
+    return <audio src={url} controls className="mb-1 w-full" onError={() => setErro(true)} />;
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-1 hover:bg-gray-100 transition-colors"
+    >
+      <span className="text-xs font-bold uppercase text-gray-400">doc</span>
+      <span className="text-xs text-blue-600 font-medium underline">Abrir documento</span>
+    </a>
+  );
+}
+
 function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange, onUpdateLead }: {
   lead: Lead;
   onEtapaChange: (etapa: EtapaFunil) => void;
@@ -226,21 +282,24 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange, onUpd
             {lead.telefone && <p className="text-xs text-gray-500 mt-1">Aguardando mensagem do cliente ou envie a primeira mensagem abaixo.</p>}
           </div>
         )}
-        {msgs.filter(m => m.texto?.trim() || m.mediaUrl).map(m => (
+        {msgs.filter(m => m.texto?.trim() || m.mediaUrl || m.mediaType).map(m => (
           <div key={m.id} className={`flex ${m.tipo === 'saida' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[75%] rounded-2xl px-3 py-2 shadow-sm ${m.tipo === 'saida' ? 'bg-[#dcf8c6] text-gray-800 rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm'}`}>
+              {(m.mediaUrl || m.mediaType || textoSomenteMidia(m.texto)) && (
+                <MidiaMensagem mensagem={m} />
+              )}
               {/* Midia inline */}
-              {m.mediaUrl && m.mediaType === 'image' && (
+              {false && m.mediaUrl && m.mediaType === 'image' && (
                 <img src={m.mediaUrl} alt="imagem" className="rounded-lg max-w-full max-h-64 mb-1 cursor-pointer hover:opacity-90"
                   onClick={() => window.open(m.mediaUrl, '_blank')} />
               )}
-              {m.mediaUrl && m.mediaType === 'video' && (
+              {false && m.mediaUrl && m.mediaType === 'video' && (
                 <video src={m.mediaUrl} controls className="rounded-lg max-w-full max-h-64 mb-1" />
               )}
-              {m.mediaUrl && m.mediaType === 'audio' && (
+              {false && m.mediaUrl && m.mediaType === 'audio' && (
                 <audio src={m.mediaUrl} controls className="mb-1 w-full" />
               )}
-              {m.mediaUrl && m.mediaType === 'document' && (
+              {false && m.mediaUrl && m.mediaType === 'document' && (
                 <a href={m.mediaUrl} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-1 hover:bg-gray-100 transition-colors">
                   <span className="text-2xl">📄</span>
@@ -248,14 +307,14 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange, onUpd
                 </a>
               )}
               {/* Indicador de midia sem URL (fallback texto) */}
-              {!m.mediaUrl && m.texto && /^\[(image|video|audio|document)\]$/.test(m.texto) && (
+              {false && !m.mediaUrl && m.texto && /^\[(image|video|audio|document)\]$/.test(m.texto) && (
                 <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-1">
                   <span className="text-lg">{m.texto.includes('image') ? '🖼️' : m.texto.includes('video') ? '🎬' : m.texto.includes('audio') ? '🎵' : '📄'}</span>
                   <span className="text-xs text-gray-500 italic">Midia recebida</span>
                 </div>
               )}
               {/* Texto da mensagem */}
-              {m.texto && !/^\[(image|video|audio|document)\]$/.test(m.texto) && (
+              {m.texto && !textoSomenteMidia(m.texto) && (
                 <p className="text-sm whitespace-pre-wrap break-words">{m.texto}</p>
               )}
               <p className="text-[10px] text-gray-500 mt-1 text-right">{horaMsg(m.criadoEm)}{m.tipo === 'saida' && ' ✓✓'}</p>
