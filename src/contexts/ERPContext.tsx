@@ -162,49 +162,60 @@ const estoqueInicial: InventoryItem[] = [
   { id: '58', codigo: 'QU004', nome: 'Spray Anti-Respingo de Solda sem Silicone', categoria: 'Químicos', unidade: 'un', custo: 16.00, precoVenda: 20.80, quantidadeEstoque: 40, estoqueMinimo: 10 }
 ];
 
-const funcionariosIA: Cliente[] = [
-  {
-    id: 'FUNC-IA-GIORNO',
-    nome: 'Giorno Giovanna',
-    email: 'giorno.vendas@cdsind.com.br',
-    telefone: '',
-    tipo: 'FUNC',
-    documento: '',
-    cep: '',
-    logradouro: '',
-    numero: '',
-    bairro: '',
-    cidade: 'Brasilia',
-    uf: 'DF',
-    endereco: 'Equipe de Inteligencia Comercial',
-    complemento: 'Operador de Vendas IA',
-    orgao: 'Atendimento Comercial',
-    dores: ['Responder clientes', 'Qualificar produtos', 'Conduzir orcamentos']
-  },
-  {
-    id: 'FUNC-IA-BRUNO',
-    nome: 'Bruno Bucciarati',
-    email: 'bruno.gerente@cdsind.com.br',
-    telefone: '',
-    tipo: 'FUNC',
-    documento: '',
-    cep: '',
-    logradouro: '',
-    numero: '',
-    bairro: '',
-    cidade: 'Brasilia',
-    uf: 'DF',
-    endereco: 'Equipe de Inteligencia Comercial',
-    complemento: 'Gerente de Vendas IA',
-    orgao: 'Gestao Comercial',
-    dores: ['Gerenciar atendimentos', 'Identificar novos produtos', 'Orientar o dono']
-  }
-];
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizarClienteApi(row: any): Cliente {
+  return {
+    id: String(row.id || row.email || row.telefone || Date.now()),
+    nome: row.nome || row.name || '',
+    email: row.email || '',
+    telefone: row.telefone || row.whatsapp || '',
+    tipo: (row.tipo || 'PJ') as Cliente['tipo'],
+    documento: row.documento || row.cnpj || row.cnpj_cpf || '',
+    cep: row.cep || '',
+    logradouro: row.logradouro || '',
+    numero: row.numero || '',
+    bairro: row.bairro || '',
+    cidade: row.cidade || '',
+    uf: row.uf || '',
+    complemento: row.complemento || '',
+    orgao: row.orgao || '',
+    razaoSocial: row.razao_social || row.razaoSocial || '',
+    inscricaoEstadual: row.inscricao_estadual || row.inscricaoEstadual || '',
+    endereco: row.endereco && typeof row.endereco === 'string' ? row.endereco : '',
+    funnelStage: (row.funnel_stage || row.funnelStage) as Cliente['funnelStage'],
+    dores: Array.isArray(row.dores) ? row.dores : []
+  };
+}
+
+function prepararClienteApi(cliente: Partial<Cliente>) {
+  const payload: any = {
+    nome: cliente.nome || '',
+    email: cliente.email || '',
+    telefone: cliente.telefone || '',
+    tipo: cliente.tipo || 'PJ',
+    documento: cliente.documento || '',
+    cep: cliente.cep || '',
+    logradouro: cliente.logradouro || '',
+    numero: cliente.numero || '',
+    bairro: cliente.bairro || '',
+    cidade: cliente.cidade || '',
+    uf: cliente.uf || '',
+    complemento: cliente.complemento || '',
+    orgao: cliente.orgao || '',
+    razaoSocial: cliente.razaoSocial || '',
+    inscricaoEstadual: cliente.inscricaoEstadual || '',
+    funnelStage: cliente.funnelStage || null,
+    dores: cliente.dores || []
+  };
+
+  if (cliente.id && uuidRegex.test(String(cliente.id))) payload.id = cliente.id;
+  return payload;
+}
 
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<ERPState>(() => {
     const savedInventory = localStorage.getItem('@cds-inventoryItems');
-    const savedClientes = localStorage.getItem('@cds-clientes');
     const savedOS = localStorage.getItem('@cds-ordensServico');
     const savedTransacoes = localStorage.getItem('@cds-transacoesFinanceiras');
 
@@ -216,15 +227,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? item.nome.replace('(1000mm)', '(Barra 6m)').replace('(1000 mm)', '(Barra 6m)')
         : item.nome
     }));
-    const clientesBase: Cliente[] = savedClientes ? JSON.parse(savedClientes) : [
-      { id: '1', nome: 'Construtora Alpha', email: 'contato@alpha.com', telefone: '5511999999999', tipo: 'PJ', documento: '12.345.678/0001-90', cep: '01001-000', logradouro: 'Rua das Indústrias', numero: '100', bairro: 'Centro', cidade: 'São Paulo', uf: 'SP' },
-      { id: '2', nome: 'Indústria Beta', email: 'vendas@beta.com', telefone: '5511888888888', tipo: 'PJ', documento: '98.765.432/0001-10', cep: '01002-000', logradouro: 'Av. Metalúrgica', numero: '200', bairro: 'Distrito Industrial', cidade: 'São Bernardo', uf: 'SP' },
-      { id: '3', nome: 'Logística Gamma', email: 'contato@gamma.com', telefone: '5511777777777', tipo: 'PJ', documento: '45.678.901/0001-22', cep: '01003-000', logradouro: 'Rodovia Logística', numero: 'KM 10', bairro: 'Zona Rural', cidade: 'Guarulhos', uf: 'SP' }
-    ];
-    const clientes = [
-      ...clientesBase,
-      ...funcionariosIA.filter(funcionario => !clientesBase.some(cliente => cliente.id === funcionario.id))
-    ];
+    const clientes: Cliente[] = [];
     const ordensServico = savedOS ? JSON.parse(savedOS) : [];
     const transacoesFinanceiras = savedTransacoes ? JSON.parse(savedTransacoes) : [];
 
@@ -255,10 +258,25 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     localStorage.setItem('@cds-inventoryItems', JSON.stringify(state.inventoryItems));
-    localStorage.setItem('@cds-clientes', JSON.stringify(state.clientes));
     localStorage.setItem('@cds-ordensServico', JSON.stringify(state.ordensServico));
     localStorage.setItem('@cds-transacoesFinanceiras', JSON.stringify(state.transacoesFinanceiras));
-  }, [state.inventoryItems, state.clientes, state.ordensServico, state.transacoesFinanceiras]);
+  }, [state.inventoryItems, state.ordensServico, state.transacoesFinanceiras]);
+
+  useEffect(() => {
+    let ativo = true;
+    localStorage.removeItem('@cds-clientes');
+    fetch('/api/clientes')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('Falha ao buscar clientes')))
+      .then(data => {
+        if (!ativo) return;
+        const clientesApi = (data.clientes || []).map(normalizarClienteApi);
+        setState(prev => ({ ...prev, clientes: clientesApi }));
+      })
+      .catch(err => {
+        console.error('[ERPContext] erro ao carregar clientes persistentes:', err);
+      });
+    return () => { ativo = false; };
+  }, []);
 
   const totalCarrinho = useMemo(() => {
     return state.carrinhoAtual.reduce((acc, item) => acc + (Number(item.preco) || 0), 0);
@@ -696,17 +714,57 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const adicionarCliente = (cliente: Cliente) => {
+    const tempId = cliente.id || `tmp-${Date.now()}`;
+    const clienteTemporario = { ...cliente, id: tempId };
     setState(prev => ({
       ...prev,
-      clientes: [...prev.clientes, cliente]
+      clientes: [...prev.clientes, clienteTemporario]
     }));
+
+    fetch('/api/clientes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(prepararClienteApi(clienteTemporario))
+    })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('Falha ao salvar cliente')))
+      .then(saved => {
+        const clienteSalvo = normalizarClienteApi(saved);
+        setState(prev => ({
+          ...prev,
+          clientes: prev.clientes.map(c => c.id === tempId ? clienteSalvo : c)
+        }));
+      })
+      .catch(err => console.error('[ERPContext] erro ao salvar cliente:', err));
   };
 
   const atualizarCliente = (id: string, atualizacao: Partial<Cliente>) => {
+    let clienteAtualizado: Cliente | undefined;
     setState(prev => ({
       ...prev,
-      clientes: prev.clientes.map(c => c.id === id ? { ...c, ...atualizacao } : c)
+      clientes: prev.clientes.map(c => {
+        if (c.id !== id) return c;
+        clienteAtualizado = { ...c, ...atualizacao };
+        return clienteAtualizado;
+      })
     }));
+
+    setTimeout(() => {
+      if (!clienteAtualizado) return;
+      fetch('/api/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prepararClienteApi(clienteAtualizado))
+      })
+        .then(r => r.ok ? r.json() : Promise.reject(new Error('Falha ao atualizar cliente')))
+        .then(saved => {
+          const clienteSalvo = normalizarClienteApi(saved);
+          setState(prev => ({
+            ...prev,
+            clientes: prev.clientes.map(c => c.id === id ? clienteSalvo : c)
+          }));
+        })
+        .catch(err => console.error('[ERPContext] erro ao atualizar cliente:', err));
+    }, 0);
   };
 
   const adicionarProposta = (proposta: Proposta) => {

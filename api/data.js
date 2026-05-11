@@ -1,17 +1,99 @@
 // api/data.js — dispatcher unificado
-import { sb, selectAll, insert, upsertByField } from './_lib/supabase.js';
+import { sb, selectAll, insert, update, upsertByField } from './_lib/supabase.js';
+
+const FUNCIONARIOS_IA = [
+  {
+    nome: 'Giorno Giovanna',
+    email: 'giorno.vendas@cdsind.com.br',
+    telefone: '',
+    tipo: 'FUNC',
+    documento: '',
+    cep: '',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    cidade: 'Brasilia',
+    uf: 'DF',
+    complemento: 'Operador de Vendas IA',
+    orgao: 'Atendimento Comercial',
+    dores: ['Responder clientes', 'Qualificar produtos', 'Conduzir orcamentos']
+  },
+  {
+    nome: 'Bruno Bucciarati',
+    email: 'bruno.gerente@cdsind.com.br',
+    telefone: '',
+    tipo: 'FUNC',
+    documento: '',
+    cep: '',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    cidade: 'Brasilia',
+    uf: 'DF',
+    complemento: 'Gerente de Vendas IA',
+    orgao: 'Gestao Comercial',
+    dores: ['Gerenciar atendimentos', 'Identificar novos produtos', 'Orientar o dono']
+  }
+];
+
+function sanitizeClientePayload(data = {}) {
+  const payload = {
+    nome: data.nome || '',
+    email: data.email || '',
+    telefone: data.telefone || '',
+    tipo: data.tipo || 'PJ',
+    documento: data.documento || data.cnpj || data.cnpj_cpf || '',
+    cnpj: data.cnpj || '',
+    cep: data.cep || '',
+    logradouro: data.logradouro || '',
+    numero: data.numero || '',
+    bairro: data.bairro || '',
+    cidade: data.cidade || '',
+    uf: data.uf || '',
+    complemento: data.complemento || '',
+    orgao: data.orgao || '',
+    razao_social: data.razao_social || data.razaoSocial || '',
+    nome_fantasia: data.nome_fantasia || data.nomeFantasia || '',
+    inscricao_estadual: data.inscricao_estadual || data.inscricaoEstadual || '',
+    funnel_stage: data.funnel_stage || data.funnelStage || null,
+    dores: Array.isArray(data.dores) ? data.dores : []
+  };
+
+  if (data.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(data.id))) {
+    payload.id = data.id;
+  }
+  return payload;
+}
+
+async function salvarClientePersistente(data = {}) {
+  const payload = sanitizeClientePayload(data);
+  if (payload.id) {
+    const { id, ...semId } = payload;
+    return await update('clientes', 'id', id, semId);
+  }
+  if (payload.telefone) return await upsertByField('clientes', payload, 'telefone');
+  if (payload.email) {
+    const existente = await selectAll('clientes', { filters: { email: `eq.${payload.email}` }, limit: 1 });
+    if (existente[0]?.id) return await update('clientes', 'id', existente[0].id, payload);
+  }
+  return await insert('clientes', payload);
+}
+
+async function garantirFuncionariosIA() {
+  for (const funcionario of FUNCIONARIOS_IA) {
+    await salvarClientePersistente(funcionario);
+  }
+}
 
 async function handleClientes(req, res) {
   const TABLE = 'clientes';
   if (req.method === 'GET') {
+    await garantirFuncionariosIA();
     const data = await selectAll(TABLE, { orderBy: 'nome' });
     return res.status(200).json({ clientes: data });
   }
   if (req.method === 'POST') {
-    let conflictField = 'id';
-    if (req.body?.telefone) conflictField = 'telefone';
-    else if (req.body?.email) conflictField = 'email';
-    const saved = await upsertByField(TABLE, req.body || {}, conflictField);
+    const saved = await salvarClientePersistente(req.body || {});
     return res.status(200).json(saved);
   }
   return res.status(405).json({ error: 'Metodo nao permitido' });
