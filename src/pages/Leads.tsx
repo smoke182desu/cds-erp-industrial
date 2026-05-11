@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+﻿import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Lead, EtapaFunil,
   ETAPAS_FUNIL, ORIGEM_LABELS,
@@ -808,11 +808,12 @@ function LeadItem({ lead, ativo, naoLido, onClick }: {
   );
 }
 
-// ─── Modal de Novo Lead ────────────────────────────────────────────────────
+// ─── Bruno Bucciarati — Command Center ──────────────────────────────────────
 function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => void }) {
   const [checkup, setCheckup] = useState<any>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
+  const [expandido, setExpandido] = useState(true);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -839,101 +840,175 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
     return () => clearInterval(id);
   }, [carregar]);
 
-  const indicadores = checkup?.indicadores || {};
-  const cobrancas = Array.isArray(checkup?.cobrancas) ? checkup.cobrancas : [];
-  const metas = Array.isArray(checkup?.metas) ? checkup.metas : [];
+  const ind = checkup?.indicadores || {};
+  const cobrancas: any[] = Array.isArray(checkup?.cobrancas) ? checkup.cobrancas : [];
+  const metas: any[] = Array.isArray(checkup?.metas) ? checkup.metas : [];
+  const funil: any[] = Array.isArray(checkup?.distribuicaoFunil) ? checkup.distribuicaoFunil : [];
+  const processos: any[] = Array.isArray(checkup?.processosQueFaltam) ? checkup.processosQueFaltam : [];
+  const insights: any[] = Array.isArray(checkup?.insightsAprendidos) ? checkup.insightsAprendidos : [];
+  const maxFunil = Math.max(...funil.map((f: any) => f.total || 0), 1);
 
-  const prioridadeClasse = (prioridade?: string) => {
-    if (prioridade === 'alta' || prioridade === 'critica') return 'border-red-200 bg-red-50 text-red-700';
-    if (prioridade === 'media') return 'border-amber-200 bg-amber-50 text-amber-700';
-    return 'border-slate-200 bg-slate-50 text-slate-600';
+  const fmtTempo = (min: number) => {
+    if (min < 60) return `${min}min`;
+    if (min < 1440) return `${Math.round(min / 60)}h`;
+    return `${Math.round(min / 1440)}d`;
   };
 
+  const corKPI = (valor: number, bom: number, ruim: number, inverso = false) => {
+    if (inverso) return valor <= bom ? 'from-emerald-500 to-emerald-600' : valor >= ruim ? 'from-red-500 to-red-600' : 'from-amber-500 to-amber-600';
+    return valor >= bom ? 'from-emerald-500 to-emerald-600' : valor <= ruim ? 'from-red-500 to-red-600' : 'from-amber-500 to-amber-600';
+  };
+
+  const priorClasse = (p?: string) => {
+    if (p === 'alta' || p === 'critica') return 'border-red-400/30 bg-red-500/10 text-red-200';
+    if (p === 'media') return 'border-amber-400/30 bg-amber-500/10 text-amber-200';
+    return 'border-slate-500/30 bg-slate-600/10 text-slate-300';
+  };
+
+  if (!expandido) {
+    return (
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-b border-slate-700/50 px-4 py-1.5 flex items-center gap-4 cursor-pointer select-none flex-shrink-0" onClick={() => setExpandido(true)}>
+        <div className="flex items-center gap-2">
+          <div className="w-5 h-5 rounded bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-[9px] font-bold">B</div>
+          <span className="text-[10px] font-bold text-white/80">BRUNO</span>
+        </div>
+        <div className="flex gap-3 text-[10px]">
+          {(ind.altaPrioridade || 0) > 0 && <span className="text-red-400 font-bold animate-pulse">{ind.altaPrioridade} urgentes</span>}
+          <span className="text-slate-400">{ind.leadsAtivos || 0} ativos</span>
+          <span className="text-slate-400">{ind.taxaConversao || 0}% conv.</span>
+          {(ind.tempoMedioEspera || 0) > 0 && <span className={(ind.tempoMedioEspera || 0) > 60 ? 'text-red-400' : 'text-emerald-400'}>{fmtTempo(ind.tempoMedioEspera || 0)} espera</span>}
+        </div>
+        <span className="ml-auto text-slate-500 hover:text-white text-[10px]">Expandir ▼</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="border-b bg-slate-50 p-2">
-      <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-700">Bruno - Checkup geral</p>
-            <p className="text-[10px] text-slate-500 truncate">{checkup?.resumoGerencial || 'Varrendo vendas e cobrancas...'}</p>
-          </div>
-          <button
-            onClick={carregar}
-            disabled={carregando}
-            title="Atualizar checkup"
-            className="h-7 w-7 flex-shrink-0 rounded-md border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-          >
-            {carregando ? '...' : '↻'}
-          </button>
-        </div>
-
-        {erro && (
-          <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700">{erro}</p>
-        )}
-
-        <div className="mt-2 grid grid-cols-3 gap-1">
-          <div className="rounded-md bg-red-50 px-2 py-1">
-            <p className="text-sm font-bold text-red-700">{indicadores.altaPrioridade || 0}</p>
-            <p className="text-[9px] uppercase text-red-500">urgentes</p>
-          </div>
-          <div className="rounded-md bg-amber-50 px-2 py-1">
-            <p className="text-sm font-bold text-amber-700">{indicadores.respostasPendentes || 0}</p>
-            <p className="text-[9px] uppercase text-amber-500">respostas</p>
-          </div>
-          <div className="rounded-md bg-indigo-50 px-2 py-1">
-            <p className="text-sm font-bold text-indigo-700">{indicadores.followUps || 0}</p>
-            <p className="text-[9px] uppercase text-indigo-500">follow-up</p>
+    <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-b border-slate-700/50 flex-shrink-0">
+      <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-violet-500/20">B</div>
+          <div>
+            <p className="text-sm font-bold text-white tracking-wide">BRUNO BUCCIARATI</p>
+            <p className="text-[10px] text-slate-400">Gerente de Vendas IA · Monitorando {ind.leadsAtivos || 0} leads</p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          {checkup?.resumoGerencial && <p className="text-[10px] text-slate-400 max-w-xs truncate hidden lg:block">{checkup.resumoGerencial}</p>}
+          <button onClick={carregar} disabled={carregando} className="h-7 w-7 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs flex items-center justify-center transition-all disabled:opacity-30">{carregando ? '...' : '↻'}</button>
+          <button onClick={() => setExpandido(false)} className="h-7 w-7 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs flex items-center justify-center transition-all">▲</button>
+        </div>
+      </div>
 
-        {metas.length > 0 && (
-          <div className="mt-2 flex flex-col gap-1.5">
-            {metas.slice(0, 3).map((meta: any, i: number) => (
-              <div key={i} className="rounded-md bg-slate-50 px-2 py-1.5">
-                <div className="flex items-center justify-between gap-2 text-[10px]">
-                  <span className="truncate font-semibold text-slate-600">{meta.nome}</span>
-                  <span className={`flex-shrink-0 rounded px-1.5 py-0.5 font-semibold ${
-                    meta.status === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                  }`}>
-                    {meta.atingido || 0}%
-                  </span>
+      {erro && <p className="mx-4 mb-2 rounded-md bg-red-500/20 border border-red-400/30 px-3 py-1.5 text-[10px] text-red-300">{erro}</p>}
+
+      <div className="px-4 pb-3 grid grid-cols-3 lg:grid-cols-6 gap-2">
+        {[
+          { label: 'Leads Ativos', valor: String(ind.leadsAtivos || 0), grad: 'from-indigo-500 to-indigo-600', sub: `${ind.semMovimento || 0} parados`, pulse: false },
+          { label: 'Urgentes', valor: String(ind.altaPrioridade || 0), grad: corKPI(ind.altaPrioridade || 0, 0, 2, true), sub: `${ind.respostasPendentes || 0} s/ resposta`, pulse: (ind.altaPrioridade || 0) > 0 },
+          { label: 'Espera Media', valor: fmtTempo(ind.tempoMedioEspera || 0), grad: corKPI(ind.tempoMedioEspera || 0, 15, 60, true), sub: `max: ${fmtTempo(ind.tempoMaximoEspera || 0)}`, pulse: false },
+          { label: 'Resp. Rapida', valor: `${ind.taxaRespostaRapida ?? 100}%`, grad: corKPI(ind.taxaRespostaRapida ?? 100, 70, 40), sub: `${ind.respostasRapidas || 0} <15min`, pulse: false },
+          { label: 'Conversao', valor: `${ind.taxaConversao || 0}%`, grad: corKPI(ind.taxaConversao || 0, 20, 5), sub: `${ind.ganhos || 0}W / ${ind.perdidos || 0}L`, pulse: false },
+          { label: 'Propostas', valor: String(ind.propostasAbertas || 0), grad: 'from-amber-500 to-amber-600', sub: `${ind.followUps || 0} follow-ups`, pulse: false },
+        ].map((kpi, i) => (
+          <div key={i} className={`rounded-lg bg-white/5 backdrop-blur-sm border border-white/10 p-2.5 ${kpi.pulse ? 'animate-pulse' : ''}`}>
+            <p className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold mb-1">{kpi.label}</p>
+            <p className={`text-xl font-black bg-gradient-to-r ${kpi.grad} bg-clip-text text-transparent`}>{kpi.valor}</p>
+            <p className="text-[9px] text-slate-500 mt-0.5">{kpi.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="px-4 pb-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="rounded-lg bg-white/5 backdrop-blur-sm border border-white/10 p-3">
+          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">Funil de Vendas</p>
+          <div className="flex flex-col gap-1.5">
+            {funil.filter((f: any) => f.total > 0).map((f: any, i: number) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-[9px] text-slate-400 w-16 truncate text-right font-medium">{f.label}</span>
+                <div className="flex-1 h-4 bg-slate-700/50 rounded-sm overflow-hidden">
+                  <div className="h-full rounded-sm transition-all duration-700" style={{ width: `${Math.max(8, (f.total / maxFunil) * 100)}%`, backgroundColor: f.cor }} />
                 </div>
-                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
-                  <div
-                    className={meta.status === 'ok' ? 'h-full bg-emerald-500' : 'h-full bg-amber-500'}
-                    style={{ width: `${Math.max(0, Math.min(100, meta.atingido || 0))}%` }}
-                  />
+                <span className="text-[10px] text-white font-bold w-5 text-right">{f.total}</span>
+              </div>
+            ))}
+            {funil.every((f: any) => f.total === 0) && <p className="text-[10px] text-slate-500 text-center py-2">Sem dados</p>}
+          </div>
+        </div>
+
+        <div className="rounded-lg bg-white/5 backdrop-blur-sm border border-white/10 p-3">
+          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">Metas</p>
+          <div className="flex flex-col gap-2">
+            {metas.map((meta: any, i: number) => (
+              <div key={i}>
+                <div className="flex items-center justify-between gap-2 text-[10px] mb-0.5">
+                  <span className="text-slate-300 font-medium truncate">{meta.nome}</span>
+                  <span className={`font-bold ${meta.status === 'ok' ? 'text-emerald-400' : meta.status === 'cobrar' ? 'text-red-400' : 'text-amber-400'}`}>{meta.atingido || 0}%</span>
                 </div>
-                <p className="mt-1 text-[9px] text-slate-500">
-                  Atual: {meta.atual}{meta.unidade ? ` ${meta.unidade}` : ''} | Falta: {meta.falta}{meta.unidade ? ` ${meta.unidade}` : ''}
-                </p>
+                <div className="h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-700 ${meta.status === 'ok' ? 'bg-emerald-500' : meta.status === 'cobrar' ? 'bg-red-500' : 'bg-amber-500'}`}
+                    style={{ width: `${Math.max(0, Math.min(100, meta.atingido || 0))}%` }} />
+                </div>
               </div>
             ))}
           </div>
-        )}
+        </div>
 
-        <div className="mt-2 flex max-h-48 flex-col gap-1 overflow-y-auto">
-          {cobrancas.length === 0 && !carregando && (
-            <p className="rounded-md bg-emerald-50 px-2 py-1.5 text-[10px] font-medium text-emerald-700">
-              Sem cobranca critica agora.
-            </p>
-          )}
-          {cobrancas.slice(0, 5).map((c: any, i: number) => (
-            <button
-              key={`${c.leadId || i}-${c.tipo}`}
-              onClick={() => c.leadId && onAbrirLead(c.leadId)}
-              className={`rounded-md border px-2 py-1.5 text-left transition-colors hover:bg-white ${prioridadeClasse(c.prioridade)}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-[11px] font-bold">{c.nome || c.telefone || 'Lead'}</p>
-                <span className="flex-shrink-0 text-[9px] font-bold uppercase">{c.prioridade}</span>
-              </div>
-              <p className="mt-0.5 text-[10px] font-semibold">{c.titulo}</p>
-              <p className="mt-0.5 line-clamp-2 text-[10px] opacity-80">{c.prazoTexto} - {c.acao}</p>
-            </button>
-          ))}
+        <div className="rounded-lg bg-white/5 backdrop-blur-sm border border-white/10 p-3">
+          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">Cobranças ({cobrancas.length})</p>
+          <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
+            {cobrancas.length === 0 && !carregando && <p className="text-[10px] text-emerald-400 font-medium py-2 text-center">Tudo em dia.</p>}
+            {cobrancas.slice(0, 8).map((c: any, i: number) => (
+              <button key={`${c.leadId || i}-${c.tipo}`} onClick={() => c.leadId && onAbrirLead(c.leadId)}
+                className={`rounded-md border px-2.5 py-1.5 text-left transition-all hover:bg-white/5 ${priorClasse(c.prioridade)}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-[10px] font-bold">{c.nome || c.telefone || 'Lead'}</p>
+                  <span className={`flex-shrink-0 text-[8px] font-black uppercase rounded px-1 py-0.5 ${c.prioridade === 'alta' ? 'bg-red-500/20 text-red-300' : c.prioridade === 'media' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-500/20 text-slate-400'}`}>{c.prioridade}</span>
+                </div>
+                <p className="mt-0.5 text-[9px] font-semibold opacity-90">{c.titulo}</p>
+                <p className="mt-0.5 line-clamp-1 text-[9px] opacity-60">{c.prazoTexto}</p>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      {(processos.length > 0 || insights.length > 0) && (
+        <div className="px-4 pb-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {processos.length > 0 && (
+            <div className="rounded-lg bg-red-500/5 backdrop-blur-sm border border-red-400/20 p-3">
+              <p className="text-[10px] uppercase tracking-wider text-red-400 font-bold mb-2">Processos que Faltam</p>
+              <div className="flex flex-col gap-1.5">
+                {processos.map((p: any, i: number) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className={`flex-shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${p.prioridade === 'alta' ? 'bg-red-400' : 'bg-amber-400'}`} />
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-200">{p.titulo}</p>
+                      <p className="text-[9px] text-slate-400 leading-relaxed">{p.descricao}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {insights.length > 0 && (
+            <div className="rounded-lg bg-violet-500/5 backdrop-blur-sm border border-violet-400/20 p-3">
+              <p className="text-[10px] uppercase tracking-wider text-violet-400 font-bold mb-2">Aprendizados do Bruno</p>
+              <div className="flex flex-col gap-1.5">
+                {insights.map((ins: any, i: number) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className={`flex-shrink-0 text-[9px] mt-0.5 ${ins.tipo === 'tecnica_efetiva' ? 'text-emerald-400' : 'text-red-400'}`}>{ins.tipo === 'tecnica_efetiva' ? '✓' : '✗'}</span>
+                    <div>
+                      <p className="text-[9px] text-slate-300 leading-relaxed line-clamp-2">{ins.insight}</p>
+                      <p className="text-[8px] text-slate-500 mt-0.5">confiança: {ins.confianca}%</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1555,13 +1630,14 @@ export function Leads() {
         </div>
       </div>
 
+      <CheckupBrunoGeral onAbrirLead={abrirLeadPorId} />
+
       <div className="flex flex-1 overflow-hidden">
         <div className="w-64 flex-shrink-0 border-r bg-white flex flex-col overflow-hidden">
           <div className="p-2 border-b">
             <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar lead..."
               className="w-full text-sm border rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
           </div>
-          <CheckupBrunoGeral onAbrirLead={abrirLeadPorId} />
           <div className="flex-1 overflow-y-auto">
             {loading && <div className="text-center text-xs text-gray-400 py-8">Carregando...</div>}
             {!loading && filtrados.length === 0 && (

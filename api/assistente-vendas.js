@@ -381,9 +381,10 @@ function montarCobranca({ lead, tipo, prioridade, titulo, motivo, prazoTexto, pr
 }
 
 async function gerarCheckupGeralVendas() {
-  const [leadsRaw, mensagensRaw] = await Promise.all([
+  const [leadsRaw, mensagensRaw, insightsRaw] = await Promise.all([
     selectAll('leads', { orderBy: 'atualizado_em', limit: 300 }),
     selectAll('mensagens', { orderBy: 'criado_em', limit: 1200 }),
+    supabaseClient.from('ia_insights_globais').select('tipo, contexto, insight, confianca, usos, sucessos').gte('confianca', 30).order('confianca', { ascending: false }).limit(5).then(r => r.data || []).catch(() => []),
   ]);
 
   const mensagensPorTelefone = new Map();
@@ -407,6 +408,23 @@ async function gerarCheckupGeralVendas() {
   let propostasAbertas = 0;
   let orcamentosPendentes = 0;
 
+  // Metricas de tempo de espera
+  const temposEspera = [];
+  let respostasRapidas = 0;
+  let respostasLentas = 0;
+  let leadsEsquecidos = 0;
+
+  // Distribuicao do funil
+  const CORES_FUNIL = {
+    lead_novo: '#6366f1', contato_feito: '#3b82f6', qualificado: '#8b5cf6',
+    proposta_enviada: '#f59e0b', negociacao: '#ef4444', fechado_ganho: '#10b981',
+    fechado_perdido: '#6b7280', pos_venda: '#14b8a6',
+  };
+  const contadorFunil = {};
+  for (const lead of todosLeads) {
+    contadorFunil[lead.etapa] = (contadorFunil[lead.etapa] || 0) + 1;
+  }
+
   for (const lead of leads) {
     if (lead.etapa === 'proposta_enviada' || lead.etapa === 'negociacao') propostasAbertas++;
 
@@ -416,6 +434,25 @@ async function gerarCheckupGeralVendas() {
     const ultimaJean = [...mensagens].reverse().find(m => m.tipo === 'saida') || null;
     const textoAtual = ultimaCliente?.texto || lead.ultimaMensagem || '';
     const pediuOrcamento = textoIndicaOrcamento(textoAtual);
+
+    // Calcular tempo de espera do cliente (quando o cliente mandou e Jean ainda nao respondeu)
+    if (ultima && ultima.tipo !== 'saida') {
+      const espera = minutosDesde(ultima.criadoEm);
+      temposEspera.push(espera);
+    }
+
+    // Medir velocidade de resposta do Jean (analisar pares cliente->jean)
+    for (let i = 1; i < mensagens.length; i++) {
+      if (mensagens[i].tipo === 'saida' && mensagens[i - 1].tipo !== 'saida') {
+        const tempoResp = (new Date(mensagens[i].criadoEm) - new Date(mensagens[i - 1].criadoEm)) / 60000;
+        if (tempoResp >= 0 && tempoResp < 15) respostasRapidas++;
+        else if (tempoResp >= 60) respostasLentas++;
+      }
+    }
+
+    // Lead esquecido (>48h sem interacao)
+    const minutosUltimaInteracao = ultima ? minutosDesde(ultima.criadoEm) : minutosDesde(lead.atualizadoEm || lead.criadoEm);
+    if (minutosUltimaInteracao >= 2880) leadsEsquecidos++;
 
     if (!ultima) {
       const minutosLead = minutosDesde(lead.atualizadoEm || lead.criadoEm);
@@ -504,6 +541,40 @@ async function gerarCheckupGeralVendas() {
   const atendimentoSemPendencia = leads.length ? Math.max(0, leads.length - respostasPendentes) : 0;
   const percentualFilaRespondida = pct(atendimentoSemPendencia, leads.length);
 
+  // Tempo medio e maximo de espera
+  const tempoMedioEspera = temposEspera.length > 0 ? Math.round(temposEspera.reduce((a, b) => a + b, 0) / temposEspera.length) : 0;
+  const tempoMaximoEspera = temposEspera.length > 0 ? Math.max(...temposEspera) : 0;
+
+  // Distribuicao do funil
+  const etapasOrdenadas = ['lead_novo', 'contato_feito', 'qualificado', 'proposta_enviada', 'negociacao', 'fechado_ganho', 'fechado_perdido'];
+  const distribuicaoFunil = etapasOrdenadas.map(etapa => ({
+    etapa,
+    label: ETAPAS_LABEL[etapa] || etapa,
+    total: contadorFunil[etapa] || 0,
+    cor: CORES_FUNIL[etapa] || '#94a3b8',
+  }));
+
+  // Processos que faltam — Bruno identifica gaps operacionais
+  const processosQueFaltam = [];
+  if (ganhos > 0 && !todosLeads.some(l => l.etapa === 'pos_venda')) {
+    processosQueFaltam.push({ titulo: 'Pos-venda inexistente', descricao: `${ganhos} venda(s) fechada(s) sem nenhum contato de satisfacao ou recompra.`, prioridade: 'alta' });
+  }
+  const qualificadosParados = leads.filter(l => l.etapa === 'qualificado' && minutosDesde(l.atualizadoEm || l.criadoEm) >= 7200);
+  if (qualificadosParados.length > 0) {
+    processosQueFaltam.push({ titulo: 'Leads qualificados sem orcamento', descricao: `${qualificadosParados.length} lead(s) qualificado(s) parado(s) ha mais de 5 dias sem proposta.`, prioridade: 'alta' });
+  }
+  if (leadsEsquecidos > 0) {
+    processosQueFaltam.push({ titulo: 'Leads esquecidos', descricao: `${leadsEsquecidos} lead(s) sem nenhuma interacao ha mais de 48h. Risco de perder cliente.`, prioridade: 'media' });
+  }
+  if (respostasLentas > respostasRapidas && respostasLentas > 3) {
+    processosQueFaltam.push({ titulo: 'Tempo de resposta alto', descricao: `Mais respostas lentas (${respostasLentas}) que rapidas (${respostasRapidas}). Precisa reduzir tempo de atendimento.`, prioridade: 'alta' });
+  }
+  if (propostasAbertas > 3) {
+    processosQueFaltam.push({ titulo: 'Acumulo de propostas', descricao: `${propostasAbertas} propostas em aberto. Fechar ou descartar para liberar pipeline.`, prioridade: 'media' });
+  }
+  const totalRespostas = respostasRapidas + respostasLentas;
+  const taxaRespostaRapida = totalRespostas > 0 ? Math.round((respostasRapidas / totalRespostas) * 100) : 100;
+
   return {
     atualizadoEm: new Date().toISOString(),
     resumoGerencial: altaPrioridade > 0
@@ -522,7 +593,20 @@ async function gerarCheckupGeralVendas() {
       ganhos,
       perdidos,
       percentualFilaRespondida,
+      tempoMedioEspera,
+      tempoMaximoEspera,
+      respostasRapidas,
+      respostasLentas,
+      leadsEsquecidos,
+      taxaRespostaRapida,
     },
+    distribuicaoFunil,
+    processosQueFaltam: processosQueFaltam.slice(0, 5),
+    insightsAprendidos: (Array.isArray(insightsRaw) ? insightsRaw : []).map(i => ({
+      tipo: i.tipo,
+      insight: i.insight,
+      confianca: i.confianca,
+    })),
     parametros: [
       'Responder cliente em ate 15 min quando a ultima mensagem for dele.',
       'Pedido de valor/prazo deve virar orcamento ou pergunta de dado faltante no mesmo atendimento.',
@@ -540,6 +624,7 @@ async function gerarCheckupGeralVendas() {
     cobrancas: cobrancas.slice(0, 30),
   };
 }
+
 
 function normalizarSugestoes(analise, saudacao, precisaSaudacao, contexto = {}) {
   if (contexto.ultimaMensagem?.tipo === 'saida') {
