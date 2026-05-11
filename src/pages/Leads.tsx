@@ -467,6 +467,39 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
               <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider mb-1.5">🎯 Técnica Indicada</p>
               <p className="text-xs text-violet-700 leading-relaxed font-medium">{analise.tecnicaRecomendada}</p>
             </div>
+            {analise.diretorVendas && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Diretor de Vendas</p>
+                  {analise.diretorVendas.nivelOportunidade && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase ${
+                      analise.diretorVendas.nivelOportunidade === 'alto'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : analise.diretorVendas.nivelOportunidade === 'medio'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {analise.diretorVendas.nivelOportunidade}
+                    </span>
+                  )}
+                </div>
+                {analise.diretorVendas.produtoSugerido && (
+                  <p className="text-xs font-semibold text-slate-800 mb-1">{analise.diretorVendas.produtoSugerido}</p>
+                )}
+                {analise.diretorVendas.recomendacaoDono && (
+                  <p className="text-xs text-slate-700 leading-relaxed">{analise.diretorVendas.recomendacaoDono}</p>
+                )}
+                {analise.diretorVendas.dadosFaltantesProduto?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {analise.diretorVendas.dadosFaltantesProduto.slice(0, 4).map((d: string, i: number) => (
+                      <span key={i} className="text-[10px] bg-white border border-slate-200 text-slate-500 px-1.5 py-0.5 rounded">
+                        falta: {d}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {analise.proximoPasso && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                 <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider mb-1.5">🚀 Próximo Passo</p>
