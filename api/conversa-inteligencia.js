@@ -172,6 +172,22 @@ function extrairAlternativas(textoConversa) {
   };
 }
 
+function removerCamposFaltandoPreenchidos(analise) {
+  if (!Array.isArray(analise?.camposFaltando)) return analise;
+  const cliente = analise.cliente || {};
+  const aliases = {
+    endereco: ['logradouro', 'bairro', 'cidade', 'uf'],
+    inscricao_estadual: ['inscricaoEstadual'],
+    empresa: ['empresa', 'razaoSocial', 'nomeFantasia'],
+  };
+
+  analise.camposFaltando = analise.camposFaltando.filter(campo => {
+    const chaves = aliases[campo] || [campo];
+    return !chaves.some(chave => Boolean(cliente[chave]));
+  });
+  return analise;
+}
+
 async function buscarMensagens(telefone) {
   try {
     const data = await selectAll('mensagens', { filters: { telefone: `eq.${telefone}` }, orderBy: 'criado_em', limit: 200 });
@@ -496,6 +512,7 @@ export default async function handler(req, res) {
     const enriquecido = await enriquecerClienteComCNPJ(analise.cliente, analise.cliente.cnpj);
     analise.cliente = enriquecido.cliente;
     const dadosCNPJ = enriquecido.dadosCNPJ;
+    removerCamposFaltandoPreenchidos(analise);
 
     if (analise.cliente?.cep && !dadosCNPJ) {
       const dCEP = await consultarCEP(analise.cliente.cep);
@@ -506,6 +523,7 @@ export default async function handler(req, res) {
         analise.cliente.uf = analise.cliente.uf || dCEP.uf;
       }
     }
+    removerCamposFaltandoPreenchidos(analise);
 
     if (analise.produtos?.length) {
       // Garante Title Case em todos os nomes de produto retornados pela IA

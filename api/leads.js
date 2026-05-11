@@ -38,6 +38,22 @@ function formatarTelefoneWA(digits) {
   return `+${d}`;
 }
 
+function soDigitos(valor) {
+  return String(valor || '').replace(/\D/g, '');
+}
+
+function previewMensagem(msg) {
+  const texto = String(msg?.texto || msg?.conteudo || '').trim();
+  if (texto) return texto;
+  const mediaType = msg?.media_type || msg?.mediaType;
+  return mediaType ? `[${mediaType}]` : '';
+}
+
+function precisaPreviewAtualizado(valor) {
+  const texto = String(valor || '').trim().toLowerCase();
+  return !texto || texto === 'sem mensagens ainda';
+}
+
 function formatarLead(lead) {
   if (lead.etapa === 'lid_oculto') {
     return { ...lead, __ocultar: true };
@@ -92,13 +108,48 @@ function normalizar(lead) {
     criadoEm: lead.criadoEm ?? lead.criado_em ?? lead.created_at ?? '',
     atualizadoEm: lead.atualizadoEm ?? lead.atualizado_em ?? lead.updated_at ?? '',
     ultima_hora: lead.atualizado_em ?? lead.atualizadoEm ?? lead.criado_em ?? '',
+    total_mensagens: Number(lead.total_mensagens || lead.totalMensagens) || 0,
   };
 }
 
 async function listarLeads() {
   try {
-    const data = await selectAll(TABLE, { orderBy: 'atualizado_em', limit: 300 });
-    return data;
+    const [leads, mensagens] = await Promise.all([
+      selectAll(TABLE, { orderBy: 'atualizado_em', limit: 300 }),
+      selectAll('mensagens', { orderBy: 'criado_em', limit: 1000 }).catch(() => []),
+    ]);
+
+    const mensagensPorTelefone = new Map();
+    for (const msg of mensagens || []) {
+      const tel = soDigitos(msg.telefone || msg.remote_jid);
+      if (!tel) continue;
+
+      const atual = mensagensPorTelefone.get(tel);
+      const criadoEm = msg.criado_em || msg.created_at || '';
+      if (!atual) {
+        mensagensPorTelefone.set(tel, { total: 1, ultima: msg });
+        continue;
+      }
+
+      atual.total += 1;
+      const atualData = new Date(atual.ultima?.criado_em || atual.ultima?.created_at || 0).getTime();
+      const msgData = new Date(criadoEm || 0).getTime();
+      if (msgData >= atualData) atual.ultima = msg;
+    }
+
+    return leads.map(lead => {
+      const info = mensagensPorTelefone.get(soDigitos(lead.telefone));
+      if (!info?.ultima) return lead;
+
+      const ultimaTexto = previewMensagem(info.ultima);
+      const ultimaHora = info.ultima.criado_em || info.ultima.created_at || lead.atualizado_em;
+      return {
+        ...lead,
+        ultima_mensagem: precisaPreviewAtualizado(lead.ultima_mensagem) ? ultimaTexto : lead.ultima_mensagem,
+        atualizado_em: lead.atualizado_em || ultimaHora,
+        total_mensagens: info.total,
+      };
+    });
   } catch (err) {
     console.warn('[leads] select falhou:', err.message);
     return [];

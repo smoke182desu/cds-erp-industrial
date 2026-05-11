@@ -62,7 +62,12 @@ export default async function handler(req, res) {
       const { telefone } = req.query;
       if (!telefone) return res.status(400).json({ error: 'telefone obrigatorio' });
 
-      const r = await sb(`/${TABLE}?telefone=eq.${encodeURIComponent(telefone)}&order=criado_em.asc&limit=500`);
+      const telOriginal = String(telefone);
+      const telDigitos = telOriginal.replace(/\D/g, '');
+      let r = await sb(`/${TABLE}?telefone=eq.${encodeURIComponent(telDigitos)}&order=criado_em.asc&limit=500`);
+      if (r.ok && Array.isArray(r.body) && r.body.length === 0 && telOriginal !== telDigitos) {
+        r = await sb(`/${TABLE}?telefone=eq.${encodeURIComponent(telOriginal)}&order=criado_em.asc&limit=500`);
+      }
       if (!r.ok) {
         console.error('[mensagem] GET erro:', r.status, JSON.stringify(r.body).slice(0, 200));
         return res.status(500).json({ error: 'Erro ao buscar mensagens' });
