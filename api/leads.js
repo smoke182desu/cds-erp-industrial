@@ -92,6 +92,7 @@ function normalizar(lead) {
     criadoEm: lead.criadoEm ?? lead.criado_em ?? lead.created_at ?? '',
     atualizadoEm: lead.atualizadoEm ?? lead.atualizado_em ?? lead.updated_at ?? '',
     ultima_hora: lead.atualizado_em ?? lead.atualizadoEm ?? lead.criado_em ?? '',
+    total_mensagens: parseInt(lead.total_mensagens || lead.totalMensagens) || 0,
   };
 }
 

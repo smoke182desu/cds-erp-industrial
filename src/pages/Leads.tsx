@@ -46,7 +46,7 @@ function horaMsg(iso: string) {
 }
 
 // ─── Painel de Conversa (com suporte a mídias) ───────────────────────────────
-function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
+function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange, onUpdateLead }: {
   lead: Lead;
   onEtapaChange: (etapa: EtapaFunil) => void;
   textoInjetado: { v: string; n: number };
@@ -868,6 +868,9 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
         price: it.valorUnitario,
       })),
       total,
+      formaPagamento: 'outros',
+      descontoPix: 0,
+      totalComDesconto: total,
       status: 'Rascunho',
       data: new Date().toISOString(),
     };
@@ -1110,12 +1113,28 @@ export function Leads() {
   const [tabPainel, setTabPainel] = useState<'detalhes' | 'inteligencia'>('inteligencia');
   const [produtoCadastrar, setProdutoCadastrar] = useState<any>(null);
 
-  // Rastreia quais leads foram lidos (persiste em localStorage)
+  // Rastreia quais leads foram lidos — persiste em localStorage (cache) + Supabase (permanente)
   const [lidos, setLidos] = useState<Record<string, string>>(() => {
     try {
       return JSON.parse(localStorage.getItem('crm_leads_lidos') || '{}');
     } catch { return {}; }
   });
+
+  // Carrega estado de lidos do servidor ao montar (sincroniza entre dispositivos)
+  useEffect(() => {
+    fetch('/api/leads-leitura')
+      .then(r => r.json())
+      .then(data => {
+        if (data.lidos && typeof data.lidos === 'object') {
+          setLidos(prev => {
+            const merged = { ...prev, ...data.lidos };
+            localStorage.setItem('crm_leads_lidos', JSON.stringify(merged));
+            return merged;
+          });
+        }
+      })
+      .catch(() => {}); // falha silenciosa — fallback para localStorage
+  }, []);
 
   const marcarComoLido = useCallback((lead: Lead) => {
     const hora = lead.ultimaHora || lead.criadoEm || new Date().toISOString();
@@ -1124,6 +1143,12 @@ export function Leads() {
       localStorage.setItem('crm_leads_lidos', JSON.stringify(next));
       return next;
     });
+    // Persiste no Supabase — memória permanente entre dispositivos/sessões
+    fetch('/api/leads-leitura', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lead_id: lead.id, ultima_hora: hora }),
+    }).catch(() => {}); // falha silenciosa — estado local já foi atualizado
   }, []);
 
   const ehNaoLido = useCallback((lead: Lead): boolean => {
