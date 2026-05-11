@@ -97,12 +97,9 @@ async function chamarIAComFallback(systemPrompt, userPrompt) {
         const content = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
         return { data: { choices: [{ message: { content } }] } }; // mock formato OpenAI
       } catch (err) {
-        if (err.response && (err.response.status === 429 || err.response.status >= 500)) {
-          console.log(`[assistente-vendas] Gemini (${model}) falhou/esgotou, tentando proximo...`);
-          lastError = err;
-          continue;
-        }
-        throw err;
+        console.log(`[assistente-vendas] Gemini (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
+        lastError = err;
+        continue;
       }
     }
   }
@@ -124,11 +121,9 @@ async function chamarIAComFallback(systemPrompt, userPrompt) {
         });
         return resp;
       } catch (err) {
-        if (err.response && (err.response.status === 429 || err.response.status === 400 || err.response.status >= 500)) {
-          lastError = err;
-          continue;
-        }
-        throw err;
+        console.log(`[assistente-vendas] Groq (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
+        lastError = err;
+        continue;
       }
     }
   }

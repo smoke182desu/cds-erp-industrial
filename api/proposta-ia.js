@@ -162,13 +162,9 @@ async function chamarIA(prompt, { maxTokens = 900, temperature = 0.3 } = {}) {
         const geminiResp = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
         return geminiResp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       } catch (err) {
-        if (err.response && (err.response.status === 429 || err.response.status >= 500)) {
-          console.log(`[proposta-ia] Gemini (${model}) esgotou/falhou, caindo para o proximo...`);
-          lastError = err;
-          continue;
-        } else {
-          throw err;
-        }
+        console.log(`[proposta-ia] Gemini (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
+        lastError = err;
+        continue;
       }
     }
   }
@@ -192,11 +188,9 @@ async function chamarIA(prompt, { maxTokens = 900, temperature = 0.3 } = {}) {
         const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', body, { headers, timeout: 30000 });
         return response.data?.choices?.[0]?.message?.content || '';
       } catch (err) {
-        if (err.response && (err.response.status === 429 || err.response.status === 400 || err.response.status >= 500)) {
-          lastError = err;
-          continue;
-        }
-        throw err;
+        console.log(`[proposta-ia] Groq (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
+        lastError = err;
+        continue;
       }
     }
   }

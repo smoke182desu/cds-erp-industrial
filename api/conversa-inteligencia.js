@@ -281,16 +281,17 @@ ${leadContexto}
 
 REGRAS:
 0. NUNCA INVENTE PRODUTOS. Se o cliente nao mencionou um produto especifico, deixe "produtos" como array vazio []. Nao escolha um produto aleatorio do catalogo.
-1. Se o cliente mencionar um produto que EXISTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true). Faca o match literal pelo que foi dito.
+1. Se o cliente mencionar um produto que EXISTE EXATAMENTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true). Faca o match literal pelo que foi dito.
 1.1. SEMPRE escreva o nome do produto em Title Case (Primeira Letra de Cada Palavra Maiuscula). Ex: "Prego 19x42", "Chapa Galvanizada 1.5mm". NUNCA em CAIXA ALTA total nem tudo minusculo.
-2. Se o produto NAO existe no catalogo mas foi claramente mencionado, marque "produtoPadrao": false.
-3. NOME DO PRODUTO: Inclua TODAS as especificacoes mencionadas.
+2. Se o cliente mencionar um produto mas o match no catalogo NAO FOR EXATO (voce nao tem certeza de qual e), marque "produtoPadrao": false.
+2.1. PREENCHA a lista "opcoesSugeridas" com ate 3 produtos do catalogo que mais se assemelham, incluindo a "probabilidade" (0 a 100) de ser o item desejado.
+3. NOME DO PRODUTO: Inclua TODAS as especificacoes mencionadas pelo cliente.
 4. DESCRICAO DO PRODUTO: Coloque todos os detalhes tecnicos.
 5. Extraia CNPJ, CPF, CEP, endereco, inscricao estadual se mencionados.
 6. DADOS ESTRUTURADOS: Se o cliente enviar uma mensagem em formato estruturado, EXTRAIA TODOS esses campos.
 7. CNPJ DA EMPRESA vs CLIENTE: Se for o CNPJ da CDS, ignore para o cliente.
 8. Se dados estao incompletos, liste em "camposFaltando".
-9. Avalie "confianca" de 0 a 100.
+9. Avalie "confianca" global de 0 a 100.
 10. CLIENTE: Prefira o nome que o cliente informou na conversa.
 
 Conversa:
@@ -299,7 +300,7 @@ ${conversa}
 Responda APENAS com JSON valido no formato:
 {
   "cliente": { "nome": "string", "empresa": "string", "telefone": "string", "email": "string", "cnpj": "string", "cpf": "string", "inscricaoEstadual": "string", "cep": "string", "logradouro": "string", "numero": "string", "bairro": "string", "cidade": "string", "uf": "string" },
-  "produtos": [ { "nome": "string", "descricao": "string", "quantidade": 1, "unidade": "UN", "precoUnitario": 0, "produtoPadrao": true, "skuCatalogo": "string" } ],
+  "produtos": [ { "nome": "string", "descricao": "string", "quantidade": 1, "unidade": "UN", "precoUnitario": 0, "produtoPadrao": true, "skuCatalogo": "string", "opcoesSugeridas": [ { "nome": "string", "sku": "string", "precoUnitario": 0, "probabilidade": 90 } ] } ],
   "observacoes": "string",
   "resumoConversa": "string",
   "camposFaltando": ["string"],
@@ -335,12 +336,9 @@ Responda APENAS com JSON valido no formato:
         response = { data: { choices: [{ message: { content } }], model } };
         break; // Sucesso
       } catch (err) {
-        if (err.response && (err.response.status === 429 || err.response.status >= 500)) {
-          console.log(`[conversa-inteligencia] Gemini (${model}) falhou/esgotou.`);
-          lastError = err;
-          continue; // Tenta o proximo modelo do Gemini
-        }
-        throw err; // auth/erro fatal
+        console.log(`[conversa-inteligencia] Gemini (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
+        lastError = err;
+        continue;
       }
     }
   }
@@ -354,11 +352,9 @@ Responda APENAS com JSON valido no formato:
         response = await axios.post('https://api.groq.com/openai/v1/chat/completions', body, { headers, timeout: 30000 });
         break; // Sucesso, quebra o loop
       } catch (err) {
-        if (err.response && (err.response.status === 429 || err.response.status === 400 || err.response.status >= 500)) {
-          lastError = err;
-          continue; // Bateu na cota, pula pro proximo
-        }
-        throw err; // auth ou erro fatal
+        console.log(`[conversa-inteligencia] Groq (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
+        lastError = err;
+        continue;
       }
     }
   }
