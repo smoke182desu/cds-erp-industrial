@@ -126,6 +126,9 @@ export const Clientes: React.FC<{ filtroTipo?: string }> = ({ filtroTipo }) => {
           {cliente.razaoSocial && (
             <p className="text-xs text-slate-500 truncate" title={cliente.razaoSocial}>{cliente.razaoSocial}</p>
           )}
+          {cliente.tipo === 'FUNC' && cliente.complemento && (
+            <p className="text-xs text-indigo-600 font-medium truncate" title={cliente.complemento}>{cliente.complemento}</p>
+          )}
         </div>
         <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded shrink-0">
           {getShortId(cliente.id)}
@@ -255,6 +258,11 @@ export const Clientes: React.FC<{ filtroTipo?: string }> = ({ filtroTipo }) => {
                     {cliente.razaoSocial && (
                       <div className="text-xs text-slate-500 truncate max-w-[200px]" title={cliente.razaoSocial}>
                         {cliente.razaoSocial}
+                      </div>
+                    )}
+                    {cliente.tipo === 'FUNC' && cliente.complemento && (
+                      <div className="text-xs text-indigo-600 font-medium truncate max-w-[200px]" title={cliente.complemento}>
+                        {cliente.complemento}
                       </div>
                     )}
                   </td>

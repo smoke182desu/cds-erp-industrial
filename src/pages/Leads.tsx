@@ -404,8 +404,8 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
       <div className="px-3 py-3 border-b flex-shrink-0 bg-gradient-to-r from-violet-600 to-indigo-600 text-white">
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-bold text-sm">🧠 Assistente de Vendas</p>
-            <p className="text-[10px] text-white/60 mt-0.5">VendaC · V4 Company · SPIN · Challenger</p>
+            <p className="font-bold text-sm">🧠 Giorno Giovanna</p>
+            <p className="text-[10px] text-white/60 mt-0.5">Operador de Vendas IA · SPIN · Challenger</p>
           </div>
           <button onClick={analisar} disabled={carregando} title="Analisar agora"
             className="text-xs bg-white/20 hover:bg-white/30 active:bg-white/40 disabled:opacity-50 w-8 h-8 rounded-lg flex items-center justify-center transition-colors">
@@ -470,7 +470,7 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
             {analise.diretorVendas && (
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Diretor de Vendas</p>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bruno Bucciarati · Gerente de Vendas IA</p>
                   {analise.diretorVendas.nivelOportunidade && (
                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase ${
                       analise.diretorVendas.nivelOportunidade === 'alto'

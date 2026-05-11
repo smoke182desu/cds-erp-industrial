@@ -162,6 +162,45 @@ const estoqueInicial: InventoryItem[] = [
   { id: '58', codigo: 'QU004', nome: 'Spray Anti-Respingo de Solda sem Silicone', categoria: 'Químicos', unidade: 'un', custo: 16.00, precoVenda: 20.80, quantidadeEstoque: 40, estoqueMinimo: 10 }
 ];
 
+const funcionariosIA: Cliente[] = [
+  {
+    id: 'FUNC-IA-GIORNO',
+    nome: 'Giorno Giovanna',
+    email: 'giorno.vendas@cdsind.com.br',
+    telefone: '',
+    tipo: 'FUNC',
+    documento: '',
+    cep: '',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    cidade: 'Brasilia',
+    uf: 'DF',
+    endereco: 'Equipe de Inteligencia Comercial',
+    complemento: 'Operador de Vendas IA',
+    orgao: 'Atendimento Comercial',
+    dores: ['Responder clientes', 'Qualificar produtos', 'Conduzir orcamentos']
+  },
+  {
+    id: 'FUNC-IA-BRUNO',
+    nome: 'Bruno Bucciarati',
+    email: 'bruno.gerente@cdsind.com.br',
+    telefone: '',
+    tipo: 'FUNC',
+    documento: '',
+    cep: '',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    cidade: 'Brasilia',
+    uf: 'DF',
+    endereco: 'Equipe de Inteligencia Comercial',
+    complemento: 'Gerente de Vendas IA',
+    orgao: 'Gestao Comercial',
+    dores: ['Gerenciar atendimentos', 'Identificar novos produtos', 'Orientar o dono']
+  }
+];
+
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<ERPState>(() => {
     const savedInventory = localStorage.getItem('@cds-inventoryItems');
@@ -177,10 +216,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? item.nome.replace('(1000mm)', '(Barra 6m)').replace('(1000 mm)', '(Barra 6m)')
         : item.nome
     }));
-    const clientes = savedClientes ? JSON.parse(savedClientes) : [
+    const clientesBase: Cliente[] = savedClientes ? JSON.parse(savedClientes) : [
       { id: '1', nome: 'Construtora Alpha', email: 'contato@alpha.com', telefone: '5511999999999', tipo: 'PJ', documento: '12.345.678/0001-90', cep: '01001-000', logradouro: 'Rua das Indústrias', numero: '100', bairro: 'Centro', cidade: 'São Paulo', uf: 'SP' },
       { id: '2', nome: 'Indústria Beta', email: 'vendas@beta.com', telefone: '5511888888888', tipo: 'PJ', documento: '98.765.432/0001-10', cep: '01002-000', logradouro: 'Av. Metalúrgica', numero: '200', bairro: 'Distrito Industrial', cidade: 'São Bernardo', uf: 'SP' },
       { id: '3', nome: 'Logística Gamma', email: 'contato@gamma.com', telefone: '5511777777777', tipo: 'PJ', documento: '45.678.901/0001-22', cep: '01003-000', logradouro: 'Rodovia Logística', numero: 'KM 10', bairro: 'Zona Rural', cidade: 'Guarulhos', uf: 'SP' }
+    ];
+    const clientes = [
+      ...clientesBase,
+      ...funcionariosIA.filter(funcionario => !clientesBase.some(cliente => cliente.id === funcionario.id))
     ];
     const ordensServico = savedOS ? JSON.parse(savedOS) : [];
     const transacoesFinanceiras = savedTransacoes ? JSON.parse(savedTransacoes) : [];
