@@ -32,6 +32,7 @@ interface ProdutoExtraido {
   unidade: string;
   precoUnitario: number;
   produtoPadrao: boolean;
+  sobMedida?: boolean;
   skuCatalogo?: string | null;
   produtoId?: string | null;
   nomeCatalogo?: string | null;
@@ -416,7 +417,7 @@ export default function ConversaInteligente({
                           {p.nomeCatalogo || p.nome}
                         </span>
                       </div>
-                      {!p.produtoPadrao && onCadastrarProduto && (
+                      {!p.produtoPadrao && !p.sobMedida && onCadastrarProduto && (
                         <button
                           onClick={() => onCadastrarProduto(p)}
                           className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-200 flex items-center gap-0.5"
@@ -424,6 +425,11 @@ export default function ConversaInteligente({
                           <Plus className="w-2.5 h-2.5" />
                           Cadastrar
                         </button>
+                      )}
+                      {!p.produtoPadrao && p.sobMedida && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
+                          Sob medida
+                        </span>
                       )}
                     </div>
                     {p.descricao && (
