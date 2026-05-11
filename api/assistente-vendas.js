@@ -1,9 +1,20 @@
 import axios from 'axios';
-import { selectAll } from './_lib/supabase.js';
+import { selectAll, update } from './_lib/supabase.js';
 
 const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
+const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
+const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
-const GROQ_MODEL = 'llama-3.1-8b-instant';
+
+const GEMINI_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-1.5-flash'
+];
+
+const GROQ_MODELS = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant'
+];
 
 const ETAPAS_LABEL = {
   lead_novo: 'Lead Novo',
@@ -48,7 +59,7 @@ async function buscarMensagens(telefone) {
 // Cache simples em memoria para evitar rate limit
 // Em serverless, vive durante warm instances (~5-15min)
 const cache = new Map();
-const CACHE_TTL = 60000; // 60 segundos
+const CACHE_TTL = 180000; // Aumentado para 3 minutos (evita frontend spam)
 
 function getCacheKey(telefone) { return `assistente_${telefone}`; }
 
@@ -69,13 +80,81 @@ function setCache(telefone, data) {
   }
 }
 
-// Chamada direta sem retry — Vercel tem timeout curto
-async function chamarGroq(payload) {
-  const resp = await axios.post(`${GROQ_BASE_URL}/chat/completions`, payload, {
-    headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-    timeout: 15000,
-  });
-  return resp;
+// Chamada com Fallback Automático
+async function chamarIAComFallback(systemPrompt, userPrompt) {
+  let lastError;
+
+  // TIER 1: Gemini
+  if (GEMINI_API_KEY) {
+    for (const model of GEMINI_MODELS) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        const payload = {
+          contents: [{ role: 'user', parts: [{ text: `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nUSER PROMPT:\n${userPrompt}` }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 800, responseMimeType: "application/json" }
+        };
+        const resp = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 15000 });
+        const content = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return { data: { choices: [{ message: { content } }] } }; // mock formato OpenAI
+      } catch (err) {
+        if (err.response && (err.response.status === 429 || err.response.status >= 500)) {
+          console.log(`[assistente-vendas] Gemini (${model}) falhou/esgotou, tentando proximo...`);
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  // TIER 2: Groq Fallbacks
+  if (GROQ_API_KEY) {
+    const payload = {
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+      max_tokens: 800,
+    };
+    for (const model of GROQ_MODELS) {
+      try {
+        payload.model = model;
+        const resp = await axios.post(`${GROQ_BASE_URL}/chat/completions`, payload, {
+          headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+          timeout: 15000,
+        });
+        return resp;
+      } catch (err) {
+        if (err.response && (err.response.status === 429 || err.response.status === 400 || err.response.status >= 500)) {
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  // TIER 3: OpenAI Fallback
+  if (OPENAI_API_KEY) {
+    try {
+      const payload = {
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.7,
+        max_tokens: 800,
+      };
+      const resp = await axios.post('https://api.openai.com/v1/chat/completions', payload, {
+        headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+        timeout: 15000,
+      });
+      return resp;
+    } catch (err) {
+      console.log('[assistente-vendas] OpenAI falhou.');
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('Todos os motores de IA esgotaram a cota (Gemini + Groq + OpenAI).');
 }
 
 async function analisarConversa(mensagens, lead) {
@@ -94,22 +173,39 @@ async function analisarConversa(mensagens, lead) {
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
   const nomeCliente = (lead.nome || '').split(' ')[0] || 'cliente';
 
-  const systemPrompt = `Você é o estrategista de vendas de elite da CDS Industrial, especialista nas metodologias SPIN Selling e Inside Sales da V4 Company.
-Seu objetivo é analisar a conversa do WhatsApp e fornecer as melhores respostas para o vendedor JEAN enviar.
-O funil de vendas V4/SPIN segue os passos:
-1. Rapport & Saudação
-2. Situação (Entender o cenário atual)
-3. Problema & Implicação (Descobrir a dor/necessidade e aumentar a percepção do problema)
-4. Solução (Apresentar o produto como a cura exata, gerando valor antes do preço)
-5. Objeções (Contornar resistências de preço, prazo ou confiança)
-6. Fechamento (Chamada para ação clara, criando urgência/escassez)
+  let observacoesAtuais = lead.observacoes || '';
+  let memoriaAtual = '';
+  const memMatch = observacoesAtuais.match(/\[MEMÓRIA IA\]([\s\S]*?)(\n\n|$)/);
+  if (memMatch) {
+    memoriaAtual = memMatch[1].trim();
+  }
 
-REGRA DE OURO: Escreva EXATAMENTE como um brasileiro de Brasília conversando no WhatsApp.
-- Textos curtos, 1 a 3 linhas no máximo. NUNCA envie textões.
-- Use "vc" (nunca "você"), "pra", "tá", "a gente".
-- Use expressões naturais: "show", "beleza", "tranquilo", "massa", "fechou", "bora".
-- MANTENHA O CONTROLE DA CONVERSA: Termine 90% das suas sugestões com UMA PERGUNTA. Quem pergunta domina a negociação.
-- Foque em fazer o cliente falar as medidas, necessidades e prazos antes de atirar preço.
+  const systemPrompt = `Você é a inteligência central da CDS Industrial. Sua missão é atuar como o cérebro tático do JEAN no WhatsApp.
+
+Sua PRIMEIRA TAREFA ABSOLUTA é a TRIAGEM DE CONTEXTO para ativar o avatar correto:
+
+1. [JEAN VENDEDOR] -> O contato quer COMPRAR escadas/materiais?
+- Ative o Cientista de Vendas da V4 Company.
+- Use SPIN Selling: Escale a dor antes de dar o preço.
+- Use Challenger Sale: Ensine o cliente e não ceda fácil a descontos.
+- Use BANT: Qualifique o orçamento e autoridade.
+
+2. [JEAN GESTOR] -> O contato é um FUNCIONÁRIO ou candidato?
+- Esqueça vendas. Você é o dono/chefe.
+- Seja firme, mas justo. Cobre comprometimento, alinhe horários, faltas e expectativas de trabalho. Mantenha o controle da equipe.
+
+3. [JEAN COMPRADOR] -> O contato é um FORNECEDOR (alguém te vendendo material/serviço)?
+- Você é o cliente agora! O objetivo é proteger o caixa da CDS Industrial.
+- Negocie preços a favor da CDS, cobre prazos de entrega de materiais (chapas, aço), peça desconto e seja exigente.
+
+4. [JEAN NORMAL] -> O contato é um AMIGO ou o papo é OFF-TOPIC/PESSOAL?
+- Desligue totalmente o modo corporativo.
+- Aja de forma natural, zoe junto, converse sobre o assunto sem tentar vender nada nem dar ordens.
+
+DIRETRIZES PARA AS MENSAGENS SUGERIDAS (Efeito Doppelgänger):
+- Espelhe a vibe da pessoa (se formal seja direto, se informal seja ágil estilo WhatsApp: "vc", "pra", "blz").
+- REGRA DE OURO: Textos extremamente curtos! MÁXIMO ABSOLUTO DE 2 LINHAS (cerca de 15 a 20 palavras). NUNCA escreva parágrafos.
+- MANTENHA O CONTROLE: Termine a sugestão com uma pergunta ou diretriz que faça a conversa avançar no sentido estratégico do Avatar ativo.
 
 Analise o momento exato da conversa e retorne APENAS um JSON válido.`;
 
@@ -118,51 +214,78 @@ ${CONHECIMENTO_EMPRESA}${extra}
 LEAD: nome="${lead.nome || ''}" empresa="${lead.empresa || ''}" etapa=${etapa}
 HORÁRIO: ${saudacao} | NOME CLIENTE: ${nomeCliente}
 
+MEMÓRIA DE LONGO PRAZO DA IA (LTM):
+${memoriaAtual ? memoriaAtual : '(Nenhuma memória anterior registrada para este contato. Inicie a análise do zero.)'}
+
 CONVERSA ATUAL:
 ${conversaStr}
 
 Sua tarefa:
-1. Identifique em que passo da venda a conversa está.
-2. Formule 4 sugestões de resposta para avançar a venda para a próxima etapa (ex: de Problema para Solução, ou de Objeção para Fechamento).
+1. Avalie a conversa atual levando em consideração a MEMÓRIA DE LONGO PRAZO (se existir) para não ser repetitivo e entender o contexto histórico.
+2. Formule 4 sugestões TÁTICAS e ORIGINAIS de resposta que façam sentido PARA ESTE EXATO SEGUNDO da conversa.
+3. Gere uma "novaMemoria" que seja um resumo denso de tudo que você aprendeu sobre esse contato até o momento (junte o que já sabia com o que descobriu agora na conversa atual). Foque no perfil psicológico, dores e estágio da negociação.
 
 Retorne APENAS o JSON:
 {
   "dadosProposta":{"tipoCliente":"empresa|pessoa_fisica|orgao_publico|nao_identificado","nome":"","empresa":"","documento":"","email":"","endereco":"","produtos":["item c/ qtd"],"valorEstimado":"","prazo":"","observacoes":""},
-  "etapaDetectada":"lead_novo|contato_feito|qualificado|proposta_enviada|negociacao|fechado_ganho|fechado_perdido",
-  "parecer": "Sua análise breve de 2 linhas sobre o momento do cliente e qual a estratégia agora.",
-  "tecnicaRecomendada": "Ex: SPIN - Focar na implicação do problema",
+  "etapaDetectada":"lead_novo|contato_feito|qualificado|proposta_enviada|negociacao|fechado_ganho|fechado_perdido|pos_venda|nao_se_aplica|funcionario|fornecedor",
+  "parecer": "Sua análise estratégica focada no perfil (Venda, Funcionário ou Pessoal), tom e próximo passo lógico.",
+  "tecnicaRecomendada": "Ex: SPIN (se venda) OU Gestão de Conflitos (se funcionário) OU Rapport (se amigo)",
+  "novaMemoria": "Resumo de longo prazo consolidado sobre esse contato (junte memória antiga com a conversa atual) para consultas futuras.",
   "sugestoes":[
-    {"label":"Qualificação", "mensagem":"..."},
-    {"label":"Focar na Dor", "mensagem":"..."},
-    {"label":"Apresentar Solução", "mensagem":"..."},
-    {"label":"Fechamento Direto", "mensagem":"..."}
+    {"label":"Ação 1", "mensagem":"Sua mensagem 1 aqui..."},
+    {"label":"Ação 2", "mensagem":"Sua mensagem 2 aqui..."},
+    {"label":"Ação 3", "mensagem":"Sua mensagem 3 aqui..."},
+    {"label":"Ação 4", "mensagem":"Sua mensagem 4 aqui..."}
   ]
 }
 
-EXEMPLOS de tom e labels (Adapte ao momento da conversa):
-[MOMENTO: INÍCIO / SITUAÇÃO]
-- label: "Saudação + Situação" | mensagem: "${saudacao}, ${nomeCliente}! Tudo certo? Vi que vc tem interesse nos nossos materiais. Me conta, é pra uma obra nova ou reforma?"
-[MOMENTO: PROBLEMA / IMPLICAÇÃO]
-- label: "Explorar Problema" | mensagem: "Entendi. E hoje como vcs tão resolvendo essa questão do acesso? Pq se demorar muito atrasa a obra toda, né?"
-[MOMENTO: OBJEÇÃO DE PREÇO]
-- label: "Contornar Preço" | mensagem: "Cara, eu entendo que o orçamento tá apertado. Mas essa escada já vai com ART e garantia de 10 anos. Se pegar uma mais barata sem laudo e der BO, o prejuízo é gigante. Conseguimos fechar no PIX com 7% de desconto pra te ajudar?"
-[MOMENTO: FECHAMENTO]
-- label: "Fechamento Imediato" | mensagem: "Show, ${nomeCliente}! O projeto tá redondo. Consigo colocar na produção amanhã cedo se a gente fechar hoje. Bora passar o cartão ou prefere PIX?"`;
+REGRAS CRÍTICAS DE ESTRUTURA:
+1. IMPORTANTE: Crie labels (Ação 1, Ação 2, etc) personalizadas para o contexto. Não use "Qualificação" ou "Apresentar Solução" se for um papo com funcionário!
+2. FUNCIONÁRIO / PESSOAL: Use etapa "funcionario", "nao_se_aplica" ou "fornecedor". Não aplique SPIN. Fale do assunto que está sendo falado na conversa (ex: dia de trabalho, faltas, etc).
+3. PÓS-VENDA: Se a venda já foi concluída, use "pos_venda" e apenas alinhe a entrega.
 
-  const resp = await chamarGroq({
-    model: GROQ_MODEL,
-    messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    response_format: { type: 'json_object' },
-    temperature: 0.7,
-    max_tokens: 800,
-  });
+EXEMPLOS DE TOM (INSPIRAÇÃO APENAS - NÃO COPIE):
+[MOMENTO: VENDAS - PROBLEMA]
+- label: "Explorar Dor" | mensagem: "Entendi. E hoje como vcs tão resolvendo isso? Pq se demorar muito atrasa a obra toda, né?"
+[MOMENTO: VENDAS - FECHAMENTO]
+- label: "Puxar pro PIX" | mensagem: "Show! Consigo colocar na produção amanhã cedo se a gente fechar hoje. Bora passar o cartão ou prefere PIX com desconto?"
+[MOMENTO: FUNCIONÁRIO - ALINHAMENTO]
+- label: "Cobrar Posição" | mensagem: "E aí, que horas vc chega na fábrica amanhã? Tem aquela entrega da estrutura pra montar."
+[MOMENTO: AMIGO / PESSOAL - NATURAL]
+- label: "Rapport / Papo" | mensagem: "Hahaha, cara nem me fala. Ontem foi correria total aqui tmb. E vc, como tão as coisas?"
 
-  const raw = resp.data?.choices?.[0]?.message?.content || '';
-  try { return JSON.parse(raw); } catch {
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (m) { try { return JSON.parse(m[0]); } catch {} }
-    throw new Error('JSON invalido: ' + raw.substring(0, 200));
+ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conversando normalmente.`;
+
+  let resp;
+  
+  if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) {
+    throw new Error('Nenhuma API KEY (Groq, Gemini ou OpenAI) configurada no servidor.');
   }
+
+  resp = await chamarIAComFallback(systemPrompt, userPrompt);
+  
+  const raw = resp.data?.choices?.[0]?.message?.content || '';
+  let analise;
+  try { analise = JSON.parse(raw); } catch {
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) { try { analise = JSON.parse(m[0]); } catch {} }
+    if (!analise) throw new Error('JSON invalido: ' + raw.substring(0, 200));
+  }
+
+  // Persistir Memoria no Supabase em background
+  if (analise && analise.novaMemoria && lead.id) {
+    let newObs = observacoesAtuais;
+    if (memMatch) {
+      newObs = newObs.replace(/\[MEMÓRIA IA\][\s\S]*?(\n\n|$)/, `[MEMÓRIA IA]\n${analise.novaMemoria}\n\n`);
+    } else {
+      newObs = `${observacoesAtuais}\n\n[MEMÓRIA IA]\n${analise.novaMemoria}`.trim();
+    }
+    // Fire and forget
+    update('leads', 'id', lead.id, { observacoes: newObs }).catch(e => console.error('Erro ao salvar novaMemoria:', e.message));
+  }
+
+  return analise;
 }
 
 export default async function handler(req, res) {
@@ -173,7 +296,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
   try {
     const { telefone, nome, empresa, etapa } = req.body || {};
-    if (!GROQ_API_KEY) return res.status(503).json({ error: 'GROQ_API_KEY nao configurada no servidor.' });
+    if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) return res.status(503).json({ error: 'Nenhuma API KEY configurada.' });
 
     // Verifica cache antes de chamar Groq
     const cached = telefone ? getCache(telefone) : null;
@@ -190,11 +313,9 @@ export default async function handler(req, res) {
 
     return res.status(200).json(resultado);
   } catch (e) {
-    const is429 = e.response?.status === 429 || e.message?.includes('429');
-    if (is429) {
-      return res.status(429).json({ error: 'Muitas requisicoes. Aguarde alguns segundos e tente novamente.' });
-    }
-    console.error('[assistente-vendas] erro:', e.message);
-    return res.status(500).json({ error: e.message || 'Erro interno' });
+    const rawError = e.response?.data?.error?.message || e.message || 'Erro desconhecido';
+    const msgFinal = `[DEBUG Groq] ${rawError}`;
+    console.error('[assistente-vendas] erro:', msgFinal);
+    return res.status(429).json({ error: msgFinal });
   }
 }

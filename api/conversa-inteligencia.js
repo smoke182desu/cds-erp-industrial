@@ -1,9 +1,17 @@
 import axios from 'axios';
 import { selectAll } from './_lib/supabase.js';
 
-// Groq - modelo gratuito (14.400 req/dia)
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const GROQ_API_KEY    = process.env.GROQ_API_KEY || '';
+const GEMINI_API_KEY  = process.env.GEMINI_API_KEY || '';
+const OPENAI_API_KEY  = process.env.OPENAI_API_KEY || '';
+const GEMINI_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-1.5-flash'
+];
+const GROQ_MODELS = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant'
+];
 
 // Mensagens enviadas ao LLM: ultimas N + algumas do inicio (onde o cliente costuma mencionar o produto).
 const MAX_MSGS_CONTEXTO   = 100;
@@ -16,6 +24,10 @@ const MAX_PRODUTOS_PROMPT = 30;
 // Cache do catalogo compartilhado entre instancias (TTL 10 min)
 const CACHE_TTL_MS = 10 * 60 * 1000;
 let CACHE_PRODUTOS = { data: null, ts: 0 };
+
+// Cache de resultados da inteligencia para evitar torrar Rate Limit global (30 RPM) da Groq
+const cacheInteligencia = new Map();
+const TTL_INTELIGENCIA = 180000; // 3 minutos
 
 // Stopwords PT-BR (nao usadas como keyword de busca)
 const STOPWORDS = new Set([
@@ -296,7 +308,6 @@ Responda APENAS com JSON valido no formato:
 }`;
 
   const body = {
-    model: GROQ_MODEL,
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
     max_tokens: 1200,
@@ -308,18 +319,66 @@ Responda APENAS com JSON valido no formato:
   };
   
   let response;
-  for (let tentativa = 1; tentativa <= 3; tentativa++) {
-    try {
-      response = await axios.post('https://api.groq.com/openai/v1/chat/completions', body, { headers, timeout: 30000 });
-      break;
-    } catch (err) {
-      if (err.response?.status === 429 && tentativa < 3) {
-        await new Promise(r => setTimeout(r, tentativa * 2000));
-        continue;
+  let lastError;
+
+  // TIER 1: Google Gemini Models
+  if (GEMINI_API_KEY) {
+    for (const model of GEMINI_MODELS) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        const payload = {
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 1200, responseMimeType: "application/json" }
+        };
+        const geminiResp = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
+        const content = geminiResp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        response = { data: { choices: [{ message: { content } }], model } };
+        break; // Sucesso
+      } catch (err) {
+        if (err.response && (err.response.status === 429 || err.response.status >= 500)) {
+          console.log(`[conversa-inteligencia] Gemini (${model}) falhou/esgotou.`);
+          lastError = err;
+          continue; // Tenta o proximo modelo do Gemini
+        }
+        throw err; // auth/erro fatal
       }
-      throw err;
     }
   }
+
+  // TIER 2: Groq Fallback (Arsenal)
+  if (!response && GROQ_API_KEY) {
+    console.log('[conversa-inteligencia] Tentando fallback na rede Groq...');
+    for (const model of GROQ_MODELS) {
+      try {
+        body.model = model;
+        response = await axios.post('https://api.groq.com/openai/v1/chat/completions', body, { headers, timeout: 30000 });
+        break; // Sucesso, quebra o loop
+      } catch (err) {
+        if (err.response && (err.response.status === 429 || err.response.status === 400 || err.response.status >= 500)) {
+          lastError = err;
+          continue; // Bateu na cota, pula pro proximo
+        }
+        throw err; // auth ou erro fatal
+      }
+    }
+  }
+
+  // TIER 3: OpenAI Fallback
+  if (!response && OPENAI_API_KEY) {
+    console.log('[conversa-inteligencia] Tentando fallback final na OpenAI...');
+    try {
+      body.model = 'gpt-4o-mini';
+      const openaiHeaders = {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      };
+      response = await axios.post('https://api.openai.com/v1/chat/completions', body, { headers: openaiHeaders, timeout: 30000 });
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  if (!response) throw lastError || new Error('Nenhum provedor de IA conseguiu responder.');
 
   const text = response.data?.choices?.[0]?.message?.content || '';
   try {
@@ -327,7 +386,7 @@ Responda APENAS com JSON valido no formato:
   } catch {
     const match = text.match(/\{[\s\S]*\}/);
     if (match) return JSON.parse(match[0]);
-    throw new Error('Groq retornou resposta invalida.');
+    throw new Error('IA retornou resposta invalida.');
   }
 }
 
@@ -378,10 +437,24 @@ export default async function handler(req, res) {
     const alternativas = extrairAlternativas(textoCliente);
     if (tel && !alternativas.telefones.includes(tel)) alternativas.telefones.unshift(tel);
 
-    const analise = await analisarConversaComGroq(conversaFormatada, produtosRelevantes, {
-      nome: leadNome || '',
-      empresa: leadEmpresa || '',
-    }, { totalCatalogo });
+    const cacheKey = `intel_${tel}_${mensagens.length}`;
+    const cacheEntry = cacheInteligencia.get(cacheKey);
+    let analise;
+    
+    if (cacheEntry && Date.now() - cacheEntry.ts < TTL_INTELIGENCIA) {
+      analise = cacheEntry.data;
+    } else {
+      analise = await analisarConversaComGroq(conversaFormatada, produtosRelevantes, {
+        nome: leadNome || '',
+        empresa: leadEmpresa || '',
+      }, { totalCatalogo });
+      
+      cacheInteligencia.set(cacheKey, { data: analise, ts: Date.now() });
+      if (cacheInteligencia.size > 50) {
+        const oldest = [...cacheInteligencia.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+        if (oldest) cacheInteligencia.delete(oldest[0]);
+      }
+    }
 
     if (!analise.cliente.nome && leadNome) analise.cliente.nome = leadNome;
     if (!analise.cliente.empresa && leadEmpresa) analise.cliente.empresa = leadEmpresa;
@@ -451,25 +524,22 @@ export default async function handler(req, res) {
       produtosCatalogo: totalCatalogo,
       produtosRelevantes: produtosRelevantes.length,
       palavrasChaveBusca: palavrasChave.slice(0, 20),
-      modelo: GROQ_MODEL,
+      modelo: response?.data?.model || 'desconhecido',
     });
 
   } catch (err) {
     console.error('Erro conversa-inteligencia:', err.message);
-    const msg = err.message || 'Erro interno';
-    if (msg.includes('429')) {
-      return res.status(200).json({
-        ok: true,
-        analise: {
-          cliente: { nome: leadNome || null, telefone: tel, empresa: leadEmpresa || null },
-          produtos: [],
-          resumoConversa: 'IA temporariamente indisponivel (limite de uso).',
-          confianca: 5,
-          prontoParaProposta: true,
-        },
-        aviso: 'Limite de requisicoes da IA atingido.',
-      });
-    }
-    return res.status(500).json({ error: msg });
+    const msg = err.response?.data?.error?.message || err.message || 'Erro interno';
+    return res.status(200).json({
+      ok: true,
+      analise: {
+        cliente: { nome: leadNome || null, telefone: tel, empresa: leadEmpresa || null },
+        produtos: [],
+        resumoConversa: `[DEBUG Groq] ${msg}`,
+        confianca: 5,
+        prontoParaProposta: false,
+      },
+      aviso: `[DEBUG Groq] ${msg}`,
+    });
   }
 }

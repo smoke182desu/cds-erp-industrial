@@ -1,10 +1,19 @@
 import axios from 'axios';
 import { selectAll } from './_lib/supabase.js';
 
-// Groq - modelo gratuito (14.400 req/dia)
-const GROQ_MODEL = 'llama-3.1-8b-instant';
-
 const GROQ_API_KEY     = process.env.GROQ_API_KEY || '';
+const GEMINI_API_KEY   = process.env.GEMINI_API_KEY || '';
+const OPENAI_API_KEY   = process.env.OPENAI_API_KEY || '';
+
+const GEMINI_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-1.5-flash'
+];
+
+const FALLBACK_MODELS = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant'
+];
 
 // Tempo em minutos sem trocar mensagem que consideramos ser "outra conversa anterior".
 const JANELA_CONVERSA_MIN = 180; // 3h sem responder = corta e pega so a conversa atual
@@ -135,49 +144,89 @@ function recortarConversaAtual(mensagens) {
   return out;
 }
 
-// Chama a Groq com retry em 429 (rate limit). Ate 2 tentativas com backoff.
-async function chamarGroq(prompt, { maxTokens = 900, temperature = 0.3 } = {}) {
-  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no servidor');
+// Chama a IA com fallback (Gemini -> Groq)
+async function chamarIA(prompt, { maxTokens = 900, temperature = 0.3 } = {}) {
+  if (!GROQ_API_KEY && !GEMINI_API_KEY) throw new Error('Nenhuma API KEY (Groq ou Gemini) configurada no servidor');
 
-  const body = {
-    model: GROQ_MODEL,
-    messages: [{ role: 'user', content: prompt }],
-    temperature,
-    max_tokens: maxTokens,
-    response_format: { type: 'json_object' },
-  };
-  const headers = {
-    'Authorization': `Bearer ${GROQ_API_KEY}`,
-    'Content-Type': 'application/json',
-  };
+  let lastError;
 
-  const MAX_TENTATIVAS = 3;
-  let ultimoErro;
-  for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
-    try {
-      const response = await axios.post(
-        'https://api.groq.com/openai/v1/chat/completions',
-        body,
-        { headers, timeout: 30000 }
-      );
-      return response.data?.choices?.[0]?.message?.content || '';
-    } catch (err) {
-      ultimoErro = err;
-      const status = err.response?.status;
-      // 429 = rate limit. Tenta de novo com backoff.
-      if (status === 429 && tentativa < MAX_TENTATIVAS) {
-        const retryAfter = Number(err.response?.headers?.['retry-after']) || (tentativa * 2);
-        const waitMs = Math.min(retryAfter * 1000, 10000);
-        await new Promise(r => setTimeout(r, waitMs));
-        continue;
+  // TIER 1: Google Gemini Models
+  if (GEMINI_API_KEY) {
+    for (const model of GEMINI_MODELS) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        const payload = {
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature, maxOutputTokens: maxTokens, responseMimeType: "application/json" }
+        };
+        const geminiResp = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
+        return geminiResp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      } catch (err) {
+        if (err.response && (err.response.status === 429 || err.response.status >= 500)) {
+          console.log(`[proposta-ia] Gemini (${model}) esgotou/falhou, caindo para o proximo...`);
+          lastError = err;
+          continue;
+        } else {
+          throw err;
+        }
       }
-      throw err;
     }
   }
-  throw ultimoErro;
+
+  // TIER 2: Groq Fallbacks
+  if (GROQ_API_KEY) {
+    const body = {
+      messages: [{ role: 'user', content: prompt }],
+      temperature,
+      max_tokens: maxTokens,
+      response_format: { type: 'json_object' },
+    };
+    const headers = {
+      'Authorization': `Bearer ${GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    };
+
+    for (const model of FALLBACK_MODELS) {
+      try {
+        body.model = model;
+        const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', body, { headers, timeout: 30000 });
+        return response.data?.choices?.[0]?.message?.content || '';
+      } catch (err) {
+        if (err.response && (err.response.status === 429 || err.response.status === 400 || err.response.status >= 500)) {
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  // TIER 3: OpenAI Fallback (Absolute last resort)
+  if (OPENAI_API_KEY) {
+    try {
+      const body = {
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature,
+        max_tokens: maxTokens,
+        response_format: { type: 'json_object' },
+      };
+      const headers = {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      };
+      const response = await axios.post('https://api.openai.com/v1/chat/completions', body, { headers, timeout: 30000 });
+      return response.data?.choices?.[0]?.message?.content || '';
+    } catch (err) {
+      console.log('[proposta-ia] OpenAI esgotou/falhou.');
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('Todos os provedores de IA falharam.');
 }
 
-async function gerarPropostaComGroq(mensagens, produtosRelevantes, { nome, email, empresa, telefone }, metaCatalogo = {}) {
+async function gerarPropostaComIA(mensagens, produtosRelevantes, { nome, email, empresa, telefone }, metaCatalogo = {}) {
   const conversa = recortarConversaAtual(mensagens)
     .map(m => `[${m.tipo === 'saida' ? 'VENDEDOR' : 'CLIENTE'}]: ${m.texto}`)
     .join('\n');
@@ -218,14 +267,14 @@ Responda SOMENTE um JSON valido, sem texto antes ou depois, no formato:
   "observacoes": "string"
 }`;
 
-  const text = await chamarGroq(prompt, { maxTokens: 900, temperature: 0.3 });
+  const text = await chamarIA(prompt, { maxTokens: 900, temperature: 0.3 });
   const clean = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
   try {
     return JSON.parse(clean);
   } catch {
     const match = clean.match(/\{[\s\S]*\}/);
     if (match) return JSON.parse(match[0]);
-    throw new Error('Groq retornou resposta invalida. Tente novamente.');
+    throw new Error('IA retornou resposta invalida. Tente novamente.');
   }
 }
 
@@ -265,7 +314,7 @@ export default async function handler(req, res) {
     const { produtos: produtosRelevantes, totalCatalogo, palavrasChave } =
       await buscarProdutosRelevantes(textoCliente);
 
-    const proposta = await gerarPropostaComGroq(
+    const proposta = await gerarPropostaComIA(
       mensagens,
       produtosRelevantes,
       { nome, email, empresa, telefone: tel },
@@ -345,14 +394,14 @@ export default async function handler(req, res) {
       produtosCatalogo: totalCatalogo,
       produtosRelevantes: produtosRelevantes.length,
       palavrasChaveBusca: palavrasChave.slice(0, 20),
-      modelo: GROQ_MODEL,
+      modelo: 'gemini-2.0-flash-fallback',
     });
   } catch (err) {
     console.error('Erro proposta-ia:', err.response?.data || err.message);
     const msg = err.message || 'Erro interno';
     const status429 = err.response?.status === 429;
     const status = status429 ? 429
-      : (msg.includes('GROQ_API_KEY') ? 503 : 500);
+      : (msg.includes('API KEY') ? 503 : 500);
     return res.status(status).json({
       error: status429 ? 'Limite de requisicoes da IA atingido. Tente novamente em alguns segundos.' : msg,
     });
