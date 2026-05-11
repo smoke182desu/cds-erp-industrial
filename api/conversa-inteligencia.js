@@ -251,6 +251,32 @@ async function consultarCEP(cep) {
   }
 }
 
+async function enriquecerClienteComCNPJ(cliente = {}, cnpj) {
+  const cnpjLimpo = String(cnpj || cliente.cnpj || '').replace(/\D/g, '');
+  if (cnpjLimpo.length !== 14) return { cliente, dadosCNPJ: null };
+
+  const dadosCNPJ = await consultarCNPJ(cnpjLimpo);
+  if (!dadosCNPJ) return { cliente: { ...cliente, cnpj: cnpjLimpo }, dadosCNPJ: null };
+
+  return {
+    dadosCNPJ,
+    cliente: {
+      ...cliente,
+      cnpj: cnpjLimpo,
+      empresa: cliente.empresa || dadosCNPJ.nomeFantasia || dadosCNPJ.razaoSocial,
+      razaoSocial: cliente.razaoSocial || dadosCNPJ.razaoSocial,
+      nomeFantasia: cliente.nomeFantasia || dadosCNPJ.nomeFantasia,
+      inscricaoEstadual: cliente.inscricaoEstadual || dadosCNPJ.inscricaoEstadual,
+      cep: cliente.cep || dadosCNPJ.cep,
+      logradouro: cliente.logradouro || dadosCNPJ.logradouro,
+      numero: cliente.numero || dadosCNPJ.numero,
+      bairro: cliente.bairro || dadosCNPJ.bairro,
+      cidade: cliente.cidade || dadosCNPJ.cidade,
+      uf: cliente.uf || dadosCNPJ.uf,
+    },
+  };
+}
+
 async function analisarConversaComGroq(conversa, produtosRelevantes, leadInfo, metaCatalogo = {}) {
   if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) {
     throw new Error('Nenhuma API KEY (Groq, Gemini ou OpenAI) configurada no servidor');
@@ -395,20 +421,23 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
 
-  const { telefone, leadNome, leadEmpresa } = req.body || {};
+  const { telefone, leadNome, leadEmpresa, leadCnpj } = req.body || {};
   if (!telefone) return res.status(400).json({ error: 'telefone obrigatorio' });
 
   const tel = String(telefone).replace(/\D/g, '');
+  const cnpjInicial = String(leadCnpj || '').replace(/\D/g, '');
 
   try {
     const mensagens = await buscarMensagens(tel);
     const conversaAtual = recortarConversaAtual(mensagens);
     
     if (!conversaAtual.length) {
+      const baseCliente = { nome: leadNome || null, empresa: leadEmpresa || null, cnpj: cnpjInicial || null };
+      const { cliente } = await enriquecerClienteComCNPJ(baseCliente, cnpjInicial);
       return res.status(200).json({
         ok: true,
         analise: {
-          cliente: { nome: leadNome || null, empresa: leadEmpresa || null },
+          cliente,
           produtos: [],
           observacoes: '',
           resumoConversa: 'Sem mensagens recentes',
@@ -435,7 +464,7 @@ export default async function handler(req, res) {
     const alternativas = extrairAlternativas(textoCliente);
     if (tel && !alternativas.telefones.includes(tel)) alternativas.telefones.unshift(tel);
 
-    const cacheKey = `intel_${tel}_${mensagens.length}`;
+    const cacheKey = `intel_${tel}_${mensagens.length}_${cnpjInicial}`;
     const cacheEntry = cacheInteligencia.get(cacheKey);
     let analise;
     
@@ -454,31 +483,19 @@ export default async function handler(req, res) {
       }
     }
 
+    if (!analise.cliente) analise.cliente = {};
     if (!analise.cliente.nome && leadNome) analise.cliente.nome = leadNome;
     if (!analise.cliente.empresa && leadEmpresa) analise.cliente.empresa = leadEmpresa;
     if (!analise.cliente.telefone) analise.cliente.telefone = tel;
     if (!analise.cliente.cpf && alternativas.cpfs[0])  analise.cliente.cpf = alternativas.cpfs[0];
+    if (!analise.cliente.cnpj && cnpjInicial) analise.cliente.cnpj = cnpjInicial;
     if (!analise.cliente.cnpj && alternativas.cnpjs[0]) analise.cliente.cnpj = alternativas.cnpjs[0];
     if (!analise.cliente.cep && alternativas.ceps[0])   analise.cliente.cep = alternativas.ceps[0];
     if (!analise.cliente.email && alternativas.emails[0]) analise.cliente.email = alternativas.emails[0];
 
-    let dadosCNPJ = null;
-    if (analise.cliente?.cnpj) {
-      dadosCNPJ = await consultarCNPJ(analise.cliente.cnpj);
-      if (dadosCNPJ) {
-        analise.cliente.razaoSocial = dadosCNPJ.razaoSocial;
-        analise.cliente.nomeFantasia = dadosCNPJ.nomeFantasia;
-        analise.cliente.inscricaoEstadual = analise.cliente.inscricaoEstadual || dadosCNPJ.inscricaoEstadual;
-        if (!analise.cliente.logradouro) {
-          analise.cliente.logradouro = dadosCNPJ.logradouro;
-          analise.cliente.numero = dadosCNPJ.numero;
-          analise.cliente.bairro = dadosCNPJ.bairro;
-          analise.cliente.cidade = dadosCNPJ.cidade;
-          analise.cliente.uf = dadosCNPJ.uf;
-          analise.cliente.cep = dadosCNPJ.cep;
-        }
-      }
-    }
+    const enriquecido = await enriquecerClienteComCNPJ(analise.cliente, analise.cliente.cnpj);
+    analise.cliente = enriquecido.cliente;
+    const dadosCNPJ = enriquecido.dadosCNPJ;
 
     if (analise.cliente?.cep && !dadosCNPJ) {
       const dCEP = await consultarCEP(analise.cliente.cep);

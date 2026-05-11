@@ -60,6 +60,7 @@ interface ConversaInteligenteProps {
   telefone: string;
   leadNome?: string;
   leadEmpresa?: string;
+  leadCnpj?: string;
   onGerarProposta: (analise: AnaliseConversa) => void;
   onCadastrarProduto?: (produto: ProdutoExtraido) => void;
 }
@@ -68,6 +69,7 @@ export default function ConversaInteligente({
   telefone,
   leadNome,
   leadEmpresa,
+  leadCnpj,
   onGerarProposta,
   onCadastrarProduto,
 }: ConversaInteligenteProps) {
@@ -86,7 +88,7 @@ export default function ConversaInteligente({
       const res = await fetch('/api/conversa-inteligencia', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefone, leadNome, leadEmpresa }),
+        body: JSON.stringify({ telefone, leadNome, leadEmpresa, leadCnpj }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro ao analisar');
@@ -102,7 +104,7 @@ export default function ConversaInteligente({
     } finally {
       setCarregando(false);
     }
-  }, [telefone, leadNome, leadEmpresa]);
+  }, [telefone, leadNome, leadEmpresa, leadCnpj]);
 
   useEffect(() => {
     if (telefone) analisar();
@@ -117,6 +119,44 @@ export default function ConversaInteligente({
       const novosFaltando = (prev.camposFaltando || []).filter(c => !(c === campo && valor));
       return { ...prev, cliente: novoCliente, camposFaltando: novosFaltando };
     });
+  };
+
+  const enriquecerClientePorCnpj = async (cnpj: string) => {
+    const cnpjLimpo = cnpj.replace(/\D/g, '');
+    if (cnpjLimpo.length !== 14) return;
+
+    try {
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setAnalise(prev => {
+        if (!prev) return prev;
+        const cliente = {
+          ...prev.cliente,
+          cnpj: cnpjLimpo,
+          empresa: prev.cliente.empresa || data.nome_fantasia || data.razao_social || null,
+          razaoSocial: prev.cliente.razaoSocial || data.razao_social || null,
+          nomeFantasia: prev.cliente.nomeFantasia || data.nome_fantasia || null,
+          inscricaoEstadual: prev.cliente.inscricaoEstadual || data.inscricoes_estaduais?.[0]?.inscricao_estadual || null,
+          cep: prev.cliente.cep || data.cep || null,
+          logradouro: prev.cliente.logradouro || data.logradouro || null,
+          numero: prev.cliente.numero || data.numero || null,
+          bairro: prev.cliente.bairro || data.bairro || null,
+          cidade: prev.cliente.cidade || data.municipio || null,
+          uf: prev.cliente.uf || data.uf || null,
+        };
+        const preenchidos = Object.entries(cliente)
+          .filter(([, v]) => Boolean(v))
+          .map(([k]) => k);
+        return {
+          ...prev,
+          cliente,
+          camposFaltando: (prev.camposFaltando || []).filter(c => !preenchidos.includes(c)),
+        };
+      });
+    } catch {
+      // Mantem o CNPJ digitado mesmo se a BrasilAPI estiver indisponivel.
+    }
   };
 
   const adicionarProduto = (prod: Produto) => {
@@ -250,7 +290,10 @@ export default function ConversaInteligente({
                   valor={analise.cliente.cnpj || ''}
                   alternativas={altCnpjs}
                   formatter={fmtCNPJ}
-                  onSave={(v) => atualizarCampoCliente('cnpj', v)}
+                  onSave={(v) => {
+                    atualizarCampoCliente('cnpj', v);
+                    enriquecerClientePorCnpj(v);
+                  }}
                   destaque
                 />
                 <CampoEditavel

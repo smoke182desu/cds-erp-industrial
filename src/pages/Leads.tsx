@@ -1097,6 +1097,7 @@ function CadastrarProdutoModal({ produto, onClose, onSalvo }: {
 
 // ─── Página principal Leads ────────────────────────────────────────────────
 export function Leads() {
+  const { state } = useERP();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
@@ -1164,6 +1165,13 @@ export function Leads() {
   const totalVal = leads.filter(l => l.etapa !== 'fechado_perdido').reduce((s,l) => s+(l.valor||0), 0);
   const ganhos = leads.filter(l => l.etapa === 'fechado_ganho').length;
   const taxa = leads.length ? Math.round((ganhos/leads.length)*100) : 0;
+  const clienteAtivoRelacionado = leadAtivo
+    ? state.clientes.find((c: Cliente) => (leadAtivo.telefone && c.telefone === leadAtivo.telefone) || (leadAtivo.clienteId && c.id === leadAtivo.clienteId))
+    : null;
+  const cnpjAtivo =
+    String(clienteAtivoRelacionado?.documento || (leadAtivo as any)?.cnpj || (leadAtivo as any)?.documento || '').replace(/\D/g, '').length === 14
+      ? String(clienteAtivoRelacionado?.documento || (leadAtivo as any)?.cnpj || (leadAtivo as any)?.documento || '')
+      : '';
 
   return (
     <div className="flex flex-col h-full bg-gray-50" style={{ height: 'calc(100vh - 56px)' }}>
@@ -1247,6 +1255,7 @@ export function Leads() {
                   telefone={leadAtivo.telefone || ''}
                   leadNome={leadAtivo.nome}
                   leadEmpresa={leadAtivo.empresa}
+                  leadCnpj={cnpjAtivo}
                   onGerarProposta={(analise) => {
                     // Passa a analise ja feita pro modal — evita segunda chamada a IA
                     setPropostaAnalise(analise);
