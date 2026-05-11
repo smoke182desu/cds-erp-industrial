@@ -1,5 +1,11 @@
 import axios from 'axios';
+import { createClient } from '@supabase/supabase-js';
 import { selectAll, update } from './_lib/supabase.js';
+
+const supabaseClient = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
+);
 
 const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
@@ -61,7 +67,30 @@ async function buscarMensagens(telefone) {
   }
 }
 
-// Cache simples em memoria para evitar rate limit
+// Busca insights globais aprendidos pelo Bruno para injetar no prompt de Giorno
+async function buscarInsightsGlobais(etapa) {
+  try {
+    const { data, error } = await supabaseClient
+      .from('ia_insights_globais')
+      .select('tipo, contexto, insight, confianca')
+      .gte('confianca', 40)
+      .gte('usos', 3)
+      .order('confianca', { ascending: false })
+      .limit(10);
+    if (error) throw error;
+    // Prioriza insights relevantes para a etapa atual
+    const relevantes = (data || []).sort((a, b) => {
+      const aRel = a.contexto?.includes(etapa) ? 1 : 0;
+      const bRel = b.contexto?.includes(etapa) ? 1 : 0;
+      return bRel - aRel;
+    });
+    return relevantes;
+  } catch {
+    return []; // falha silenciosa — insights sao bonus, nao bloqueantes
+  }
+}
+
+
 // Em serverless, vive durante warm instances (~5-15min)
 const cache = new Map();
 const CACHE_TTL = 180000; // Aumentado para 3 minutos (evita frontend spam)
@@ -618,8 +647,17 @@ async function analisarConversa(mensagens, lead) {
   }
 
   const etapa = ETAPAS_LABEL[lead.etapa] || lead.etapa;
-  const contextoExtra = await buscarContextoExtra();
+
+  // Sorteia variante: 75% padrao (A) com insights, 25% exploratorio (B)
+  const variantB = Math.random() < 0.25;
+  const variantId = variantB ? 'B' : 'A';
+
+  const [contextoExtra, insights] = await Promise.all([
+    buscarContextoExtra(),
+    buscarInsightsGlobais(lead.etapa || ''),
+  ]);
   const extra = contextoExtra ? `\nEXTRA: ${contextoExtra}` : '';
+
   const ultimas = mensagens.slice(-10);
   const conversaStr = ultimas.length > 0
     ? ultimas.map(m => `[${m.tipo === 'saida' ? 'JEAN' : 'CLIENTE'}]: ${m.texto}`).join('\n')
@@ -683,7 +721,15 @@ DIRETRIZES PARA AS MENSAGENS SUGERIDAS (Efeito Doppelgänger):
 - Evite tom de robô/consultor. Pergunte apenas o próximo dado necessário.
 - MANTENHA O CONTROLE: Termine a sugestão com uma pergunta ou diretriz que faça a conversa avançar no sentido estratégico do Avatar ativo.
 
-Analise o momento exato da conversa e retorne APENAS um JSON válido.`;
+Analise o momento exato da conversa e retorne APENAS um JSON valido.
+
+MEMORIA GLOBAL — BRUNO COMUNICA A GIORNO (aprendizados de todos os atendimentos):
+${insights.length > 0
+  ? insights.map(i => `- [${i.tipo === 'tecnica_efetiva' ? 'USAR' : 'EVITAR'}] ${i.insight} (confianca: ${i.confianca}%)`).join('\n')
+  : '(Sem aprendizados globais ainda — este e um dos primeiros atendimentos do sistema.)'}
+
+${variantB ? 'MODO EXPLORATORIO (variante B): Giorno deve ARRISCAR uma abordagem diferente — tom mais direto, pergunta incomum, ou tecnica alternativa. Bruno vai registrar o resultado para aprender.' : 'MODO PADRAO (variante A): use os aprendizados acima para maximizar chances de sucesso.'}`;
+
 
   const userPrompt = `Contexto da CDS Industrial (Brasília/DF - Vendedor: JEAN):
 ${CONHECIMENTO_EMPRESA}${extra}
@@ -824,7 +870,7 @@ ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conve
     update('leads', 'id', lead.id, { observacoes: newObs }).catch(e => console.error('Erro ao salvar novaMemoria:', e.message));
   }
 
-  return analise;
+  return { analise, variantId };
 }
 
 export default async function handler(req, res) {
@@ -851,8 +897,8 @@ export default async function handler(req, res) {
       return res.status(200).json(cached);
     }
 
-    const analise = await analisarConversa(mensagens, { nome, empresa, etapa, telefone });
-    const resultado = { analise, totalMensagens: mensagens.length };
+    const { analise, variantId } = await analisarConversa(mensagens, { nome, empresa, etapa, telefone });
+    const resultado = { analise, variantId, totalMensagens: mensagens.length };
 
     // Armazena no cache
     if (telefone) setCache(telefone, mensagens, resultado);

@@ -336,9 +336,11 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [totalMsgs, setTotalMsgs] = useState(0);
+  const [variantId, setVariantId] = useState<string>('A'); // rastreia variante A/B
   const lastLeadId = useRef('');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analisandoRef = useRef(false);
+  const ultimoExperimentoId = useRef<string | null>(null); // id do ultimo experimento registrado
 
   const analisar = useCallback(async () => {
     if (analisandoRef.current) return;
@@ -363,6 +365,8 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
       if (!res.ok) throw new Error(json.error || 'Erro na análise');
       setAnalise(json.analise);
       setTotalMsgs(json.totalMensagens || 0);
+      if (json.variantId) setVariantId(json.variantId);
+      ultimoExperimentoId.current = null; // reset para novo ciclo
     } catch (e: any) {
       if (e.name === 'AbortError') {
         setErro('Demorou demais. Clique em 🔄 para tentar novamente.');
@@ -584,7 +588,26 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
                     };
                     const info = labelMap[s.label] || { texto: s.label, icone: '💬', cor: 'text-indigo-600' };
                     return (
-                    <button key={i} onClick={() => onUsarSugestao(s.mensagem)}
+                    <button key={i} onClick={() => {
+                      onUsarSugestao(s.mensagem);
+                      // Registra uso para aprendizado do Bruno
+                      fetch('/api/ia-aprendizado', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          lead_id: lead.id,
+                          telefone: lead.telefone,
+                          variant_id: variantId,
+                          label: s.label,
+                          mensagem: s.mensagem,
+                          etapa: lead.etapa,
+                          tecnica: analise?.tecnicaRecomendada || '',
+                        }),
+                      })
+                        .then(r => r.json())
+                        .then(d => { if (d.experimento_id) ultimoExperimentoId.current = d.experimento_id; })
+                        .catch(() => {});
+                    }}
                       className={`text-left bg-white border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 rounded-xl p-3 transition-all group shadow-sm ${i === 0 ? 'ring-1 ring-green-300' : ''}`}>
                       <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 group-hover:opacity-80 ${info.cor}`}>{info.icone} {info.texto}</p>
                       <p className="text-xs text-gray-600 leading-relaxed line-clamp-4 group-hover:text-gray-800">{s.mensagem}</p>
@@ -1479,6 +1502,12 @@ export function Leads() {
     const atualizado = { ...leadAtivo, etapa };
     setLeadAtivo(atualizado);
     setLeads(prev => prev.map(l => l.id === leadAtivo.id ? atualizado : l));
+    // Registra resultado positivo — Bruno aprende que a abordagem funcionou
+    fetch('/api/ia-aprendizado?acao=resultado', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lead_id: leadAtivo.id, resultado: 'etapa_avancou' }),
+    }).catch(() => {});
   };
   const abrirLeadPorId = useCallback((leadId: string) => {
     const lead = leads.find(l => l.id === leadId);
