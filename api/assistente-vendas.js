@@ -95,20 +95,45 @@ function obterSaudacao() {
   return hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
 }
 
-function aplicarSaudacaoInicial(analise, saudacao, precisaSaudacao) {
-  if (!precisaSaudacao || !Array.isArray(analise?.sugestoes) || analise.sugestoes.length === 0) {
+function removerSaudacao(texto) {
+  return String(texto || '')
+    .replace(/^(oi|ola|olá)[!,.\s-]*/i, '')
+    .replace(/^(bom dia|boa tarde|boa noite)[!,.\s-]*/i, '')
+    .trim();
+}
+
+function encurtarMensagem(texto, maxPalavras = 14) {
+  const limpo = String(texto || '').replace(/\s+/g, ' ').trim();
+  const palavras = limpo.split(' ').filter(Boolean);
+  if (palavras.length <= maxPalavras) return limpo;
+
+  const primeiraFrase = limpo.split(/(?<=[.!?])\s+/)[0]?.trim();
+  if (primeiraFrase && primeiraFrase.split(' ').length <= maxPalavras) return primeiraFrase;
+  const curta = palavras.slice(0, maxPalavras).join(' ');
+  return limpo.includes('?') ? `${curta}?` : curta;
+}
+
+function normalizarSugestoes(analise, saudacao, precisaSaudacao) {
+  if (!Array.isArray(analise?.sugestoes) || analise.sugestoes.length === 0) {
+    return analise;
+  }
+
+  for (const sugestao of analise.sugestoes) {
+    sugestao.mensagem = encurtarMensagem(removerSaudacao(sugestao.mensagem));
+  }
+
+  if (!precisaSaudacao) {
+    if (String(analise.sugestoes[0]?.label || '').toLowerCase() === 'saudacao') {
+      analise.sugestoes[0].label = 'Responder';
+    }
     return analise;
   }
 
   const primeira = analise.sugestoes[0];
-  const mensagem = String(primeira?.mensagem || '').trim();
-  const semSaudacaoAntiga = mensagem
-    .replace(/^(oi|ola|olá)[!,.\s-]*/i, '')
-    .replace(/^(bom dia|boa tarde|boa noite)[!,.\s-]*/i, '')
-    .trim();
+  const semSaudacaoAntiga = removerSaudacao(primeira?.mensagem || '');
 
   primeira.label = 'saudacao';
-  primeira.mensagem = semSaudacaoAntiga ? `${saudacao}! ${semSaudacaoAntiga}` : `${saudacao}!`;
+  primeira.mensagem = encurtarMensagem(semSaudacaoAntiga ? `${saudacao}! ${semSaudacaoAntiga}` : `${saudacao}!`, 16);
   return analise;
 }
 
@@ -200,7 +225,8 @@ async function analisarConversa(mensagens, lead) {
   const saudacao = obterSaudacao();
   const nomeCliente = (lead.nome || '').split(' ')[0] || 'cliente';
   const ultimaMensagem = ultimas[ultimas.length - 1];
-  const precisaSaudacao = !ultimaMensagem || ultimaMensagem.tipo !== 'saida';
+  const conversaJaIniciadaPeloJean = mensagens.some(m => m.tipo === 'saida');
+  const precisaSaudacao = (!ultimaMensagem || ultimaMensagem.tipo !== 'saida') && !conversaJaIniciadaPeloJean;
 
   let observacoesAtuais = lead.observacoes || '';
   let memoriaAtual = '';
@@ -233,8 +259,10 @@ Sua PRIMEIRA TAREFA ABSOLUTA é a TRIAGEM DE CONTEXTO para ativar o avatar corre
 
 DIRETRIZES PARA AS MENSAGENS SUGERIDAS (Efeito Doppelgänger):
 - Espelhe a vibe da pessoa (se formal seja direto, se informal seja ágil estilo WhatsApp: "vc", "pra", "blz").
-- Se a última mensagem foi do CLIENTE, a primeira sugestão deve começar obrigatoriamente com a saudação do horário atual ("Bom dia", "Boa tarde" ou "Boa noite").
-- REGRA DE OURO: Textos extremamente curtos! MÁXIMO ABSOLUTO DE 2 LINHAS (cerca de 15 a 20 palavras). NUNCA escreva parágrafos.
+- Só use saudação ("Bom dia", "Boa tarde", "Boa noite") se o JEAN ainda não respondeu nenhuma vez nesta conversa.
+- Se a conversa já começou, NUNCA repita saudação; responda direto ao assunto.
+- REGRA DE OURO: frases de WhatsApp real, curtíssimas. Máximo de 8 a 12 palavras por sugestão. Nada de parágrafo.
+- Evite tom de robô/consultor. Fale como vendedor real: simples, direto, sem explicar demais.
 - MANTENHA O CONTROLE: Termine a sugestão com uma pergunta ou diretriz que faça a conversa avançar no sentido estratégico do Avatar ativo.
 
 Analise o momento exato da conversa e retorne APENAS um JSON válido.`;
@@ -243,7 +271,7 @@ Analise o momento exato da conversa e retorne APENAS um JSON válido.`;
 ${CONHECIMENTO_EMPRESA}${extra}
 LEAD: nome="${lead.nome || ''}" empresa="${lead.empresa || ''}" etapa=${etapa}
 HORÁRIO: ${saudacao} | NOME CLIENTE: ${nomeCliente}
-ÚLTIMA MENSAGEM FOI DO: ${precisaSaudacao ? 'CLIENTE - primeira sugestão deve iniciar com "' + saudacao + '!"' : 'JEAN - não precisa repetir saudação'}
+SAUDAÇÃO: ${precisaSaudacao ? 'usar "' + saudacao + '!" apenas na sugestão 1' : 'não usar saudação; conversa já iniciada ou Jean acabou de responder'}
 
 MEMÓRIA DE LONGO PRAZO DA IA (LTM):
 ${memoriaAtual ? memoriaAtual : '(Nenhuma memória anterior registrada para este contato. Inicie a análise do zero.)'}
@@ -275,17 +303,18 @@ REGRAS CRÍTICAS DE ESTRUTURA:
 1. IMPORTANTE: Crie labels (Ação 1, Ação 2, etc) personalizadas para o contexto. Não use "Qualificação" ou "Apresentar Solução" se for um papo com funcionário!
 2. FUNCIONÁRIO / PESSOAL: Use etapa "funcionario", "nao_se_aplica" ou "fornecedor". Não aplique SPIN. Fale do assunto que está sendo falado na conversa (ex: dia de trabalho, faltas, etc).
 3. PÓS-VENDA: Se a venda já foi concluída, use "pos_venda" e apenas alinhe a entrega.
-4. SAUDAÇÃO: Quando a última mensagem for do CLIENTE, a sugestão 1 deve ter label "saudacao" e a mensagem deve começar com "${saudacao}!" antes de qualquer pergunta.
+4. SAUDAÇÃO: Só use label "saudacao" quando SAUDAÇÃO acima mandar usar. Caso contrário, nenhuma sugestão pode começar com "oi", "olá", "bom dia", "boa tarde" ou "boa noite".
+5. TAMANHO: Cada "mensagem" deve ter no máximo 12 palavras. Quanto mais curta, melhor.
 
 EXEMPLOS DE TOM (INSPIRAÇÃO APENAS - NÃO COPIE):
 [MOMENTO: VENDAS - PROBLEMA]
-- label: "Explorar Dor" | mensagem: "Entendi. E hoje como vcs tão resolvendo isso? Pq se demorar muito atrasa a obra toda, né?"
+- label: "Explorar Dor" | mensagem: "Entendi. Qual produto vc precisa e pra quando?"
 [MOMENTO: VENDAS - FECHAMENTO]
-- label: "Puxar pro PIX" | mensagem: "Show! Consigo colocar na produção amanhã cedo se a gente fechar hoje. Bora passar o cartão ou prefere PIX com desconto?"
+- label: "Puxar PIX" | mensagem: "Fechando hoje, consigo puxar produção. Vai ser PIX?"
 [MOMENTO: FUNCIONÁRIO - ALINHAMENTO]
-- label: "Cobrar Posição" | mensagem: "E aí, que horas vc chega na fábrica amanhã? Tem aquela entrega da estrutura pra montar."
+- label: "Cobrar Posição" | mensagem: "Que horas vc chega? Preciso organizar a entrega."
 [MOMENTO: AMIGO / PESSOAL - NATURAL]
-- label: "Rapport / Papo" | mensagem: "Hahaha, cara nem me fala. Ontem foi correria total aqui tmb. E vc, como tão as coisas?"
+- label: "Papo" | mensagem: "Kkk entendi. E aí, deu certo no fim?"
 
 ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conversando normalmente.`;
 
@@ -301,7 +330,7 @@ ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conve
     if (!analise) throw new Error('JSON invalido: ' + raw.substring(0, 200));
   }
 
-  analise = aplicarSaudacaoInicial(analise, saudacao, precisaSaudacao);
+  analise = normalizarSugestoes(analise, saudacao, precisaSaudacao);
 
   // Persistir Memoria no Supabase em background
   if (analise && analise.novaMemoria && lead.id) {
