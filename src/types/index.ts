@@ -206,7 +206,9 @@ export interface Cliente {
   email: string;
   telefone: string;
   tipo: 'PF' | 'PJ' | 'GOV' | 'FUNC' | 'FORN' | 'PES';
-  documento: string; // CPF or CNPJ or UASG
+  documento: string; // CPF or CNPJ or UASG (legado)
+  cnpj?: string; // Para GOV (separa do UASG); para PJ pode duplicar com `documento`
+  uasg?: string; // Para GOV
   cep: string;
   logradouro: string;
   numero: string;
@@ -214,14 +216,34 @@ export interface Cliente {
   cidade: string;
   uf: string;
   complemento?: string;
+  // Campos PJ / NFe
   orgao?: string; // For GOV
   razaoSocial?: string; // For PJ
-  inscricaoEstadual?: string; // For PJ
+  nomeFantasia?: string; // For PJ
+  inscricaoEstadual?: string; // For PJ — pode ser número ou "ISENTO"
+  inscricaoMunicipal?: string; // For PJ (serviços)
+  indicadorIE?: '1' | '2' | '9'; // 1=Contribuinte ICMS, 2=Contribuinte Isento, 9=Não Contribuinte
+  cnae?: string; // Atividade principal
+  regimeTributario?: 'simples_nacional' | 'mei' | 'lucro_presumido' | 'lucro_real' | 'imune' | 'isento';
   endereco?: string; // Legacy/Full address string
   funnelStage?: 'Prospecção' | 'Qualificação' | 'Apresentação' | 'Negociação' | 'Fechamento' | 'Pós-venda';
   dores?: string[];
   mensagens?: ChatMessage[];
 }
+
+export type FormaPagamento = 'pix' | 'dinheiro' | 'cartao_credito' | 'cartao_debito' | 'boleto' | 'cheque' | 'outros';
+
+export const DESCONTO_PIX_PERCENTUAL = 0.07; // 7%
+
+export const FORMAS_PAGAMENTO_LABEL: Record<FormaPagamento, string> = {
+  pix: 'PIX',
+  dinheiro: 'Dinheiro',
+  cartao_credito: 'Cartão de Crédito',
+  cartao_debito: 'Cartão de Débito',
+  boleto: 'Boleto Bancário',
+  cheque: 'Cheque',
+  outros: 'Outros',
+};
 
 export interface Proposta {
   id: string;
@@ -229,6 +251,9 @@ export interface Proposta {
   clienteNome?: string;
   items: any[];
   total: number;
+  formaPagamento: FormaPagamento;
+  descontoPix: number;
+  totalComDesconto: number;
   status: 'Em Negociação' | 'Proposta Enviada' | 'Ganha' | 'Perdida' | 'Aprovada/Produção' | 'Rascunho';
   data: string;
 }
@@ -256,6 +281,10 @@ export interface TransacaoFinanceira {
   descricao: string;
   valor: number;
   dataVencimento: string;
+  dataPagamento?: string;
+  formaPagamento?: FormaPagamento;
+  descontoPix?: number;
+  valorCheio?: number;
   status: 'PENDENTE' | 'PAGO';
   origem: string;
 }

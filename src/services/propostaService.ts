@@ -24,6 +24,7 @@ export interface PropostaDados {
   intro?: string;
   itens?: ItemProposta[]; // pode vir vazio — tabela sai s/ linhas
   pagamento?: string;
+  formaPagamento?: 'pix' | 'dinheiro' | 'cartao_credito' | 'cartao_debito' | 'boleto' | 'cheque' | 'outros';
   prazoEntrega?: string;
 }
 
@@ -123,6 +124,14 @@ export function gerarPropostaHTML(d: PropostaDados): string {
     (empresaStr ? ' para <strong>' + empresaStr + '</strong>' : '') +
     ', conforme especificação abaixo.';
 
+  const descontoPix = d.formaPagamento === 'pix' ? +(subtotal * 0.07).toFixed(2) : 0;
+  const totalFinal = +(subtotal - descontoPix).toFixed(2);
+  const temDesconto = descontoPix > 0;
+
+  const descontoHTML = temDesconto
+    ? '<div class="t-row"><span>Desconto PIX (7%):</span><span style="color:#16a34a;font-weight:700">-' + fmtBR(descontoPix) + '</span></div>'
+    : '';
+
   const page1 = '<section class="page">' + hdr + '<div class="content">' + topBar +
     '<div class="client-grid"><div><div class="box-title">Destinatário (Cliente)</div>' +
     il('Empresa:', empresaStr) + il('A/C:', d.ac) + il('CNPJ/CPF:', d.cnpj) +
@@ -138,8 +147,10 @@ export function gerarPropostaHTML(d: PropostaDados): string {
     '<tbody>' + rows(itensSeguros) + '</tbody></table>' +
     '<div class="totals-area"><div class="totals-box">' +
     '<div class="t-row"><span>Subtotal:</span><span>' + fmtBR(subtotal) + '</span></div>' +
+    descontoHTML +
     '<div class="t-row"><span>Frete:</span><span>' + freteStr + '</span></div>' +
-    '<div class="t-row final"><span>TOTAL:</span><span>' + fmtBR(subtotal) + '</span></div>' +
+    '<div class="t-row final"><span>TOTAL:</span><span>' + fmtBR(totalFinal) + '</span></div>' +
+    (temDesconto ? '<div style="text-align:right;font-size:10px;color:#16a34a;margin-top:4px">Pagamento via PIX com 7% de desconto</div>' : '') +
     '</div></div></div>' + ft(1) + '</section>';
 
   const page2 = '<section class="page">' + hdr + '<div class="content">' + topBar +

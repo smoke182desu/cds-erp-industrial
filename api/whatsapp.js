@@ -1,6 +1,9 @@
 // api/whatsapp.js — webhook handler, normaliza payload Evolution API e salva no Supabase
 import { insert, upsertByField } from './_lib/supabase.js';
 
+const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-903e.up.railway.app';
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
+
 // Identifica se um JID é um LID (Linked ID anônimo) ou outro tipo não-pessoal
 function jidEhInvalido(jid) {
   if (!jid || typeof jid !== 'string') return true;
@@ -36,7 +39,7 @@ function extrairNumeroReal(key, data, body) {
   return null;
 }
 
-function normalizarPayload(body) {
+async function normalizarPayload(body) {
   if (!body || typeof body !== 'object') return body;
   try {
     const data = body.data || body;
@@ -60,26 +63,59 @@ function normalizarPayload(body) {
     // Midia: extrai URL e tipo se presente
     let mediaUrl = null;
     let mediaType = null;
+    
+    // Tenta pegar o base64 direto do payload
+    const base64Payload = data.message?.base64 || message?.base64 || data.base64 || body.base64;
+
     if (message.imageMessage) {
       mediaType = 'image';
-      mediaUrl = message.imageMessage.url || data.mediaUrl || null;
+      const mime = message.imageMessage.mimetype || 'image/jpeg';
+      mediaUrl = base64Payload ? `data:${mime};base64,${base64Payload}` : (message.imageMessage.url || data.mediaUrl || null);
     } else if (message.videoMessage) {
       mediaType = 'video';
-      mediaUrl = message.videoMessage.url || data.mediaUrl || null;
+      const mime = message.videoMessage.mimetype || 'video/mp4';
+      mediaUrl = base64Payload ? `data:${mime};base64,${base64Payload}` : (message.videoMessage.url || data.mediaUrl || null);
     } else if (message.documentMessage) {
       mediaType = 'document';
-      mediaUrl = message.documentMessage.url || data.mediaUrl || null;
+      const mime = message.documentMessage.mimetype || 'application/pdf';
+      mediaUrl = base64Payload ? `data:${mime};base64,${base64Payload}` : (message.documentMessage.url || data.mediaUrl || null);
     } else if (message.audioMessage) {
       mediaType = 'audio';
-      mediaUrl = message.audioMessage.url || data.mediaUrl || null;
+      const mime = message.audioMessage.mimetype || 'audio/ogg';
+      mediaUrl = base64Payload ? `data:${mime};base64,${base64Payload}` : (message.audioMessage.url || data.mediaUrl || null);
     } else if (message.stickerMessage) {
       mediaType = 'image';
-      mediaUrl = message.stickerMessage.url || data.mediaUrl || null;
+      const mime = message.stickerMessage.mimetype || 'image/webp';
+      mediaUrl = base64Payload ? `data:${mime};base64,${base64Payload}` : (message.stickerMessage.url || data.mediaUrl || null);
     }
     // Fallback: Evolution API v2 pode enviar mediaUrl no data diretamente
     if (!mediaUrl && data.mediaUrl) {
       mediaUrl = data.mediaUrl;
       if (!mediaType) mediaType = data.mediaType || 'image';
+    }
+
+    // Se não veio o base64 no webhook, mas é uma mídia e não temos um URL válido publicamente, vamos tentar buscar da Evolution API
+    if (mediaType && !base64Payload && data.message && EVOLUTION_API_URL && (!mediaUrl || mediaUrl.includes('mmg.whatsapp.net'))) {
+      try {
+        const instanceToUse = body.instance || data.instance || process.env.EVOLUTION_INSTANCE_NAME || 'cdsind';
+        const res = await fetch(`${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${instanceToUse}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': EVOLUTION_API_KEY
+          },
+          body: JSON.stringify({ message: data.message })
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.base64) {
+             const finalMime = json.mimetype || 'application/octet-stream';
+             mediaUrl = `data:${finalMime};base64,${json.base64}`;
+          }
+        }
+      } catch (err) {
+        console.error('[whatsapp] erro ao buscar base64 da midia:', err.message);
+      }
     }
 
     // Normaliza para ms: Evolution pode enviar segundos ou milliseconds
@@ -114,7 +150,7 @@ export default async function handler(req, res) {
 
   try {
     const body = req.body || {};
-    const norm = normalizarPayload(body);
+    const norm = await normalizarPayload(body);
 
     if (!norm) {
       return res.status(200).json({ ok: true, skipped: 'payload invalido' });

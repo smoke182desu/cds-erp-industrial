@@ -329,7 +329,7 @@ export const CheckoutPropostaModal: React.FC<CheckoutPropostaModalProps> = ({ is
               onClose();
             }} className="bg-emerald-600 text-white px-4 py-2 rounded-lg">Imprimir/Finalizar</button>
           </div>
-          <PropostaDocumento cliente={cliente} proposta={{ id: proposalId, clienteId: selectedClienteId, items: state.carrinhoAtual, total: totalCarrinho, status: 'Aprovada/Produção', data: new Date().toISOString() }} />
+          <PropostaDocumento cliente={cliente} proposta={{ id: proposalId, clienteId: selectedClienteId, items: state.carrinhoAtual, total: totalCarrinho, formaPagamento: 'outros', descontoPix: 0, totalComDesconto: totalCarrinho, status: 'Aprovada/Produção', data: new Date().toISOString() }} />
         </div>
       )}
     </>

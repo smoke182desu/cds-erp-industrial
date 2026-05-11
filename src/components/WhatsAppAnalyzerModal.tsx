@@ -115,7 +115,7 @@ export const WhatsAppAnalyzerModal: React.FC<WhatsAppAnalyzerModalProps> = ({
         id: Date.now().toString(), clienteId,
         clienteNome: dadosFinais.nome,
         items: [{ id: '1', name: descItem, quantity: p.quantidade || 1, price: 0, total: 0, projectState: null }],
-        total: 0, status: 'Rascunho', data: new Date().toISOString(),
+        total: 0, formaPagamento: 'outros', descontoPix: 0, totalComDesconto: 0, status: 'Rascunho', data: new Date().toISOString(),
       });
     }
     onClienteSalvo?.(clienteId!);

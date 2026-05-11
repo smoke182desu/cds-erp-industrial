@@ -186,6 +186,9 @@ ${linhas}`;
           price: it.valorUnit || 0,
         })),
         total: prop.valorTotalEstimado || 0,
+        formaPagamento: 'outros',
+        descontoPix: 0,
+        totalComDesconto: prop.valorTotalEstimado || 0,
         status: 'Rascunho',
         data: new Date().toISOString(),
       };

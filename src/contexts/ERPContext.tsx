@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
-import { Cliente, Proposta, OrdemServico, Receita, Faturamento, Component, TransacaoFinanceira, ChatMessage } from '../types';
+import { Cliente, Proposta, OrdemServico, Receita, Faturamento, Component, TransacaoFinanceira, ChatMessage, FormaPagamento, DESCONTO_PIX_PERCENTUAL } from '../types';
 
 // Tipos básicos para o estado global
 export type EtapaProducao = 'Corte' | 'Dobra' | 'Solda/Montagem' | 'Pintura' | 'Embalagem' | 'Entrega';
@@ -62,7 +62,7 @@ interface ERPContextType {
   adicionarAoCarrinho: (produto: any) => void;
   removerDoCarrinho: (index: number) => void;
   fecharProposta: () => void;
-  aprovarVenda: (clienteId: string, proposalId?: string) => void;
+  aprovarVenda: (clienteId: string, proposalId?: string, formaPagamento?: FormaPagamento) => void;
   salvarRascunho: (clienteId: string, proposalId?: string) => void;
   gerarOS: (proposta: Proposta) => void;
   moverEtapaOS: (osId: string, novaEtapa: OrdemServico['status']) => void;
@@ -186,9 +186,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const transacoesFinanceiras = savedTransacoes ? JSON.parse(savedTransacoes) : [];
 
     const propostas: Proposta[] = [
-      { id: 'P1', clienteId: '1', items: [{ name: 'Galpão 200m²' }], total: 50000, status: 'Rascunho', data: '2026-03-12T10:00:00Z' },
-      { id: 'P2', clienteId: '2', items: [{ name: 'Cobertura 500m²' }], total: 120000, status: 'Em Negociação', data: '2026-03-10T14:30:00Z' },
-      { id: 'P3', clienteId: '3', items: [{ name: 'Galpão 1000m²' }], total: 250000, status: 'Proposta Enviada', data: '2026-03-05T09:15:00Z' }
+      { id: 'P1', clienteId: '1', items: [{ name: 'Galpão 200m²' }], total: 50000, formaPagamento: 'outros', descontoPix: 0, totalComDesconto: 50000, status: 'Rascunho', data: '2026-03-12T10:00:00Z' },
+      { id: 'P2', clienteId: '2', items: [{ name: 'Cobertura 500m²' }], total: 120000, formaPagamento: 'outros', descontoPix: 0, totalComDesconto: 120000, status: 'Em Negociação', data: '2026-03-10T14:30:00Z' },
+      { id: 'P3', clienteId: '3', items: [{ name: 'Galpão 1000m²' }], total: 250000, formaPagamento: 'outros', descontoPix: 0, totalComDesconto: 250000, status: 'Proposta Enviada', data: '2026-03-05T09:15:00Z' }
     ];
 
     return {
@@ -297,6 +297,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clienteId: '',
       items: state.carrinhoAtual,
       total: totalCarrinho,
+      formaPagamento: 'outros',
+      descontoPix: 0,
+      totalComDesconto: totalCarrinho,
       status: 'Em Negociação',
       data: new Date().toISOString()
     };
@@ -308,18 +311,18 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const aprovarVenda = (clienteId: string, proposalId?: string) => {
-    console.log('1. Iniciando aprovação...', state.carrinhoAtual);
+  const aprovarVenda = (clienteId: string, proposalId?: string, formaPagamento: FormaPagamento = 'outros') => {
     if (!state.carrinhoAtual || state.carrinhoAtual.length === 0) {
-      console.log('Carrinho vazio, abortando.');
       alert('Carrinho vazio! Adicione itens antes de aprovar.');
       return;
     }
 
     const cliente = state.clientes.find(c => c.id === clienteId);
+    const valorCheio = totalCarrinho || 0;
+    const descontoPix = formaPagamento === 'pix' ? +(valorCheio * DESCONTO_PIX_PERCENTUAL).toFixed(2) : 0;
+    const totalFinal = +(valorCheio - descontoPix).toFixed(2);
 
     try {
-      console.log('2. Construindo objetos da venda...');
       const novaProposta: Proposta = {
         id: proposalId || `PROP-${Date.now()}`,
         clienteId: clienteId || 'sem-id',
@@ -329,7 +332,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           name: item?.name || item?.nome || 'Produto sem nome',
           price: item?.price || item?.preco || 0
         })),
-        total: totalCarrinho || 0,
+        total: valorCheio,
+        formaPagamento,
+        descontoPix,
+        totalComDesconto: totalFinal,
         status: 'Aprovada/Produção',
         data: new Date().toISOString()
       };
@@ -428,8 +434,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           transacoesFinanceiras: [...(prev.transacoesFinanceiras || []), {
             id: `REC-${Date.now()}`,
             tipo: 'RECEITA',
-            descricao: `Venda para ${cliente?.nome || 'Cliente'}`,
-            valor: totalCarrinho || 0,
+            descricao: `Venda para ${cliente?.nome || 'Cliente'}${formaPagamento === 'pix' ? ' (PIX -7%)' : ''}`,
+            valor: totalFinal,
+            valorCheio,
+            formaPagamento,
+            descontoPix,
             dataVencimento: new Date().toISOString(),
             status: 'PENDENTE',
             origem: novaProposta.id
@@ -469,6 +478,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         price: item?.price || item?.preco || 0
       })),
       total: totalCarrinho || 0,
+      formaPagamento: 'outros',
+      descontoPix: 0,
+      totalComDesconto: totalCarrinho || 0,
       status: 'Rascunho',
       data: new Date().toISOString()
     };
@@ -577,8 +589,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           transacoesFinanceiras: [...(prev.transacoesFinanceiras || []), {
             id: `REC-${Date.now()}`,
             tipo: 'RECEITA',
-            descricao: `Venda para ${proposta.clienteNome || 'Cliente'}`,
-            valor: proposta.total || 0,
+            descricao: `Venda para ${proposta.clienteNome || 'Cliente'}${proposta.formaPagamento === 'pix' ? ' (PIX -7%)' : ''}`,
+            valor: proposta.totalComDesconto ?? proposta.total ?? 0,
+            valorCheio: proposta.total || 0,
+            formaPagamento: proposta.formaPagamento || 'outros',
+            descontoPix: proposta.descontoPix || 0,
             dataVencimento: new Date().toISOString(),
             status: 'PENDENTE',
             origem: proposta.id
