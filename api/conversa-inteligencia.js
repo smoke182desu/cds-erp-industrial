@@ -28,6 +28,7 @@ let CACHE_PRODUTOS = { data: null, ts: 0 };
 // Cache de resultados da inteligencia para evitar torrar Rate Limit global (30 RPM) da Groq
 const cacheInteligencia = new Map();
 const TTL_INTELIGENCIA = 180000; // 3 minutos
+const PROMPT_VERSION = 'produto-familia-v4';
 
 // Stopwords PT-BR (nao usadas como keyword de busca)
 const STOPWORDS = new Set([
@@ -42,6 +43,42 @@ const STOPWORDS = new Set([
   'ola','oi','bom','boa','dia','tarde','noite','obrigado','obrigada','por favor','favor',
   'ok','okay','blz','beleza','valeu','tudo','aqui','la','ali','entao','agora','depois','antes'
 ]);
+
+const FAMILIAS_PRODUTO = [
+  { id: 'pe_mesa', termos: ['pe', 'pes', 'base', 'mesa', 'bancada', 'suporte'] },
+  { id: 'tampa', termos: ['tampa', 'tampao', 'alcapao', 'bandeja'] },
+  { id: 'vaso_jardim', termos: ['vaso', 'cachepot', 'jardim', 'jardinagem', 'paisagismo', 'planta', 'plantas', 'decorativo'] },
+  { id: 'carrinho', termos: ['carrinho', 'plataforma', 'rodizio', 'rodizios'] },
+  { id: 'chapa', termos: ['chapa', 'corte', 'dobra', 'dobrada', 'guilhotina'] },
+  { id: 'container_lixo', termos: ['container', 'lixo', 'cacamba'] },
+  { id: 'estrutura', termos: ['metalon', 'tubo', 'estrutura', 'quadro'] },
+];
+
+function detectarFamiliaProduto(texto) {
+  const norm = normalizarTexto(texto);
+  if (!norm) return null;
+  for (const familia of FAMILIAS_PRODUTO) {
+    if (familia.termos.some(t => new RegExp(`\\b${normalizarTexto(t)}s?\\b`).test(norm))) {
+      return familia.id;
+    }
+  }
+  return null;
+}
+
+function textoCatalogoProduto(produto) {
+  return [
+    produto?.nome,
+    produto?.sku,
+    produto?.categoria,
+    produto?.descricao,
+  ].filter(Boolean).join(' ');
+}
+
+function produtoCompativelComFamilia(produto, familiaContexto) {
+  if (!familiaContexto) return true;
+  const familiaCatalogo = detectarFamiliaProduto(textoCatalogoProduto(produto));
+  return familiaCatalogo === familiaContexto;
+}
 
 // Normaliza dimensoes: "19 x 42", "19X42mm", "19 X 42" -> "19x42"
 function normalizarDimensoes(s) {
@@ -129,7 +166,9 @@ function filtrarProdutosRelevantes(produtos, palavrasChave, limite = MAX_PRODUTO
     .map(s => s.p);
 }
 
-function pontuarProdutoCatalogo(produtoDetectado, produtoCatalogo) {
+function pontuarProdutoCatalogo(produtoDetectado, produtoCatalogo, familiaContexto = null) {
+  if (!produtoCompativelComFamilia(produtoCatalogo, familiaContexto)) return 0;
+
   const alvo = normalizarTexto([
     produtoDetectado?.nome,
     produtoDetectado?.descricao,
@@ -142,6 +181,12 @@ function pontuarProdutoCatalogo(produtoDetectado, produtoCatalogo) {
   const categoria = normalizarTexto(produtoCatalogo.categoria);
   const descricao = normalizarTexto(produtoCatalogo.descricao);
   const textoCatalogo = `${nome} ${sku} ${categoria} ${descricao}`;
+  const familiaAlvo = detectarFamiliaProduto(alvo);
+  const familiaCatalogo = detectarFamiliaProduto(textoCatalogo);
+
+  if (familiaAlvo && familiaCatalogo && familiaAlvo !== familiaCatalogo) return 0;
+  if (familiaAlvo && !familiaCatalogo) return 0;
+
   const palavras = [...new Set(alvo.split(' ').filter(p => p.length >= 3 && !STOPWORDS.has(p)))];
 
   let score = 0;
@@ -161,10 +206,11 @@ function pontuarProdutoCatalogo(produtoDetectado, produtoCatalogo) {
 
   const numerosAlvo = alvo.match(/\d+/g) || [];
   for (const numero of numerosAlvo) {
-    if (textoCatalogo.includes(numero)) score += 12;
+    if (textoCatalogo.includes(numero)) score += 3;
   }
 
   if (nome && alvo.includes(nome)) score += 30;
+  if (familiaAlvo && familiaCatalogo && familiaAlvo === familiaCatalogo) score += 25;
   if (alvo.includes('carrinho') && textoCatalogo.includes('carrinho')) score += 18;
   if (alvo.includes('carga') && textoCatalogo.includes('carga')) score += 10;
   if (alvo.includes('kg') && textoCatalogo.includes('kg')) score += 8;
@@ -172,10 +218,10 @@ function pontuarProdutoCatalogo(produtoDetectado, produtoCatalogo) {
   return score;
 }
 
-function buscarOpcoesCatalogo(produtoDetectado, catalogo, limite = 5) {
+function buscarOpcoesCatalogo(produtoDetectado, catalogo, limite = 5, familiaContexto = null) {
   return (catalogo || [])
-    .map(p => ({ p, score: pontuarProdutoCatalogo(produtoDetectado, p) }))
-    .filter(x => x.score > 0)
+    .map(p => ({ p, score: pontuarProdutoCatalogo(produtoDetectado, p, familiaContexto) }))
+    .filter(x => x.score >= 35)
     .sort((a, b) => b.score - a.score)
     .slice(0, limite)
     .map(({ p, score }) => ({
@@ -187,20 +233,35 @@ function buscarOpcoesCatalogo(produtoDetectado, catalogo, limite = 5) {
     }));
 }
 
-function aplicarMatchesCatalogo(analise, catalogo) {
+function aplicarMatchesCatalogo(analise, catalogo, familiaContexto = null) {
   if (!Array.isArray(analise?.produtos) || !Array.isArray(catalogo) || catalogo.length === 0) return analise;
 
   for (const item of analise.produtos) {
-    const opcoes = buscarOpcoesCatalogo(item, catalogo, 5);
+    if (item.produtoPadrao) {
+      const produtoCatalogo = catalogo.find(p => (
+        (item.skuCatalogo && p.sku === item.skuCatalogo) ||
+        (normalizarTexto(p.nome) === normalizarTexto(item.nomeCatalogo || item.nome))
+      ));
+
+      if (!produtoCatalogo || pontuarProdutoCatalogo(item, produtoCatalogo, familiaContexto) < 90) {
+        item.produtoPadrao = false;
+        item.sobMedida = true;
+        item.skuCatalogo = null;
+        item.produtoId = null;
+        item.nomeCatalogo = null;
+      }
+    }
+
+    const opcoes = buscarOpcoesCatalogo(item, catalogo, 5, familiaContexto);
     if (!opcoes.length) {
-      item.sobMedida = !item.produtoPadrao;
+      if (!item.produtoPadrao) item.sobMedida = true;
       continue;
     }
 
     const melhor = opcoes[0];
     item.opcoesSugeridas = opcoes;
 
-    if (!item.produtoPadrao && melhor.probabilidade >= 70) {
+    if (!item.produtoPadrao && melhor.probabilidade >= 90) {
       item.produtoPadrao = true;
       item.nome = melhor.nome;
       item.nomeCatalogo = melhor.nome;
@@ -418,15 +479,23 @@ CATALOGO DE PRODUTOS PADRAO da empresa:
 ${catalogoResumo}
 ${leadContexto}
 
+CAPACIDADES E LIMITES DA FABRICA:
+- Somos fabricantes de produtos metalicos sob medida.
+- Processos: solda MIG, solda eletrica, dobra de chapas ate 6,35mm, corte reto em guilhotina, pintura com compressor industrial em epoxi, esmalte sintetico ou PU.
+- Equipamentos: 1 dobradeira e 1 guilhotina de 3m. Pecas acima de 3m exigem emenda/solda.
+- Nao ofereca plasma, oxicorte, laser, jato d'agua, cortes curvos ou recortes internos. Corte de chapa e somente reto na guilhotina.
+- Materiais: aluminio, aco carbono, aco galvanizado, inox 430 e inox 304. Acos usuais 1010/1020; chapa acima de 14 geralmente A36.
+- Produtos recorrentes: chapas dobradas, pecas com metalons, tubos ou chapas dobradas, carrinhos, tampas para casas de maquinas, containers de lixo, pes de mesa e fabricacoes metalicas sob medida.
+
 REGRAS:
 0. NUNCA INVENTE PRODUTOS. Se o cliente nao mencionou um produto especifico, deixe "produtos" como array vazio []. Nao escolha um produto aleatorio do catalogo.
-1. Se o cliente mencionar um produto que EXISTE EXATAMENTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true). Faca o match literal pelo que foi dito.
+1. Se o cliente mencionar um produto que EXISTE EXATAMENTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true). Faca o match literal pelo que foi dito. So marque produtoPadrao true quando o SKU/nome do catalogo for a mesma familia do pedido.
 1.1. SEMPRE escreva o nome do produto em Title Case (Primeira Letra de Cada Palavra Maiuscula). Ex: "Prego 19x42", "Chapa Galvanizada 1.5mm". NUNCA em CAIXA ALTA total nem tudo minusculo.
 2. Se o cliente mencionar um produto mas o match no catalogo NAO FOR EXATO (voce nao tem certeza de qual e), marque "produtoPadrao": false. Isso nao e erro: a CDS tambem fabrica qualquer produto em aco sob medida.
 2.1. PREENCHA a lista "opcoesSugeridas" com ate 3 produtos do catalogo que mais se assemelham, incluindo a "probabilidade" (0 a 100) de ser o item desejado.
-2.2. Para item sob medida, mantenha o nome pedido pelo cliente e coloque na descricao as medidas, carga, uso, material, acabamento e ambiente que ja foram informados.
-3. NOME DO PRODUTO: Inclua TODAS as especificacoes mencionadas pelo cliente.
-4. DESCRICAO DO PRODUTO: Coloque todos os detalhes tecnicos e indique "sob medida" quando nao for produto padrao.
+2.2. Para item sob medida usado na PROPOSTA, mantenha os dados tecnicos necessarios para orcar, mas nao transforme a fala do cliente em um nome longo.
+3. NOME DO PRODUTO: Use o padrao de cadastro "Produto + medida + uso" quando a medida e o uso forem informados. Nao inclua nome/empresa do cliente, CEP, endereco, prazo, destino ou frases da conversa. Ex: "Pes de Mesa 75x64 para Mesa de Granito", "Pes de Mesa 87x80 para Mesa de Marmore", "Chapa Dobrada 120x40 para Fechamento", "Tampa Metalica 80x80 para Casa de Maquinas".
+4. DESCRICAO DO PRODUTO: Descreva como produto de catalogo para todos os clientes. Use atributos parametrizaveis ("fabricado sob medida conforme dimensoes, carga, material, acabamento e quantidade") em vez de copiar exatamente medidas e contexto do cliente. Nao mencione conversa, lead, CEP, prazo de entrega ou uso muito particular daquele cliente.
 5. Extraia CNPJ, CPF, CEP, endereco, inscricao estadual se mencionados.
 6. DADOS ESTRUTURADOS: Se o cliente enviar uma mensagem em formato estruturado, EXTRAIA TODOS esses campos.
 7. CNPJ DA EMPRESA vs CLIENTE: Se for o CNPJ da CDS, ignore para o cliente.
@@ -435,8 +504,10 @@ REGRAS:
 10. CLIENTE: Prefira o nome que o cliente informou na conversa.
 11. QUESTIONARIO TECNICO: identifique a familia e marque faltantes coerentes:
 - Carrinho: carga/quilo, o que transporta, piso/ambiente, dimensoes, lateral/grade/berco, manual/eletrico.
+- Vaso/cachepot/jardim/paisagismo: nao classifique como carrinho plataforma, mesmo quando tiver rodas.
 - Tampa/bandeja: vao livre, local de uso, carga sobre a tampa, dobradica/removivel, acabamento.
 - Chapa/corte/dobra: medida, espessura, dobras/abas, material, quantidade, acabamento.
+- Pe/base de mesa: quantidade, largura x altura/profundidade, material, perfil/espessura, carga/peso do tampo, acabamento, com/sem niveladores. Nao classifique como tampa.
 - Bancada/base/mesa: uso/equipamento, peso, largura x profundidade x altura, tampo, acabamento.
 - Estante: o que guarda, peso por prateleira, niveis, dimensoes, ambiente.
 - Sob medida em aco: finalidade, medidas, carga, ambiente, acabamento e quantidade.
@@ -576,14 +647,22 @@ export default async function handler(req, res) {
       .filter(m => m.tipo === 'entrada')
       .map(m => m.texto)
       .join(' ') || conversaFormatada;
+    const textoProdutoConversa = conversaAtual.map(m => m.texto).join(' ');
+    const familiaContexto = detectarFamiliaProduto(textoProdutoConversa);
       
-    const { produtos: produtosRelevantes, totalCatalogo, palavrasChave } =
-      await buscarProdutosRelevantes(textoCliente);
+    const resultadoProdutos = await buscarProdutosRelevantes(textoProdutoConversa || textoCliente);
+    let produtosRelevantes = resultadoProdutos.produtos;
+    const { totalCatalogo, palavrasChave } = resultadoProdutos;
+
+    if (familiaContexto) {
+      produtosRelevantes = produtosRelevantes.filter(p => produtoCompativelComFamilia(p, familiaContexto));
+    }
 
     const alternativas = extrairAlternativas(textoCliente);
     if (tel && !alternativas.telefones.includes(tel)) alternativas.telefones.unshift(tel);
 
-    const cacheKey = `intel_${tel}_${mensagens.length}_${cnpjInicial}`;
+    const ultimaMsg = mensagens[mensagens.length - 1] || {};
+    const cacheKey = `intel_${PROMPT_VERSION}_${tel}_${mensagens.length}_${ultimaMsg.criadoEm || ''}_${ultimaMsg.texto || ''}_${cnpjInicial}`;
     const cacheEntry = cacheInteligencia.get(cacheKey);
     let analise;
     
@@ -628,8 +707,9 @@ export default async function handler(req, res) {
     }
     removerCamposFaltandoPreenchidos(analise);
 
-    const catalogoCompleto = CACHE_PRODUTOS.data || produtosRelevantes;
-    aplicarMatchesCatalogo(analise, catalogoCompleto);
+    const catalogoCompleto = (CACHE_PRODUTOS.data || produtosRelevantes)
+      .filter(p => produtoCompativelComFamilia(p, familiaContexto));
+    aplicarMatchesCatalogo(analise, catalogoCompleto, familiaContexto);
 
     if (analise.produtos?.length) {
       // Garante Title Case em todos os nomes de produto retornados pela IA

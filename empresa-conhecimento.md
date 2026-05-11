@@ -60,6 +60,22 @@ Do rascunho à entrega técnica:
 
 ---
 
+## CAPACIDADES FABRIS E LIMITES TECNICOS
+
+- A CDS Industrial fabrica produtos metalicos sob medida; nao somos apenas revenda.
+- Processos internos: solda MIG, solda eletrica, dobra de chapas, corte reto em guilhotina e pintura com compressor industrial.
+- Dobra de chapas: ate 6,35mm de espessura.
+- Corte de chapas: vendido cortado em guilhotina, somente cortes retos. Nao prometer plasma, oxicorte, laser, jato d'agua, cortes curvos ou recortes internos.
+- Equipamentos principais: 1 dobradeira de 3m e 1 guilhotina de 3m.
+- Limite dimensional: pecas saem com no maximo 3m em corte/dobra; acima disso, somente com emenda/solda quando tecnicamente viavel.
+- Pintura: compressor industrial com tinta epoxi, esmalte sintetico ou PU.
+- Materiais trabalhados: aluminio, aco carbono, aco galvanizado, inox 430 e inox 304.
+- Acos usuais: 1010/1020; chapa acima de 14 geralmente A36.
+- Produtos fabricados/recorrentes: chapas dobradas, produtos com metalons, tubos e chapas dobradas, carrinhos, tampas para casas de maquinas, containers de lixo, pes de mesa e demais fabricacoes metalicas sob medida.
+- Ao responder clientes, a IA deve ser honesta sobre essas capacidades e perguntar medidas, espessura, material, quantidade, acabamento, carga/uso e ambiente quando faltar informacao.
+
+---
+
 ## ⭐ DIFERENCIAIS COMPETITIVOS
 
 | Diferencial | Descrição |

@@ -46,7 +46,7 @@ function horaMsg(iso: string) {
 }
 
 // ─── Painel de Conversa (com suporte a mídias) ───────────────────────────────
-function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange }: {
+function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange, onUpdateLead }: {
   lead: Lead;
   onEtapaChange: (etapa: EtapaFunil) => void;
   textoInjetado: { v: string; n: number };
@@ -1011,19 +1011,122 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
 }
 
 // ─── Modal Cadastrar Produto (capturado da conversa) ─────────────────────────
+type ProdutoCadastroSugerido = {
+  nome: string;
+  descricao: string;
+  categoria: string;
+};
+
+function titleCaseProduto(valor: string) {
+  return String(valor || '')
+    .toLowerCase()
+    .replace(/\b([a-z0-9])([a-z0-9]+)/gi, (_, a, b) => `${a.toUpperCase()}${b}`)
+    .replace(/\b(Pvc|Aco|Inox|Mdf)\b/g, (m) => m.toUpperCase())
+    .replace(/\bPara\b/g, 'para')
+    .trim();
+}
+
+function extrairMedidaCadastro(texto: string) {
+  const match = String(texto || '').match(/\b\d+([.,]\d+)?\s*(x|por)\s*\d+([.,]\d+)?(\s*(x|por)\s*\d+([.,]\d+)?)?\s*(mm|cm|m)?\b/i);
+  return match?.[0]
+    ?.replace(/\s*(x|por)\s*/gi, 'x')
+    ?.replace(/\s+/g, '')
+    ?.replace(/cm|mm|m/gi, '')
+    || '';
+}
+
+function extrairUsoCadastro(texto: string) {
+  const norm = String(texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  if (/\bgranito\b/.test(norm)) return 'Mesa de Granito';
+  if (/\bmarmore\b/.test(norm)) return 'Mesa de Marmore';
+  if (/\bmadeira\b/.test(norm)) return 'Mesa de Madeira';
+  if (/\bmdf\b/.test(norm)) return 'Mesa de MDF';
+  if (/\baco\b/.test(norm)) return 'Mesa de Aco';
+  if (/\bmesa\b/.test(norm)) return 'Mesa';
+  return '';
+}
+
+function montarNomeCadastro(produto: string, medida: string, uso: string) {
+  return [produto, medida, uso ? `para ${uso}` : '']
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sugerirCadastroGenerico(produto: any): ProdutoCadastroSugerido {
+  const textoOriginal = `${produto?.nome || ''} ${produto?.descricao || ''}`;
+  const texto = textoOriginal
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  const medida = extrairMedidaCadastro(textoOriginal);
+  const uso = extrairUsoCadastro(textoOriginal);
+
+  if (/\b(carrinho|plataforma|rodizio|rodizios)\b/.test(texto)) {
+    return {
+      nome: 'Carrinho Plataforma Sob Medida',
+      descricao: 'Carrinho plataforma metalico sob medida, configuravel por carga, dimensoes, tipo de rodizio, piso de uso, acabamento e quantidade.',
+      categoria: 'sob-medida',
+    };
+  }
+
+  if (/\b(tampa|tampao|bandeja|alcapao)\b/.test(texto)) {
+    return {
+      nome: 'Tampa Metalica Sob Medida',
+      descricao: 'Tampa metalica fabricada sob medida, configuravel por dimensoes, espessura, carga, fixacao, acabamento e ambiente de uso.',
+      categoria: 'caldeiraria',
+    };
+  }
+
+  if (/\b(pe|pes|base|mesa|bancada|suporte)\b/.test(texto)) {
+    return {
+      nome: montarNomeCadastro('Pes de Mesa', medida, uso),
+      descricao: 'Pes de mesa sob medida, configuraveis por dimensoes, material, perfil/espessura, carga do tampo, acabamento e quantidade.',
+      categoria: 'estrutura-metalica',
+    };
+  }
+
+  if (/\b(chapa|corte|dobra|dobrada|aba|abas)\b/.test(texto)) {
+    return {
+      nome: 'Chapa Dobrada Sob Medida',
+      descricao: 'Chapa metalica cortada e dobrada sob medida, configuravel por material, espessura, dimensoes, dobras, acabamento e quantidade.',
+      categoria: 'caldeiraria',
+    };
+  }
+
+  const nomeBase = titleCaseProduto(String(produto?.nome || 'Produto Sob Medida')
+    .replace(/\b\d+([.,]\d+)?\s*(x|por)\s*\d+([.,]\d+)?(\s*(x|por)\s*\d+([.,]\d+)?)?\s*(mm|cm|m)?\b/gi, '')
+    .replace(/\bcep\b.*$/gi, '')
+    .replace(/\bcliente\b.*$/gi, '')
+    .replace(/\s+/g, ' ')
+  ) || 'Produto Sob Medida';
+
+  return {
+    nome: nomeBase,
+    descricao: 'Produto metalico sob medida, configuravel por dimensoes, material, carga, acabamento e quantidade conforme necessidade do projeto.',
+    categoria: 'sob-medida',
+  };
+}
+
 function CadastrarProdutoModal({ produto, onClose, onSalvo }: {
   produto: any;
   onClose: () => void;
   onSalvo: () => void;
 }) {
+  const cadastro = sugerirCadastroGenerico(produto);
   const [form, setForm] = useState({
-    nome: produto.nome || '',
-    sku: (produto.skuCatalogo || produto.nome || '').toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 20),
-    descricao: produto.descricao || '',
+    nome: cadastro.nome,
+    sku: (produto.skuCatalogo || cadastro.nome || '').toUpperCase().replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 20),
+    descricao: cadastro.descricao,
     preco: String(produto.precoUnitario || 0),
     unidade: produto.unidade || 'UN',
     ncm: '',
-    categoria: 'sob-medida',
+    categoria: cadastro.categoria,
   });
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');

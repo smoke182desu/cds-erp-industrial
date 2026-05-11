@@ -5,6 +5,7 @@ const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
+const PROMPT_VERSION = 'momento-conversa-v4';
 
 const GEMINI_MODELS = [
   'gemini-2.5-flash',
@@ -27,8 +28,9 @@ const ETAPAS_LABEL = {
 };
 
 const CONHECIMENTO_EMPRESA = `CDS Industrial - fabrica metalica em Brasilia/DF. Vendedor: Jean.
-Produtos: escadas/rampas (ABNT/NR+ART), tampas casa de maquinas (70x70-110x110, garantia 10a),
-chapas sob medida, moveis/bancadas industriais, carrinhos, projetos sob encomenda (CAD+ART).
+Produtos: chapas dobradas, pecas em metalon/tubo/chapa, pes de mesa, carrinhos, tampas para casas de maquinas, containers de lixo, escadas/rampas (ABNT/NR+ART), bancadas e projetos sob encomenda.
+Capacidades: solda MIG e eletrica; dobra de chapas ate 6,35mm; corte reto em guilhotina; dobradeira e guilhotina de 3m; pintura com compressor industrial em tinta epoxi, esmalte sintetico ou PU.
+Limites: nao fazemos plasma, oxicorte ou cortes curvos/recortados; pecas passam de 3m somente com emenda/solda. Materiais: aluminio, aco carbono, aco galvanizado, inox 430 e inox 304. Aco carbono 1010/1020; chapa acima de 14 geralmente A36.
 PIX 7% OFF | cupom 1COMPRA 5% OFF | Entrega Brasil todo + Munck 14t.`;
 
 const CONHECIMENTO_RAW_URL =
@@ -66,7 +68,7 @@ const CACHE_TTL = 180000; // Aumentado para 3 minutos (evita frontend spam)
 
 function getCacheKey(telefone, mensagens = []) {
   const ultima = mensagens[mensagens.length - 1] || {};
-  return `assistente_${telefone}_${mensagens.length}_${ultima.tipo || ''}_${ultima.criadoEm || ''}_${ultima.texto || ''}`;
+  return `assistente_${PROMPT_VERSION}_${telefone}_${mensagens.length}_${ultima.tipo || ''}_${ultima.criadoEm || ''}_${ultima.texto || ''}`;
 }
 
 function getCache(telefone, mensagens) {
@@ -113,7 +115,34 @@ function encurtarMensagem(texto, maxPalavras = 14) {
   return limpo.includes('?') ? `${curta}?` : curta;
 }
 
-function normalizarSugestoes(analise, saudacao, precisaSaudacao) {
+function pareceMedidaCurta(texto) {
+  return /^\s*\d+([.,]\d+)?\s*[xX]\s*\d+([.,]\d+)?\s*$/.test(String(texto || ''));
+}
+
+function sugestoesDepoisDaRespostaDoJean(ultimaMensagem) {
+  const texto = String(ultimaMensagem?.texto || '').trim();
+  if (pareceMedidaCurta(texto)) {
+    return [
+      { label: 'Aguardar retorno', mensagem: 'Fico no aguardo da confirmação.' },
+      { label: 'Complementar medida', mensagem: 'Essa é a medida do modelo fabricado.' },
+      { label: 'Confirmar configuração', mensagem: 'Ele vai com pneus, conforme conversamos.' },
+      { label: 'Próximo passo', mensagem: 'Se aprovar, calculo valor e prazo.' },
+    ];
+  }
+
+  return [
+    { label: 'Aguardar retorno', mensagem: 'Fico no aguardo.' },
+    { label: 'Complementar', mensagem: 'Posso complementar com mais detalhes.' },
+    { label: 'Próximo passo', mensagem: 'Se fizer sentido, avanço com o orçamento.' },
+    { label: 'Confirmar', mensagem: 'Pode me confirmar se ficou claro?' },
+  ];
+}
+
+function normalizarSugestoes(analise, saudacao, precisaSaudacao, contexto = {}) {
+  if (contexto.ultimaMensagem?.tipo === 'saida') {
+    analise.sugestoes = sugestoesDepoisDaRespostaDoJean(contexto.ultimaMensagem);
+  }
+
   if (!Array.isArray(analise?.sugestoes) || analise.sugestoes.length === 0) {
     return analise;
   }
@@ -225,6 +254,8 @@ async function analisarConversa(mensagens, lead) {
   const saudacao = obterSaudacao();
   const nomeCliente = (lead.nome || '').split(' ')[0] || 'cliente';
   const ultimaMensagem = ultimas[ultimas.length - 1];
+  const ultimaMensagemCliente = [...ultimas].reverse().find(m => m.tipo !== 'saida');
+  const ultimaMensagemJean = [...ultimas].reverse().find(m => m.tipo === 'saida');
   const conversaJaIniciadaPeloJean = mensagens.some(m => m.tipo === 'saida');
   const precisaSaudacao = (!ultimaMensagem || ultimaMensagem.tipo !== 'saida') && !conversaJaIniciadaPeloJean;
 
@@ -286,10 +317,27 @@ ${memoriaAtual ? memoriaAtual : '(Nenhuma memória anterior registrada para este
 CONVERSA ATUAL:
 ${conversaStr}
 
+MOMENTO EXATO:
+- Ultima mensagem geral: ${ultimaMensagem ? `[${ultimaMensagem.tipo === 'saida' ? 'JEAN' : 'CLIENTE'}] ${ultimaMensagem.texto}` : '(nenhuma)'}
+- Ultima pergunta/pedido do cliente: ${ultimaMensagemCliente ? ultimaMensagemCliente.texto : '(nenhum)'}
+- Ultima resposta do Jean: ${ultimaMensagemJean ? ultimaMensagemJean.texto : '(nenhuma)'}
+
+CAPACIDADES E LIMITES DA FABRICA:
+- Somos fabricantes; fazemos produtos sob medida em metal, solda MIG e eletrica.
+- Dobramos chapas ate 6,35mm de espessura.
+- Cortamos em guilhotina: somente cortes retos. Nao oferecer plasma, oxicorte, laser, jato d'agua, cortes curvos ou recortes internos.
+- Guilhotina e dobradeira tem 3m. Pecas maiores que 3m so com emenda/solda, deixando isso claro.
+- Pintura com compressor industrial: tinta epoxi, esmalte sintetico ou PU.
+- Materiais trabalhados: aluminio, aco carbono, aco galvanizado, inox 430 e inox 304.
+- Acos usuais: 1010/1020; chapa acima de 14 geralmente A36.
+- Produtos recorrentes: chapas dobradas, estruturas em metalon/tubos/chapa, carrinhos, tampas para casas de maquinas, containers de lixo, pes de mesa e fabricacoes metalicas sob medida.
+
 QUESTIONARIO IDEAL POR FAMILIA:
 - Carrinho: perguntar o que transporta, peso em kg, piso/ambiente, dimensoes, lateral/grade/berco, manual/eletrico. Uma pergunta por vez.
+- Vaso/cachepot/jardim: nao tratar como carrinho plataforma, mesmo se tiver rodas. Se aparecer "vaso", "jardim" ou "paisagismo", e produto de paisagismo/cachepot, nao carrinho.
 - Tampa/bandeja: perguntar vao livre, local, carga sobre a tampa, dobradica/removivel, acabamento.
 - Chapa/corte/dobra: perguntar medida, espessura, dobras/abas, material, quantidade, acabamento.
+- Pes/base de mesa: identificar como pe/base para mesa, nao como tampa. Se ja houver quantidade, medida e nivelador, nao repetir. Perguntar apenas material, perfil/espessura, acabamento ou confirmar que vai calcular valor e prazo.
 - Bancada/base/mesa: perguntar uso/equipamento, peso, medida, tampo, acabamento.
 - Estante: perguntar o que guarda, peso por prateleira, niveis, dimensoes, ambiente.
 - Sob medida em aco: a CDS fabrica qualquer produto em aco sob medida. Pergunte finalidade, medidas, carga, ambiente, acabamento e quantidade.
@@ -307,6 +355,19 @@ Sua tarefa:
 2.1. As perguntas precisam ter lógica: não pergunte dado que o cliente já respondeu. Escolha o próximo dado técnico necessário para identificar produto de catálogo ou sob medida.
 3. Gere uma leitura interna do GERENTE DE VENDAS IA para o dono, focada em produto, demanda e próxima decisão.
 4. Gere uma "novaMemoria" que seja um resumo denso de tudo que você aprendeu sobre esse contato até o momento (junte o que já sabia com o que descobriu agora na conversa atual). Foque no perfil psicológico, dores e estágio da negociação.
+
+REGRA PARA PEDIDO DE VALOR/PRAZO:
+- Quando o cliente pedir valor e prazo de um item ja claro, responda nessa direcao.
+- Nao volte para perguntas iniciais nem troque a familia do produto.
+- Exemplo: "2 pes para mesa de granito 75x64, sem niveladores" e pe/base de mesa sob medida em metal, nao tampa.
+- Sugestoes boas: confirmar material/acabamento, informar que vai calcular valor e prazo para o CEP, ou pedir espessura/perfil se faltar.
+
+REGRA DE MOMENTO:
+- As sugestoes devem responder ao MOMENTO EXATO.
+- Se a ultima mensagem geral for do JEAN, nao aja como se o cliente tivesse acabado de perguntar de novo.
+- Nesse caso, sugira apenas complemento natural, correcao, proximo passo ou aguardar.
+- Se o cliente pediu uma medida e Jean acabou de responder a medida, nao pergunte uso/peso/piso como se nada tivesse sido respondido.
+- Continue do ponto atual da conversa.
 
 Retorne APENAS o JSON:
 {
@@ -366,7 +427,7 @@ ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conve
     if (!analise) throw new Error('JSON invalido: ' + raw.substring(0, 200));
   }
 
-  analise = normalizarSugestoes(analise, saudacao, precisaSaudacao);
+  analise = normalizarSugestoes(analise, saudacao, precisaSaudacao, { ultimaMensagem });
 
   // Persistir Memoria no Supabase em background
   if (analise && analise.novaMemoria && lead.id) {
