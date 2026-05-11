@@ -32,6 +32,7 @@ interface ProdutoExtraido {
   unidade: string;
   precoUnitario: number;
   produtoPadrao: boolean;
+  sobMedida?: boolean;
   skuCatalogo?: string | null;
   produtoId?: string | null;
   nomeCatalogo?: string | null;
@@ -60,6 +61,7 @@ interface ConversaInteligenteProps {
   telefone: string;
   leadNome?: string;
   leadEmpresa?: string;
+  leadCnpj?: string;
   onGerarProposta: (analise: AnaliseConversa) => void;
   onCadastrarProduto?: (produto: ProdutoExtraido) => void;
 }
@@ -68,6 +70,7 @@ export default function ConversaInteligente({
   telefone,
   leadNome,
   leadEmpresa,
+  leadCnpj,
   onGerarProposta,
   onCadastrarProduto,
 }: ConversaInteligenteProps) {
@@ -86,7 +89,7 @@ export default function ConversaInteligente({
       const res = await fetch('/api/conversa-inteligencia', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefone, leadNome, leadEmpresa }),
+        body: JSON.stringify({ telefone, leadNome, leadEmpresa, leadCnpj }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro ao analisar');
@@ -102,7 +105,7 @@ export default function ConversaInteligente({
     } finally {
       setCarregando(false);
     }
-  }, [telefone, leadNome, leadEmpresa]);
+  }, [telefone, leadNome, leadEmpresa, leadCnpj]);
 
   useEffect(() => {
     if (telefone) analisar();
@@ -117,6 +120,44 @@ export default function ConversaInteligente({
       const novosFaltando = (prev.camposFaltando || []).filter(c => !(c === campo && valor));
       return { ...prev, cliente: novoCliente, camposFaltando: novosFaltando };
     });
+  };
+
+  const enriquecerClientePorCnpj = async (cnpj: string) => {
+    const cnpjLimpo = cnpj.replace(/\D/g, '');
+    if (cnpjLimpo.length !== 14) return;
+
+    try {
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setAnalise(prev => {
+        if (!prev) return prev;
+        const cliente = {
+          ...prev.cliente,
+          cnpj: cnpjLimpo,
+          empresa: prev.cliente.empresa || data.nome_fantasia || data.razao_social || null,
+          razaoSocial: prev.cliente.razaoSocial || data.razao_social || null,
+          nomeFantasia: prev.cliente.nomeFantasia || data.nome_fantasia || null,
+          inscricaoEstadual: prev.cliente.inscricaoEstadual || data.inscricoes_estaduais?.[0]?.inscricao_estadual || null,
+          cep: prev.cliente.cep || data.cep || null,
+          logradouro: prev.cliente.logradouro || data.logradouro || null,
+          numero: prev.cliente.numero || data.numero || null,
+          bairro: prev.cliente.bairro || data.bairro || null,
+          cidade: prev.cliente.cidade || data.municipio || null,
+          uf: prev.cliente.uf || data.uf || null,
+        };
+        const preenchidos = Object.entries(cliente)
+          .filter(([, v]) => Boolean(v))
+          .map(([k]) => k);
+        return {
+          ...prev,
+          cliente,
+          camposFaltando: (prev.camposFaltando || []).filter(c => !preenchidos.includes(c)),
+        };
+      });
+    } catch {
+      // Mantem o CNPJ digitado mesmo se a BrasilAPI estiver indisponivel.
+    }
   };
 
   const adicionarProduto = (prod: Produto) => {
@@ -250,7 +291,10 @@ export default function ConversaInteligente({
                   valor={analise.cliente.cnpj || ''}
                   alternativas={altCnpjs}
                   formatter={fmtCNPJ}
-                  onSave={(v) => atualizarCampoCliente('cnpj', v)}
+                  onSave={(v) => {
+                    atualizarCampoCliente('cnpj', v);
+                    enriquecerClientePorCnpj(v);
+                  }}
                   destaque
                 />
                 <CampoEditavel
@@ -373,7 +417,7 @@ export default function ConversaInteligente({
                           {p.nomeCatalogo || p.nome}
                         </span>
                       </div>
-                      {!p.produtoPadrao && onCadastrarProduto && (
+                      {!p.produtoPadrao && !p.sobMedida && onCadastrarProduto && (
                         <button
                           onClick={() => onCadastrarProduto(p)}
                           className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-200 flex items-center gap-0.5"
@@ -381,6 +425,11 @@ export default function ConversaInteligente({
                           <Plus className="w-2.5 h-2.5" />
                           Cadastrar
                         </button>
+                      )}
+                      {!p.produtoPadrao && p.sobMedida && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
+                          Sob medida
+                        </span>
                       )}
                     </div>
                     {p.descricao && (
@@ -398,10 +447,10 @@ export default function ConversaInteligente({
                         <span className="text-gray-400">SKU: {p.skuCatalogo}</span>
                       )}
                     </div>
-                    {!p.produtoPadrao && p.opcoesSugeridas && p.opcoesSugeridas.length > 0 && (
+                    {p.opcoesSugeridas && p.opcoesSugeridas.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-amber-200/50">
                         <p className="text-[10px] text-amber-800 font-medium mb-1 flex items-center gap-1">
-                          <Sparkles className="w-3 h-3" /> Voce quis dizer:
+                          <Sparkles className="w-3 h-3" /> {p.produtoPadrao ? 'Outras opcoes do catalogo:' : 'Voce quis dizer:'}
                         </p>
                         <div className="flex flex-col gap-1">
                           {p.opcoesSugeridas.map((opt, idx) => (

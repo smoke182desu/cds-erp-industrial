@@ -234,8 +234,9 @@ export const PCPKanban: React.FC = () => {
                         key={os.id}
                         layoutId={os.id}
                         draggable
-                        onDragStart={handleDragStart(os.id)}
-                        onDragEnd={handleDragEnd}
+                        onDragStartCapture={handleDragStart(os.id)}
+                        onPointerUp={handleDragEnd}
+                        onPointerCancel={handleDragEnd}
                         className={`bg-white border border-slate-200 rounded-md p-2.5 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing select-none ${dragging ? 'opacity-50' : ''}`}
                       >
                         <div className="flex items-start justify-between mb-1">

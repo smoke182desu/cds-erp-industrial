@@ -1,5 +1,44 @@
 // api/whatsapp.js — webhook handler, normaliza payload Evolution API e salva no Supabase
-import { insert, upsertByField } from './_lib/supabase.js';
+import { insert, selectAll, update, upsertByField } from './_lib/supabase.js';
+
+function soDigitos(valor) {
+  return String(valor || '').replace(/\D/g, '');
+}
+
+function variantesTelefone(valor) {
+  const d = soDigitos(valor);
+  const variantes = new Set();
+  if (!d) return [];
+  variantes.add(d);
+
+  if (d.startsWith('55')) {
+    const ddi = d.slice(0, 2);
+    const ddd = d.slice(2, 4);
+    const local = d.slice(4);
+    if (ddd.length === 2 && local.length === 9) {
+      variantes.add(`${ddi}${ddd}${local.slice(1)}`);
+      if (local[0] !== '9') variantes.add(`${ddi}${ddd}9${local.slice(1)}`);
+    }
+    if (ddd.length === 2 && local.length === 8) {
+      variantes.add(`${ddi}${ddd}9${local}`);
+    }
+  }
+
+  return [...variantes];
+}
+
+async function upsertLeadPorTelefone(payload) {
+  for (const tel of variantesTelefone(payload.telefone)) {
+    const existentes = await selectAll('leads', { filters: { telefone: `eq.${tel}` }, limit: 1 });
+    if (existentes[0]?.id) {
+      return await update('leads', 'id', existentes[0].id, {
+        ...payload,
+        telefone: existentes[0].telefone || payload.telefone
+      });
+    }
+  }
+  return await upsertByField('leads', payload, 'telefone');
+}
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-903e.up.railway.app';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
@@ -202,7 +241,7 @@ export default async function handler(req, res) {
 
     // 2. Se for mensagem de entrada, garante que o lead existe (Upsert)
     if (!norm.fromMe) {
-      await upsertByField('leads', {
+      await upsertLeadPorTelefone({
         telefone: norm.numero,
         nome: norm.pushName || norm.numero,
         etapa: 'lead_novo',

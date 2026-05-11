@@ -226,21 +226,24 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange, onUpd
             {lead.telefone && <p className="text-xs text-gray-500 mt-1">Aguardando mensagem do cliente ou envie a primeira mensagem abaixo.</p>}
           </div>
         )}
-        {msgs.filter(m => m.texto?.trim() || m.mediaUrl).map(m => (
+        {msgs.filter(m => m.texto?.trim() || m.mediaUrl || m.mediaType).map(m => (
           <div key={m.id} className={`flex ${m.tipo === 'saida' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[75%] rounded-2xl px-3 py-2 shadow-sm ${m.tipo === 'saida' ? 'bg-[#dcf8c6] text-gray-800 rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm'}`}>
+              {(m.mediaUrl || m.mediaType || textoSomenteMidia(m.texto)) && (
+                <MidiaMensagem mensagem={m} />
+              )}
               {/* Midia inline */}
-              {m.mediaUrl && m.mediaType === 'image' && (
+              {false && m.mediaUrl && m.mediaType === 'image' && (
                 <img src={m.mediaUrl} alt="imagem" className="rounded-lg max-w-full max-h-64 mb-1 cursor-pointer hover:opacity-90"
                   onClick={() => window.open(m.mediaUrl, '_blank')} />
               )}
-              {m.mediaUrl && m.mediaType === 'video' && (
+              {false && m.mediaUrl && m.mediaType === 'video' && (
                 <video src={m.mediaUrl} controls className="rounded-lg max-w-full max-h-64 mb-1" />
               )}
-              {m.mediaUrl && m.mediaType === 'audio' && (
+              {false && m.mediaUrl && m.mediaType === 'audio' && (
                 <audio src={m.mediaUrl} controls className="mb-1 w-full" />
               )}
-              {m.mediaUrl && m.mediaType === 'document' && (
+              {false && m.mediaUrl && m.mediaType === 'document' && (
                 <a href={m.mediaUrl} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-1 hover:bg-gray-100 transition-colors">
                   <span className="text-2xl">📄</span>
@@ -248,14 +251,14 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange, onUpd
                 </a>
               )}
               {/* Indicador de midia sem URL (fallback texto) */}
-              {!m.mediaUrl && m.texto && /^\[(image|video|audio|document)\]$/.test(m.texto) && (
+              {false && !m.mediaUrl && m.texto && /^\[(image|video|audio|document)\]$/.test(m.texto) && (
                 <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-1">
                   <span className="text-lg">{m.texto.includes('image') ? '🖼️' : m.texto.includes('video') ? '🎬' : m.texto.includes('audio') ? '🎵' : '📄'}</span>
                   <span className="text-xs text-gray-500 italic">Midia recebida</span>
                 </div>
               )}
               {/* Texto da mensagem */}
-              {m.texto && !/^\[(image|video|audio|document)\]$/.test(m.texto) && (
+              {m.texto && !textoSomenteMidia(m.texto) && (
                 <p className="text-sm whitespace-pre-wrap break-words">{m.texto}</p>
               )}
               <p className="text-[10px] text-gray-500 mt-1 text-right">{horaMsg(m.criadoEm)}{m.tipo === 'saida' && ' ✓✓'}</p>
@@ -398,14 +401,15 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
   const etapaDetectada = analise?.etapaDetectada as EtapaFunil | undefined;
   const etapaLabel = ETAPAS_FUNIL.find(e => e.id === etapaDetectada)?.label;
   const deveAvancar = analise?.deveAvancarEtapa && etapaDetectada && etapaDetectada !== lead.etapa;
+  const checkupAtendimento = analise?.diretorVendas?.checkupAtendimento;
 
   return (
     <div className="flex flex-col h-full bg-white border-l overflow-hidden">
       <div className="px-3 py-3 border-b flex-shrink-0 bg-gradient-to-r from-violet-600 to-indigo-600 text-white">
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-bold text-sm">🧠 Assistente de Vendas</p>
-            <p className="text-[10px] text-white/60 mt-0.5">VendaC · V4 Company · SPIN · Challenger</p>
+            <p className="font-bold text-sm">🧠 Giorno Giovanna</p>
+            <p className="text-[10px] text-white/60 mt-0.5">Operador de Vendas IA · SPIN · Challenger</p>
           </div>
           <button onClick={analisar} disabled={carregando} title="Analisar agora"
             className="text-xs bg-white/20 hover:bg-white/30 active:bg-white/40 disabled:opacity-50 w-8 h-8 rounded-lg flex items-center justify-center transition-colors">
@@ -467,6 +471,75 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
               <p className="text-[10px] font-bold text-violet-500 uppercase tracking-wider mb-1.5">🎯 Técnica Indicada</p>
               <p className="text-xs text-violet-700 leading-relaxed font-medium">{analise.tecnicaRecomendada}</p>
             </div>
+            {analise.diretorVendas && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bruno Bucciarati · Gerente de Vendas IA</p>
+                  {analise.diretorVendas.nivelOportunidade && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase ${
+                      analise.diretorVendas.nivelOportunidade === 'alto'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : analise.diretorVendas.nivelOportunidade === 'medio'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {analise.diretorVendas.nivelOportunidade}
+                    </span>
+                  )}
+                </div>
+                {analise.diretorVendas.produtoSugerido && (
+                  <p className="text-xs font-semibold text-slate-800 mb-1">{analise.diretorVendas.produtoSugerido}</p>
+                )}
+                {analise.diretorVendas.recomendacaoDono && (
+                  <p className="text-xs text-slate-700 leading-relaxed">{analise.diretorVendas.recomendacaoDono}</p>
+                )}
+                {checkupAtendimento && (
+                  <div className="mt-2 rounded-lg border border-white bg-white p-2">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Checkup do atendimento</p>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase ${
+                        checkupAtendimento.prioridade === 'alta'
+                          ? 'bg-red-100 text-red-700'
+                          : checkupAtendimento.prioridade === 'media'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {checkupAtendimento.prioridade || 'baixa'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-700 leading-relaxed">{checkupAtendimento.motivo}</p>
+                    {checkupAtendimento.prazoResposta && (
+                      <p className="text-[10px] text-slate-500 mt-1">Prazo: <span className="font-semibold">{checkupAtendimento.prazoResposta}</span></p>
+                    )}
+                    {checkupAtendimento.tarefas?.length > 0 && (
+                      <div className="flex flex-col gap-1 mt-2">
+                        {checkupAtendimento.tarefas.slice(0, 3).map((t: any, i: number) => (
+                          <div key={i} className="rounded-md bg-slate-50 border border-slate-100 px-2 py-1">
+                            <p className="text-[11px] font-semibold text-slate-700">{t.titulo}</p>
+                            <p className="text-[10px] text-slate-500">{t.prazo}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {checkupAtendimento.avaliacaoVenda && (
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-slate-500">Nota atendimento</span>
+                        <span className="text-xs font-bold text-slate-800">{checkupAtendimento.avaliacaoVenda.nota}/100</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {analise.diretorVendas.dadosFaltantesProduto?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {analise.diretorVendas.dadosFaltantesProduto.slice(0, 4).map((d: string, i: number) => (
+                      <span key={i} className="text-[10px] bg-white border border-slate-200 text-slate-500 px-1.5 py-0.5 rounded">
+                        falta: {d}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {analise.proximoPasso && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                 <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider mb-1.5">🚀 Próximo Passo</p>
@@ -713,6 +786,135 @@ function LeadItem({ lead, ativo, naoLido, onClick }: {
 }
 
 // ─── Modal de Novo Lead ────────────────────────────────────────────────────
+function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => void }) {
+  const [checkup, setCheckup] = useState<any>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState('');
+
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro('');
+    try {
+      const res = await fetch('/api/assistente-vendas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modo: 'checkup-geral' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erro no checkup');
+      setCheckup(json.checkupGeral);
+    } catch (e: any) {
+      setErro(e.message || 'Erro no checkup');
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+    const id = setInterval(carregar, 120000);
+    return () => clearInterval(id);
+  }, [carregar]);
+
+  const indicadores = checkup?.indicadores || {};
+  const cobrancas = Array.isArray(checkup?.cobrancas) ? checkup.cobrancas : [];
+  const metas = Array.isArray(checkup?.metas) ? checkup.metas : [];
+
+  const prioridadeClasse = (prioridade?: string) => {
+    if (prioridade === 'alta' || prioridade === 'critica') return 'border-red-200 bg-red-50 text-red-700';
+    if (prioridade === 'media') return 'border-amber-200 bg-amber-50 text-amber-700';
+    return 'border-slate-200 bg-slate-50 text-slate-600';
+  };
+
+  return (
+    <div className="border-b bg-slate-50 p-2">
+      <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-700">Bruno - Checkup geral</p>
+            <p className="text-[10px] text-slate-500 truncate">{checkup?.resumoGerencial || 'Varrendo vendas e cobrancas...'}</p>
+          </div>
+          <button
+            onClick={carregar}
+            disabled={carregando}
+            title="Atualizar checkup"
+            className="h-7 w-7 flex-shrink-0 rounded-md border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {carregando ? '...' : '↻'}
+          </button>
+        </div>
+
+        {erro && (
+          <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700">{erro}</p>
+        )}
+
+        <div className="mt-2 grid grid-cols-3 gap-1">
+          <div className="rounded-md bg-red-50 px-2 py-1">
+            <p className="text-sm font-bold text-red-700">{indicadores.altaPrioridade || 0}</p>
+            <p className="text-[9px] uppercase text-red-500">urgentes</p>
+          </div>
+          <div className="rounded-md bg-amber-50 px-2 py-1">
+            <p className="text-sm font-bold text-amber-700">{indicadores.respostasPendentes || 0}</p>
+            <p className="text-[9px] uppercase text-amber-500">respostas</p>
+          </div>
+          <div className="rounded-md bg-indigo-50 px-2 py-1">
+            <p className="text-sm font-bold text-indigo-700">{indicadores.followUps || 0}</p>
+            <p className="text-[9px] uppercase text-indigo-500">follow-up</p>
+          </div>
+        </div>
+
+        {metas.length > 0 && (
+          <div className="mt-2 flex flex-col gap-1.5">
+            {metas.slice(0, 3).map((meta: any, i: number) => (
+              <div key={i} className="rounded-md bg-slate-50 px-2 py-1.5">
+                <div className="flex items-center justify-between gap-2 text-[10px]">
+                  <span className="truncate font-semibold text-slate-600">{meta.nome}</span>
+                  <span className={`flex-shrink-0 rounded px-1.5 py-0.5 font-semibold ${
+                    meta.status === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                  }`}>
+                    {meta.atingido || 0}%
+                  </span>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className={meta.status === 'ok' ? 'h-full bg-emerald-500' : 'h-full bg-amber-500'}
+                    style={{ width: `${Math.max(0, Math.min(100, meta.atingido || 0))}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-[9px] text-slate-500">
+                  Atual: {meta.atual}{meta.unidade ? ` ${meta.unidade}` : ''} | Falta: {meta.falta}{meta.unidade ? ` ${meta.unidade}` : ''}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-2 flex max-h-48 flex-col gap-1 overflow-y-auto">
+          {cobrancas.length === 0 && !carregando && (
+            <p className="rounded-md bg-emerald-50 px-2 py-1.5 text-[10px] font-medium text-emerald-700">
+              Sem cobranca critica agora.
+            </p>
+          )}
+          {cobrancas.slice(0, 5).map((c: any, i: number) => (
+            <button
+              key={`${c.leadId || i}-${c.tipo}`}
+              onClick={() => c.leadId && onAbrirLead(c.leadId)}
+              className={`rounded-md border px-2 py-1.5 text-left transition-colors hover:bg-white ${prioridadeClasse(c.prioridade)}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-[11px] font-bold">{c.nome || c.telefone || 'Lead'}</p>
+                <span className="flex-shrink-0 text-[9px] font-bold uppercase">{c.prioridade}</span>
+              </div>
+              <p className="mt-0.5 text-[10px] font-semibold">{c.titulo}</p>
+              <p className="mt-0.5 line-clamp-2 text-[10px] opacity-80">{c.prazoTexto} - {c.acao}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NovoLeadModal({ onClose, onSave }: { onClose: () => void; onSave: (l: Omit<Lead,'id'|'criadoEm'>) => void }) {
   const [form, setForm] = useState({ nome: '', empresa: '', email: '', telefone: '', observacoes: '', etapa: 'lead_novo' as EtapaFunil, origem: 'manual' as const, valor: '' });
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
@@ -981,19 +1183,122 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
 }
 
 // ─── Modal Cadastrar Produto (capturado da conversa) ─────────────────────────
+type ProdutoCadastroSugerido = {
+  nome: string;
+  descricao: string;
+  categoria: string;
+};
+
+function titleCaseProduto(valor: string) {
+  return String(valor || '')
+    .toLowerCase()
+    .replace(/\b([a-z0-9])([a-z0-9]+)/gi, (_, a, b) => `${a.toUpperCase()}${b}`)
+    .replace(/\b(Pvc|Aco|Inox|Mdf)\b/g, (m) => m.toUpperCase())
+    .replace(/\bPara\b/g, 'para')
+    .trim();
+}
+
+function extrairMedidaCadastro(texto: string) {
+  const match = String(texto || '').match(/\b\d+([.,]\d+)?\s*(x|por)\s*\d+([.,]\d+)?(\s*(x|por)\s*\d+([.,]\d+)?)?\s*(mm|cm|m)?\b/i);
+  return match?.[0]
+    ?.replace(/\s*(x|por)\s*/gi, 'x')
+    ?.replace(/\s+/g, '')
+    ?.replace(/cm|mm|m/gi, '')
+    || '';
+}
+
+function extrairUsoCadastro(texto: string) {
+  const norm = String(texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  if (/\bgranito\b/.test(norm)) return 'Mesa de Granito';
+  if (/\bmarmore\b/.test(norm)) return 'Mesa de Marmore';
+  if (/\bmadeira\b/.test(norm)) return 'Mesa de Madeira';
+  if (/\bmdf\b/.test(norm)) return 'Mesa de MDF';
+  if (/\baco\b/.test(norm)) return 'Mesa de Aco';
+  if (/\bmesa\b/.test(norm)) return 'Mesa';
+  return '';
+}
+
+function montarNomeCadastro(produto: string, medida: string, uso: string) {
+  return [produto, medida, uso ? `para ${uso}` : '']
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sugerirCadastroGenerico(produto: any): ProdutoCadastroSugerido {
+  const textoOriginal = `${produto?.nome || ''} ${produto?.descricao || ''}`;
+  const texto = textoOriginal
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  const medida = extrairMedidaCadastro(textoOriginal);
+  const uso = extrairUsoCadastro(textoOriginal);
+
+  if (/\b(carrinho|plataforma|rodizio|rodizios)\b/.test(texto)) {
+    return {
+      nome: 'Carrinho Plataforma Sob Medida',
+      descricao: 'Carrinho plataforma metalico sob medida, configuravel por carga, dimensoes, tipo de rodizio, piso de uso, acabamento e quantidade.',
+      categoria: 'sob-medida',
+    };
+  }
+
+  if (/\b(tampa|tampao|bandeja|alcapao)\b/.test(texto)) {
+    return {
+      nome: 'Tampa Metalica Sob Medida',
+      descricao: 'Tampa metalica fabricada sob medida, configuravel por dimensoes, espessura, carga, fixacao, acabamento e ambiente de uso.',
+      categoria: 'caldeiraria',
+    };
+  }
+
+  if (/\b(pe|pes|base|mesa|bancada|suporte)\b/.test(texto)) {
+    return {
+      nome: montarNomeCadastro('Pes de Mesa', medida, uso),
+      descricao: 'Pes de mesa sob medida, configuraveis por dimensoes, material, perfil/espessura, carga do tampo, acabamento e quantidade.',
+      categoria: 'estrutura-metalica',
+    };
+  }
+
+  if (/\b(chapa|corte|dobra|dobrada|aba|abas)\b/.test(texto)) {
+    return {
+      nome: 'Chapa Dobrada Sob Medida',
+      descricao: 'Chapa metalica cortada e dobrada sob medida, configuravel por material, espessura, dimensoes, dobras, acabamento e quantidade.',
+      categoria: 'caldeiraria',
+    };
+  }
+
+  const nomeBase = titleCaseProduto(String(produto?.nome || 'Produto Sob Medida')
+    .replace(/\b\d+([.,]\d+)?\s*(x|por)\s*\d+([.,]\d+)?(\s*(x|por)\s*\d+([.,]\d+)?)?\s*(mm|cm|m)?\b/gi, '')
+    .replace(/\bcep\b.*$/gi, '')
+    .replace(/\bcliente\b.*$/gi, '')
+    .replace(/\s+/g, ' ')
+  ) || 'Produto Sob Medida';
+
+  return {
+    nome: nomeBase,
+    descricao: 'Produto metalico sob medida, configuravel por dimensoes, material, carga, acabamento e quantidade conforme necessidade do projeto.',
+    categoria: 'sob-medida',
+  };
+}
+
 function CadastrarProdutoModal({ produto, onClose, onSalvo }: {
   produto: any;
   onClose: () => void;
   onSalvo: () => void;
 }) {
+  const cadastro = sugerirCadastroGenerico(produto);
   const [form, setForm] = useState({
-    nome: produto.nome || '',
-    sku: (produto.skuCatalogo || produto.nome || '').toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 20),
-    descricao: produto.descricao || '',
+    nome: cadastro.nome,
+    sku: (produto.skuCatalogo || cadastro.nome || '').toUpperCase().replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 20),
+    descricao: cadastro.descricao,
     preco: String(produto.precoUnitario || 0),
     unidade: produto.unidade || 'UN',
     ncm: '',
-    categoria: 'sob-medida',
+    categoria: cadastro.categoria,
   });
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
@@ -1100,6 +1405,7 @@ function CadastrarProdutoModal({ produto, onClose, onSalvo }: {
 
 // ─── Página principal Leads ────────────────────────────────────────────────
 export function Leads() {
+  const { state } = useERP();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
@@ -1174,6 +1480,12 @@ export function Leads() {
     setLeadAtivo(atualizado);
     setLeads(prev => prev.map(l => l.id === leadAtivo.id ? atualizado : l));
   };
+  const abrirLeadPorId = useCallback((leadId: string) => {
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+    setLeadAtivo(lead);
+    marcarComoLido(lead);
+  }, [leads, marcarComoLido]);
 
   const filtrados = leads
     .filter(l => {
@@ -1189,6 +1501,13 @@ export function Leads() {
   const totalVal = leads.filter(l => l.etapa !== 'fechado_perdido').reduce((s,l) => s+(l.valor||0), 0);
   const ganhos = leads.filter(l => l.etapa === 'fechado_ganho').length;
   const taxa = leads.length ? Math.round((ganhos/leads.length)*100) : 0;
+  const clienteAtivoRelacionado = leadAtivo
+    ? state.clientes.find((c: Cliente) => (leadAtivo.telefone && c.telefone === leadAtivo.telefone) || (leadAtivo.clienteId && c.id === leadAtivo.clienteId))
+    : null;
+  const cnpjAtivo =
+    String(clienteAtivoRelacionado?.documento || (leadAtivo as any)?.cnpj || (leadAtivo as any)?.documento || '').replace(/\D/g, '').length === 14
+      ? String(clienteAtivoRelacionado?.documento || (leadAtivo as any)?.cnpj || (leadAtivo as any)?.documento || '')
+      : '';
 
   return (
     <div className="flex flex-col h-full bg-gray-50" style={{ height: 'calc(100vh - 56px)' }}>
@@ -1213,6 +1532,7 @@ export function Leads() {
             <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar lead..."
               className="w-full text-sm border rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
           </div>
+          <CheckupBrunoGeral onAbrirLead={abrirLeadPorId} />
           <div className="flex-1 overflow-y-auto">
             {loading && <div className="text-center text-xs text-gray-400 py-8">Carregando...</div>}
             {!loading && filtrados.length === 0 && (
@@ -1272,6 +1592,7 @@ export function Leads() {
                   telefone={leadAtivo.telefone || ''}
                   leadNome={leadAtivo.nome}
                   leadEmpresa={leadAtivo.empresa}
+                  leadCnpj={cnpjAtivo}
                   onGerarProposta={(analise) => {
                     // Passa a analise ja feita pro modal — evita segunda chamada a IA
                     setPropostaAnalise(analise);

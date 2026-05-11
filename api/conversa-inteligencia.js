@@ -28,6 +28,7 @@ let CACHE_PRODUTOS = { data: null, ts: 0 };
 // Cache de resultados da inteligencia para evitar torrar Rate Limit global (30 RPM) da Groq
 const cacheInteligencia = new Map();
 const TTL_INTELIGENCIA = 180000; // 3 minutos
+const PROMPT_VERSION = 'produto-familia-v4';
 
 // Stopwords PT-BR (nao usadas como keyword de busca)
 const STOPWORDS = new Set([
@@ -42,6 +43,42 @@ const STOPWORDS = new Set([
   'ola','oi','bom','boa','dia','tarde','noite','obrigado','obrigada','por favor','favor',
   'ok','okay','blz','beleza','valeu','tudo','aqui','la','ali','entao','agora','depois','antes'
 ]);
+
+const FAMILIAS_PRODUTO = [
+  { id: 'pe_mesa', termos: ['pe', 'pes', 'base', 'mesa', 'bancada', 'suporte'] },
+  { id: 'tampa', termos: ['tampa', 'tampao', 'alcapao', 'bandeja'] },
+  { id: 'vaso_jardim', termos: ['vaso', 'cachepot', 'jardim', 'jardinagem', 'paisagismo', 'planta', 'plantas', 'decorativo'] },
+  { id: 'carrinho', termos: ['carrinho', 'plataforma', 'rodizio', 'rodizios'] },
+  { id: 'chapa', termos: ['chapa', 'corte', 'dobra', 'dobrada', 'guilhotina'] },
+  { id: 'container_lixo', termos: ['container', 'lixo', 'cacamba'] },
+  { id: 'estrutura', termos: ['metalon', 'tubo', 'estrutura', 'quadro'] },
+];
+
+function detectarFamiliaProduto(texto) {
+  const norm = normalizarTexto(texto);
+  if (!norm) return null;
+  for (const familia of FAMILIAS_PRODUTO) {
+    if (familia.termos.some(t => new RegExp(`\\b${normalizarTexto(t)}s?\\b`).test(norm))) {
+      return familia.id;
+    }
+  }
+  return null;
+}
+
+function textoCatalogoProduto(produto) {
+  return [
+    produto?.nome,
+    produto?.sku,
+    produto?.categoria,
+    produto?.descricao,
+  ].filter(Boolean).join(' ');
+}
+
+function produtoCompativelComFamilia(produto, familiaContexto) {
+  if (!familiaContexto) return true;
+  const familiaCatalogo = detectarFamiliaProduto(textoCatalogoProduto(produto));
+  return familiaCatalogo === familiaContexto;
+}
 
 // Normaliza dimensoes: "19 x 42", "19X42mm", "19 X 42" -> "19x42"
 function normalizarDimensoes(s) {
@@ -58,6 +95,8 @@ function tituloCase(s) {
 function normalizarTexto(s) {
   return normalizarDimensoes(String(s || ''))
     .toLowerCase()
+    .replace(/(\d+)\s*kgs?\b/g, '$1kg')
+    .replace(/(\d+)\s*quilos?\b/g, '$1kg')
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -106,10 +145,16 @@ function filtrarProdutosRelevantes(produtos, palavrasChave, limite = MAX_PRODUTO
     const descN = normalizarTexto(p.descricao);
     let score = 0;
     for (const palavra of palavrasChave) {
-      if (nomeN.includes(palavra)) score += 3;
-      if (skuN.includes(palavra))  score += 4;
-      if (catN.includes(palavra))  score += 2;
-      if (descN.includes(palavra)) score += 1;
+      const variantes = [palavra];
+      if (palavra.endsWith('s')) variantes.push(palavra.slice(0, -1));
+      if (!palavra.endsWith('s')) variantes.push(`${palavra}s`);
+      for (const termo of variantes) {
+        if (!termo || termo.length < 3) continue;
+        if (nomeN.includes(termo)) score += 4;
+        if (skuN.includes(termo))  score += 5;
+        if (catN.includes(termo))  score += 2;
+        if (descN.includes(termo)) score += 1;
+      }
     }
     return { p, score };
   });
@@ -119,6 +164,117 @@ function filtrarProdutosRelevantes(produtos, palavrasChave, limite = MAX_PRODUTO
     .sort((a, b) => b.score - a.score)
     .slice(0, limite)
     .map(s => s.p);
+}
+
+function pontuarProdutoCatalogo(produtoDetectado, produtoCatalogo, familiaContexto = null) {
+  if (!produtoCompativelComFamilia(produtoCatalogo, familiaContexto)) return 0;
+
+  const alvo = normalizarTexto([
+    produtoDetectado?.nome,
+    produtoDetectado?.descricao,
+    produtoDetectado?.skuCatalogo,
+  ].filter(Boolean).join(' '));
+  if (!alvo) return 0;
+
+  const nome = normalizarTexto(produtoCatalogo.nome);
+  const sku = normalizarTexto(produtoCatalogo.sku);
+  const categoria = normalizarTexto(produtoCatalogo.categoria);
+  const descricao = normalizarTexto(produtoCatalogo.descricao);
+  const textoCatalogo = `${nome} ${sku} ${categoria} ${descricao}`;
+  const familiaAlvo = detectarFamiliaProduto(alvo);
+  const familiaCatalogo = detectarFamiliaProduto(textoCatalogo);
+
+  if (familiaAlvo && familiaCatalogo && familiaAlvo !== familiaCatalogo) return 0;
+  if (familiaAlvo && !familiaCatalogo) return 0;
+
+  const palavras = [...new Set(alvo.split(' ').filter(p => p.length >= 3 && !STOPWORDS.has(p)))];
+
+  let score = 0;
+  for (const palavra of palavras) {
+    const variantes = [palavra];
+    if (palavra.endsWith('s')) variantes.push(palavra.slice(0, -1));
+    if (!palavra.endsWith('s')) variantes.push(`${palavra}s`);
+
+    for (const termo of variantes) {
+      if (!termo || termo.length < 3) continue;
+      if (nome.includes(termo)) score += 12;
+      if (sku.includes(termo)) score += 14;
+      if (categoria.includes(termo)) score += 5;
+      if (descricao.includes(termo)) score += 3;
+    }
+  }
+
+  const numerosAlvo = alvo.match(/\d+/g) || [];
+  for (const numero of numerosAlvo) {
+    if (textoCatalogo.includes(numero)) score += 3;
+  }
+
+  if (nome && alvo.includes(nome)) score += 30;
+  if (familiaAlvo && familiaCatalogo && familiaAlvo === familiaCatalogo) score += 25;
+  if (alvo.includes('carrinho') && textoCatalogo.includes('carrinho')) score += 18;
+  if (alvo.includes('carga') && textoCatalogo.includes('carga')) score += 10;
+  if (alvo.includes('kg') && textoCatalogo.includes('kg')) score += 8;
+
+  return score;
+}
+
+function buscarOpcoesCatalogo(produtoDetectado, catalogo, limite = 5, familiaContexto = null) {
+  return (catalogo || [])
+    .map(p => ({ p, score: pontuarProdutoCatalogo(produtoDetectado, p, familiaContexto) }))
+    .filter(x => x.score >= 35)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limite)
+    .map(({ p, score }) => ({
+      nome: p.nome,
+      sku: p.sku,
+      precoUnitario: Number(p.preco || p.precoRegular || 0),
+      probabilidade: Math.max(35, Math.min(98, Math.round(score))),
+      produtoId: p.id,
+    }));
+}
+
+function aplicarMatchesCatalogo(analise, catalogo, familiaContexto = null) {
+  if (!Array.isArray(analise?.produtos) || !Array.isArray(catalogo) || catalogo.length === 0) return analise;
+
+  for (const item of analise.produtos) {
+    if (item.produtoPadrao) {
+      const produtoCatalogo = catalogo.find(p => (
+        (item.skuCatalogo && p.sku === item.skuCatalogo) ||
+        (normalizarTexto(p.nome) === normalizarTexto(item.nomeCatalogo || item.nome))
+      ));
+
+      if (!produtoCatalogo || pontuarProdutoCatalogo(item, produtoCatalogo, familiaContexto) < 90) {
+        item.produtoPadrao = false;
+        item.sobMedida = true;
+        item.skuCatalogo = null;
+        item.produtoId = null;
+        item.nomeCatalogo = null;
+      }
+    }
+
+    const opcoes = buscarOpcoesCatalogo(item, catalogo, 5, familiaContexto);
+    if (!opcoes.length) {
+      if (!item.produtoPadrao) item.sobMedida = true;
+      continue;
+    }
+
+    const melhor = opcoes[0];
+    item.opcoesSugeridas = opcoes;
+
+    if (!item.produtoPadrao && melhor.probabilidade >= 90) {
+      item.produtoPadrao = true;
+      item.nome = melhor.nome;
+      item.nomeCatalogo = melhor.nome;
+      item.skuCatalogo = melhor.sku;
+      item.produtoId = melhor.produtoId;
+      item.precoUnitario = item.precoUnitario || melhor.precoUnitario || 0;
+      item.sobMedida = false;
+    } else if (!item.produtoPadrao) {
+      item.sobMedida = true;
+    }
+  }
+
+  return analise;
 }
 
 // Extrai alternativas (telefones, emails, cnpjs, cpfs, ceps) da conversa bruta
@@ -170,6 +326,22 @@ function extrairAlternativas(textoConversa) {
     cpfs: [...cpfs],
     ceps: [...ceps],
   };
+}
+
+function removerCamposFaltandoPreenchidos(analise) {
+  if (!Array.isArray(analise?.camposFaltando)) return analise;
+  const cliente = analise.cliente || {};
+  const aliases = {
+    endereco: ['logradouro', 'bairro', 'cidade', 'uf'],
+    inscricao_estadual: ['inscricaoEstadual'],
+    empresa: ['empresa', 'razaoSocial', 'nomeFantasia'],
+  };
+
+  analise.camposFaltando = analise.camposFaltando.filter(campo => {
+    const chaves = aliases[campo] || [campo];
+    return !chaves.some(chave => Boolean(cliente[chave]));
+  });
+  return analise;
 }
 
 async function buscarMensagens(telefone) {
@@ -251,8 +423,36 @@ async function consultarCEP(cep) {
   }
 }
 
+async function enriquecerClienteComCNPJ(cliente = {}, cnpj) {
+  const cnpjLimpo = String(cnpj || cliente.cnpj || '').replace(/\D/g, '');
+  if (cnpjLimpo.length !== 14) return { cliente, dadosCNPJ: null };
+
+  const dadosCNPJ = await consultarCNPJ(cnpjLimpo);
+  if (!dadosCNPJ) return { cliente: { ...cliente, cnpj: cnpjLimpo }, dadosCNPJ: null };
+
+  return {
+    dadosCNPJ,
+    cliente: {
+      ...cliente,
+      cnpj: cnpjLimpo,
+      empresa: cliente.empresa || dadosCNPJ.nomeFantasia || dadosCNPJ.razaoSocial,
+      razaoSocial: cliente.razaoSocial || dadosCNPJ.razaoSocial,
+      nomeFantasia: cliente.nomeFantasia || dadosCNPJ.nomeFantasia,
+      inscricaoEstadual: cliente.inscricaoEstadual || dadosCNPJ.inscricaoEstadual,
+      cep: cliente.cep || dadosCNPJ.cep,
+      logradouro: cliente.logradouro || dadosCNPJ.logradouro,
+      numero: cliente.numero || dadosCNPJ.numero,
+      bairro: cliente.bairro || dadosCNPJ.bairro,
+      cidade: cliente.cidade || dadosCNPJ.cidade,
+      uf: cliente.uf || dadosCNPJ.uf,
+    },
+  };
+}
+
 async function analisarConversaComGroq(conversa, produtosRelevantes, leadInfo, metaCatalogo = {}) {
-  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no servidor');
+  if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) {
+    throw new Error('Nenhuma API KEY (Groq, Gemini ou OpenAI) configurada no servidor');
+  }
 
   const catalogoResumo = produtosRelevantes.length > 0
     ? produtosRelevantes.map(p => {
@@ -279,20 +479,38 @@ CATALOGO DE PRODUTOS PADRAO da empresa:
 ${catalogoResumo}
 ${leadContexto}
 
+CAPACIDADES E LIMITES DA FABRICA:
+- Somos fabricantes de produtos metalicos sob medida.
+- Processos: solda MIG, solda eletrica, dobra de chapas ate 6,35mm, corte reto em guilhotina, pintura com compressor industrial em epoxi, esmalte sintetico ou PU.
+- Equipamentos: 1 dobradeira e 1 guilhotina de 3m. Pecas acima de 3m exigem emenda/solda.
+- Nao ofereca plasma, oxicorte, laser, jato d'agua, cortes curvos ou recortes internos. Corte de chapa e somente reto na guilhotina.
+- Materiais: aluminio, aco carbono, aco galvanizado, inox 430 e inox 304. Acos usuais 1010/1020; chapa acima de 14 geralmente A36.
+- Produtos recorrentes: chapas dobradas, pecas com metalons, tubos ou chapas dobradas, carrinhos, tampas para casas de maquinas, containers de lixo, pes de mesa e fabricacoes metalicas sob medida.
+
 REGRAS:
 0. NUNCA INVENTE PRODUTOS. Se o cliente nao mencionou um produto especifico, deixe "produtos" como array vazio []. Nao escolha um produto aleatorio do catalogo.
-1. Se o cliente mencionar um produto que EXISTE EXATAMENTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true). Faca o match literal pelo que foi dito.
+1. Se o cliente mencionar um produto que EXISTE EXATAMENTE no catalogo acima, use o nome e preco do catalogo (campo "produtoPadrao": true). Faca o match literal pelo que foi dito. So marque produtoPadrao true quando o SKU/nome do catalogo for a mesma familia do pedido.
 1.1. SEMPRE escreva o nome do produto em Title Case (Primeira Letra de Cada Palavra Maiuscula). Ex: "Prego 19x42", "Chapa Galvanizada 1.5mm". NUNCA em CAIXA ALTA total nem tudo minusculo.
-2. Se o cliente mencionar um produto mas o match no catalogo NAO FOR EXATO (voce nao tem certeza de qual e), marque "produtoPadrao": false.
+2. Se o cliente mencionar um produto mas o match no catalogo NAO FOR EXATO (voce nao tem certeza de qual e), marque "produtoPadrao": false. Isso nao e erro: a CDS tambem fabrica qualquer produto em aco sob medida.
 2.1. PREENCHA a lista "opcoesSugeridas" com ate 3 produtos do catalogo que mais se assemelham, incluindo a "probabilidade" (0 a 100) de ser o item desejado.
-3. NOME DO PRODUTO: Inclua TODAS as especificacoes mencionadas pelo cliente.
-4. DESCRICAO DO PRODUTO: Coloque todos os detalhes tecnicos.
+2.2. Para item sob medida usado na PROPOSTA, mantenha os dados tecnicos necessarios para orcar, mas nao transforme a fala do cliente em um nome longo.
+3. NOME DO PRODUTO: Use o padrao de cadastro "Produto + medida + uso" quando a medida e o uso forem informados. Nao inclua nome/empresa do cliente, CEP, endereco, prazo, destino ou frases da conversa. Ex: "Pes de Mesa 75x64 para Mesa de Granito", "Pes de Mesa 87x80 para Mesa de Marmore", "Chapa Dobrada 120x40 para Fechamento", "Tampa Metalica 80x80 para Casa de Maquinas".
+4. DESCRICAO DO PRODUTO: Descreva como produto de catalogo para todos os clientes. Use atributos parametrizaveis ("fabricado sob medida conforme dimensoes, carga, material, acabamento e quantidade") em vez de copiar exatamente medidas e contexto do cliente. Nao mencione conversa, lead, CEP, prazo de entrega ou uso muito particular daquele cliente.
 5. Extraia CNPJ, CPF, CEP, endereco, inscricao estadual se mencionados.
 6. DADOS ESTRUTURADOS: Se o cliente enviar uma mensagem em formato estruturado, EXTRAIA TODOS esses campos.
 7. CNPJ DA EMPRESA vs CLIENTE: Se for o CNPJ da CDS, ignore para o cliente.
 8. Se dados estao incompletos, liste em "camposFaltando".
 9. Avalie "confianca" global de 0 a 100.
 10. CLIENTE: Prefira o nome que o cliente informou na conversa.
+11. QUESTIONARIO TECNICO: identifique a familia e marque faltantes coerentes:
+- Carrinho: carga/quilo, o que transporta, piso/ambiente, dimensoes, lateral/grade/berco, manual/eletrico.
+- Vaso/cachepot/jardim/paisagismo: nao classifique como carrinho plataforma, mesmo quando tiver rodas.
+- Tampa/bandeja: vao livre, local de uso, carga sobre a tampa, dobradica/removivel, acabamento.
+- Chapa/corte/dobra: medida, espessura, dobras/abas, material, quantidade, acabamento.
+- Pe/base de mesa: quantidade, largura x altura/profundidade, material, perfil/espessura, carga/peso do tampo, acabamento, com/sem niveladores. Nao classifique como tampa.
+- Bancada/base/mesa: uso/equipamento, peso, largura x profundidade x altura, tampo, acabamento.
+- Estante: o que guarda, peso por prateleira, niveis, dimensoes, ambiente.
+- Sob medida em aco: finalidade, medidas, carga, ambiente, acabamento e quantidade.
 
 Conversa:
 ${conversa}
@@ -300,7 +518,7 @@ ${conversa}
 Responda APENAS com JSON valido no formato:
 {
   "cliente": { "nome": "string", "empresa": "string", "telefone": "string", "email": "string", "cnpj": "string", "cpf": "string", "inscricaoEstadual": "string", "cep": "string", "logradouro": "string", "numero": "string", "bairro": "string", "cidade": "string", "uf": "string" },
-  "produtos": [ { "nome": "string", "descricao": "string", "quantidade": 1, "unidade": "UN", "precoUnitario": 0, "produtoPadrao": true, "skuCatalogo": "string", "opcoesSugeridas": [ { "nome": "string", "sku": "string", "precoUnitario": 0, "probabilidade": 90 } ] } ],
+  "produtos": [ { "nome": "string", "descricao": "string", "quantidade": 1, "unidade": "UN", "precoUnitario": 0, "produtoPadrao": true, "sobMedida": false, "skuCatalogo": "string", "opcoesSugeridas": [ { "nome": "string", "sku": "string", "precoUnitario": 0, "probabilidade": 90 } ] } ],
   "observacoes": "string",
   "resumoConversa": "string",
   "camposFaltando": ["string"],
@@ -393,20 +611,23 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
 
-  const { telefone, leadNome, leadEmpresa } = req.body || {};
+  const { telefone, leadNome, leadEmpresa, leadCnpj } = req.body || {};
   if (!telefone) return res.status(400).json({ error: 'telefone obrigatorio' });
 
   const tel = String(telefone).replace(/\D/g, '');
+  const cnpjInicial = String(leadCnpj || '').replace(/\D/g, '');
 
   try {
     const mensagens = await buscarMensagens(tel);
     const conversaAtual = recortarConversaAtual(mensagens);
     
     if (!conversaAtual.length) {
+      const baseCliente = { nome: leadNome || null, empresa: leadEmpresa || null, cnpj: cnpjInicial || null };
+      const { cliente } = await enriquecerClienteComCNPJ(baseCliente, cnpjInicial);
       return res.status(200).json({
         ok: true,
         analise: {
-          cliente: { nome: leadNome || null, empresa: leadEmpresa || null },
+          cliente,
           produtos: [],
           observacoes: '',
           resumoConversa: 'Sem mensagens recentes',
@@ -426,14 +647,22 @@ export default async function handler(req, res) {
       .filter(m => m.tipo === 'entrada')
       .map(m => m.texto)
       .join(' ') || conversaFormatada;
+    const textoProdutoConversa = conversaAtual.map(m => m.texto).join(' ');
+    const familiaContexto = detectarFamiliaProduto(textoProdutoConversa);
       
-    const { produtos: produtosRelevantes, totalCatalogo, palavrasChave } =
-      await buscarProdutosRelevantes(textoCliente);
+    const resultadoProdutos = await buscarProdutosRelevantes(textoProdutoConversa || textoCliente);
+    let produtosRelevantes = resultadoProdutos.produtos;
+    const { totalCatalogo, palavrasChave } = resultadoProdutos;
+
+    if (familiaContexto) {
+      produtosRelevantes = produtosRelevantes.filter(p => produtoCompativelComFamilia(p, familiaContexto));
+    }
 
     const alternativas = extrairAlternativas(textoCliente);
     if (tel && !alternativas.telefones.includes(tel)) alternativas.telefones.unshift(tel);
 
-    const cacheKey = `intel_${tel}_${mensagens.length}`;
+    const ultimaMsg = mensagens[mensagens.length - 1] || {};
+    const cacheKey = `intel_${PROMPT_VERSION}_${tel}_${mensagens.length}_${ultimaMsg.criadoEm || ''}_${ultimaMsg.texto || ''}_${cnpjInicial}`;
     const cacheEntry = cacheInteligencia.get(cacheKey);
     let analise;
     
@@ -452,31 +681,20 @@ export default async function handler(req, res) {
       }
     }
 
+    if (!analise.cliente) analise.cliente = {};
     if (!analise.cliente.nome && leadNome) analise.cliente.nome = leadNome;
     if (!analise.cliente.empresa && leadEmpresa) analise.cliente.empresa = leadEmpresa;
     if (!analise.cliente.telefone) analise.cliente.telefone = tel;
     if (!analise.cliente.cpf && alternativas.cpfs[0])  analise.cliente.cpf = alternativas.cpfs[0];
+    if (!analise.cliente.cnpj && cnpjInicial) analise.cliente.cnpj = cnpjInicial;
     if (!analise.cliente.cnpj && alternativas.cnpjs[0]) analise.cliente.cnpj = alternativas.cnpjs[0];
     if (!analise.cliente.cep && alternativas.ceps[0])   analise.cliente.cep = alternativas.ceps[0];
     if (!analise.cliente.email && alternativas.emails[0]) analise.cliente.email = alternativas.emails[0];
 
-    let dadosCNPJ = null;
-    if (analise.cliente?.cnpj) {
-      dadosCNPJ = await consultarCNPJ(analise.cliente.cnpj);
-      if (dadosCNPJ) {
-        analise.cliente.razaoSocial = dadosCNPJ.razaoSocial;
-        analise.cliente.nomeFantasia = dadosCNPJ.nomeFantasia;
-        analise.cliente.inscricaoEstadual = analise.cliente.inscricaoEstadual || dadosCNPJ.inscricaoEstadual;
-        if (!analise.cliente.logradouro) {
-          analise.cliente.logradouro = dadosCNPJ.logradouro;
-          analise.cliente.numero = dadosCNPJ.numero;
-          analise.cliente.bairro = dadosCNPJ.bairro;
-          analise.cliente.cidade = dadosCNPJ.cidade;
-          analise.cliente.uf = dadosCNPJ.uf;
-          analise.cliente.cep = dadosCNPJ.cep;
-        }
-      }
-    }
+    const enriquecido = await enriquecerClienteComCNPJ(analise.cliente, analise.cliente.cnpj);
+    analise.cliente = enriquecido.cliente;
+    const dadosCNPJ = enriquecido.dadosCNPJ;
+    removerCamposFaltandoPreenchidos(analise);
 
     if (analise.cliente?.cep && !dadosCNPJ) {
       const dCEP = await consultarCEP(analise.cliente.cep);
@@ -487,13 +705,17 @@ export default async function handler(req, res) {
         analise.cliente.uf = analise.cliente.uf || dCEP.uf;
       }
     }
+    removerCamposFaltandoPreenchidos(analise);
+
+    const catalogoCompleto = (CACHE_PRODUTOS.data || produtosRelevantes)
+      .filter(p => produtoCompativelComFamilia(p, familiaContexto));
+    aplicarMatchesCatalogo(analise, catalogoCompleto, familiaContexto);
 
     if (analise.produtos?.length) {
       // Garante Title Case em todos os nomes de produto retornados pela IA
       for (const item of analise.produtos) {
         if (item.nome) item.nome = tituloCase(item.nome);
       }
-      const catalogoCompleto = CACHE_PRODUTOS.data || produtosRelevantes;
       for (const item of analise.produtos) {
         const nomeItem = (item.nome || '').toLowerCase();
         const match = catalogoCompleto.find(p => {
@@ -531,11 +753,11 @@ export default async function handler(req, res) {
       analise: {
         cliente: { nome: leadNome || null, telefone: tel, empresa: leadEmpresa || null },
         produtos: [],
-        resumoConversa: `[DEBUG Groq] ${msg}`,
+        resumoConversa: `[DEBUG IA] ${msg}`,
         confianca: 5,
         prontoParaProposta: false,
       },
-      aviso: `[DEBUG Groq] ${msg}`,
+      aviso: `[DEBUG IA] ${msg}`,
     });
   }
 }

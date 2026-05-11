@@ -248,6 +248,13 @@ Lead: ${nome || '-'} | ${empresa || '-'} | ${email || '-'} | ${telefone || '-'}
 Conversa atual:
 ${conversa || '(sem mensagens)'}
 
+CAPACIDADES E LIMITES DA FABRICA:
+- Fabricamos produtos metalicos sob medida com solda MIG e eletrica.
+- Dobra de chapas ate 6,35mm; corte reto em guilhotina; pintura com compressor industrial em epoxi, esmalte sintetico ou PU.
+- Dobradeira e guilhotina de 3m: pecas maiores que 3m somente com emenda/solda.
+- Nao incluir plasma, oxicorte, laser, jato d'agua, cortes curvos ou recortes internos na proposta.
+- Materiais possiveis: aluminio, aco carbono, aco galvanizado, inox 430 e inox 304. Acos usuais 1010/1020; chapa acima de 14 geralmente A36.
+
 REGRAS:
 1. Se o item mencionado pelo cliente corresponde a um produto do catalogo acima, USE o nome e preco exatos do catalogo e preencha "skuCatalogo". Use "nome" para o nome do produto e "valorUnitario" para o preco.
 2. Se nao houver correspondencia, estime preco razoavel e deixe "skuCatalogo" null.
