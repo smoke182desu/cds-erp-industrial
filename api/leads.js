@@ -42,6 +42,28 @@ function soDigitos(valor) {
   return String(valor || '').replace(/\D/g, '');
 }
 
+function variantesTelefone(valor) {
+  const d = soDigitos(valor);
+  const variantes = new Set();
+  if (!d) return [];
+  variantes.add(d);
+
+  if (d.startsWith('55')) {
+    const ddi = d.slice(0, 2);
+    const ddd = d.slice(2, 4);
+    const local = d.slice(4);
+    if (ddd.length === 2 && local.length === 9) {
+      variantes.add(`${ddi}${ddd}${local.slice(1)}`);
+      if (local[0] !== '9') variantes.add(`${ddi}${ddd}9${local.slice(1)}`);
+    }
+    if (ddd.length === 2 && local.length === 8) {
+      variantes.add(`${ddi}${ddd}9${local}`);
+    }
+  }
+
+  return [...variantes];
+}
+
 function previewMensagem(msg) {
   const texto = String(msg?.texto || msg?.conteudo || '').trim();
   if (texto) return texto;
@@ -124,10 +146,14 @@ async function listarLeads() {
       const tel = soDigitos(msg.telefone || msg.remote_jid);
       if (!tel) continue;
 
-      const atual = mensagensPorTelefone.get(tel);
+      const chaves = variantesTelefone(tel);
+      const chaveExistente = chaves.find(chave => mensagensPorTelefone.has(chave));
+      const chavePrincipal = chaveExistente || chaves[0] || tel;
+      const atual = mensagensPorTelefone.get(chavePrincipal);
       const criadoEm = msg.criado_em || msg.created_at || '';
       if (!atual) {
-        mensagensPorTelefone.set(tel, { total: 1, ultima: msg });
+        const info = { total: 1, ultima: msg };
+        chaves.forEach(chave => mensagensPorTelefone.set(chave, info));
         continue;
       }
 
@@ -138,7 +164,7 @@ async function listarLeads() {
     }
 
     return leads.map(lead => {
-      const info = mensagensPorTelefone.get(soDigitos(lead.telefone));
+      const info = variantesTelefone(lead.telefone).map(tel => mensagensPorTelefone.get(tel)).find(Boolean);
       if (!info?.ultima) return lead;
 
       const ultimaTexto = previewMensagem(info.ultima);
@@ -157,10 +183,11 @@ async function listarLeads() {
 }
 
 async function inserirLead(data) {
+  const telefone = soDigitos(data.telefone || '');
   const payload = {
     nome: data.nome || '',
     email: data.email || '',
-    telefone: data.telefone || '',
+    telefone,
     mensagem: data.mensagem || '',
     empresa: data.empresa || '',
     origem: data.origem || 'site',
@@ -170,6 +197,22 @@ async function inserirLead(data) {
     cliente_id: data.clienteId || '',
     observacoes: data.observacoes || '',
   };
+
+  if (telefone) {
+    const candidatos = variantesTelefone(telefone);
+    for (const tel of candidatos) {
+      const existentes = await selectAll(TABLE, { filters: { telefone: `eq.${tel}` }, limit: 1 });
+      if (existentes[0]?.id) {
+        await update(TABLE, 'id', existentes[0].id, {
+          ...payload,
+          telefone: existentes[0].telefone || telefone,
+          atualizado_em: new Date().toISOString()
+        });
+        return existentes[0].id;
+      }
+    }
+  }
+
   const inserted = await insert(TABLE, payload);
   return inserted?.id;
 }

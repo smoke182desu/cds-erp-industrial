@@ -213,13 +213,68 @@ function prepararClienteApi(cliente: Partial<Cliente>) {
   return payload;
 }
 
+function statusOsParaApi(status: OrdemServico['status']) {
+  const map: Record<OrdemServico['status'], string> = {
+    'Fila de Produção': 'fila',
+    'Corte e Dobra': 'corte',
+    'Solda e Montagem': 'solda_montagem',
+    'Pintura e Acabamento': 'pintura',
+    'Expedição/Pronto': 'entregue'
+  };
+  return map[status] || 'fila';
+}
+
+function osApiParaEstado(os: any): OrdemServico {
+  const map: Record<string, OrdemServico['status']> = {
+    fila: 'Fila de Produção',
+    corte: 'Corte e Dobra',
+    dobra: 'Corte e Dobra',
+    solda_montagem: 'Solda e Montagem',
+    pintura: 'Pintura e Acabamento',
+    embalagem: 'Expedição/Pronto',
+    transporte: 'Expedição/Pronto',
+    entregue: 'Expedição/Pronto',
+    pos_venda: 'Expedição/Pronto',
+    concluido: 'Expedição/Pronto'
+  };
+  return {
+    id: String(os.id),
+    propostaId: os.propostaId || os.proposta_id || '',
+    clienteNome: os.clienteNome || os.cliente_nome || '',
+    itens: os.itens || [],
+    dataEntrega: os.dataEntrega || os.data_entrega || '',
+    status: map[os.etapa || os.status] || 'Fila de Produção'
+  };
+}
+
+function prepararOsApi(os: OrdemServico) {
+  return {
+    propostaId: os.propostaId,
+    clienteNome: os.clienteNome,
+    itens: os.itens || [],
+    valorTotal: (os.itens || []).reduce((acc: number, item: any) => acc + Number(item.price || item.preco || 0), 0),
+    etapa: statusOsParaApi(os.status),
+    dataEntrega: os.dataEntrega,
+    observacoes: ''
+  };
+}
+
+function salvarTransacaoApi(transacao: TransacaoFinanceira) {
+  return fetch('/api/data?resource=transacoes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(uuidRegex.test(String(transacao.id)) ? transacao : { ...transacao, id: undefined })
+  })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('Falha ao salvar transacao')))
+    .catch(err => {
+      console.error('[ERPContext] erro ao salvar transacao:', err);
+      return null;
+    });
+}
+
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<ERPState>(() => {
-    const savedInventory = localStorage.getItem('@cds-inventoryItems');
-    const savedOS = localStorage.getItem('@cds-ordensServico');
-    const savedTransacoes = localStorage.getItem('@cds-transacoesFinanceiras');
-
-    let inventoryItems = savedInventory ? JSON.parse(savedInventory) : estoqueInicial;
+    let inventoryItems = estoqueInicial;
     
     inventoryItems = inventoryItems.map((item: any) => ({
       ...item,
@@ -228,8 +283,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : item.nome
     }));
     const clientes: Cliente[] = [];
-    const ordensServico = savedOS ? JSON.parse(savedOS) : [];
-    const transacoesFinanceiras = savedTransacoes ? JSON.parse(savedTransacoes) : [];
+    const ordensServico: OrdemServico[] = [];
+    const transacoesFinanceiras: TransacaoFinanceira[] = [];
 
     const propostas: Proposta[] = [
       { id: 'P1', clienteId: '1', items: [{ name: 'Galpão 200m²' }], total: 50000, status: 'Rascunho', data: '2026-03-12T10:00:00Z' },
@@ -257,14 +312,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   useEffect(() => {
-    localStorage.setItem('@cds-inventoryItems', JSON.stringify(state.inventoryItems));
-    localStorage.setItem('@cds-ordensServico', JSON.stringify(state.ordensServico));
-    localStorage.setItem('@cds-transacoesFinanceiras', JSON.stringify(state.transacoesFinanceiras));
-  }, [state.inventoryItems, state.ordensServico, state.transacoesFinanceiras]);
-
-  useEffect(() => {
     let ativo = true;
     localStorage.removeItem('@cds-clientes');
+    localStorage.removeItem('@cds-inventoryItems');
+    localStorage.removeItem('@cds-ordensServico');
+    localStorage.removeItem('@cds-transacoesFinanceiras');
     fetch('/api/clientes')
       .then(r => r.ok ? r.json() : Promise.reject(new Error('Falha ao buscar clientes')))
       .then(data => {
@@ -275,6 +327,28 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .catch(err => {
         console.error('[ERPContext] erro ao carregar clientes persistentes:', err);
       });
+    return () => { ativo = false; };
+  }, []);
+
+  useEffect(() => {
+    let ativo = true;
+    Promise.all([
+      fetch('/api/data?resource=inventory').then(r => r.ok ? r.json() : []),
+      fetch('/api/ordens').then(r => r.ok ? r.json() : []),
+      fetch('/api/data?resource=transacoes').then(r => r.ok ? r.json() : []),
+    ])
+      .then(([inventoryItemsApi, ordensApi, transacoesApi]) => {
+        if (!ativo) return;
+        const inventoryItems = Array.isArray(inventoryItemsApi) && inventoryItemsApi.length > 0 ? inventoryItemsApi : estoqueInicial;
+        setState(prev => ({
+          ...prev,
+          inventoryItems,
+          inventory: inventoryItems.reduce((acc: any, item: any) => ({ ...acc, [item.id]: item.quantidadeEstoque }), {}),
+          ordensServico: Array.isArray(ordensApi) ? ordensApi.map(osApiParaEstado) : [],
+          transacoesFinanceiras: Array.isArray(transacoesApi) ? transacoesApi : []
+        }));
+      })
+      .catch(err => console.error('[ERPContext] erro ao carregar dados persistentes:', err));
     return () => { ativo = false; };
   }, []);
 
@@ -410,6 +484,32 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         propostaId: novaProposta.id,
         status: 'Aguardando'
       };
+
+      const novaOS: OrdemServico = {
+        id: `OS-${Date.now()}`,
+        propostaId: novaProposta.id,
+        clienteNome: novaProposta.clienteNome || 'Cliente',
+        itens: novaProposta.items,
+        dataEntrega: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'Fila de Produção'
+      };
+
+      const novaTransacao: TransacaoFinanceira = {
+        id: `REC-${Date.now()}`,
+        tipo: 'RECEITA',
+        descricao: `Venda para ${cliente?.nome || 'Cliente'}`,
+        valor: totalCarrinho || 0,
+        dataVencimento: new Date().toISOString(),
+        status: 'PENDENTE',
+        origem: novaProposta.id
+      };
+
+      fetch('/api/ordens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prepararOsApi(novaOS))
+      }).catch(err => console.error('[ERPContext] erro ao salvar OS:', err));
+      salvarTransacaoApi(novaTransacao);
 
       console.log('3. Atualizando estado global...');
       setState(prev => {
@@ -568,6 +668,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: 'Aguardando'
       };
 
+      fetch('/api/ordens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prepararOsApi(novaOS))
+      }).catch(err => console.error('[ERPContext] erro ao salvar OS:', err));
+
       setState(prev => {
         const novoEstoque = { ...(prev.inventory || {}) };
         const novosPedidosCompra = [...(prev.pedidosCompra || [])];
@@ -658,6 +764,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const moverEtapaOS = (osId: string, novaEtapa: OrdemServico['status']) => {
+    fetch(`/api/ordens?id=${encodeURIComponent(osId)}&etapa=${encodeURIComponent(statusOsParaApi(novaEtapa))}`, {
+      method: 'PATCH'
+    }).catch(err => console.error('[ERPContext] erro ao mover OS:', err));
+
     setState(prev => {
       const os = prev.ordensServico.find(o => o.id === osId);
       let novoEstoque = { ...prev.inventory };
@@ -779,9 +889,19 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       transacoesFinanceiras: [...prev.transacoesFinanceiras, transacao]
     }));
+    salvarTransacaoApi(transacao).then(saved => {
+      if (!saved?.id) return;
+      setState(prev => ({
+        ...prev,
+        transacoesFinanceiras: prev.transacoesFinanceiras.map(t => t.id === transacao.id ? { ...t, id: saved.id } : t)
+      }));
+    });
   };
 
   const atualizarStatusTransacao = (id: string) => {
+    const transacao = state.transacoesFinanceiras.find(t => t.id === id);
+    if (transacao) salvarTransacaoApi({ ...transacao, status: 'PAGO' });
+
     setState(prev => ({
       ...prev,
       transacoesFinanceiras: prev.transacoesFinanceiras.map(t => 
@@ -801,19 +921,31 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         i.id === itemId ? { ...i, quantidadeEstoque: novoEstoque[itemId], custo: novoCusto } : i
       );
       
+      const transacao: TransacaoFinanceira = {
+        id: `DESP-${Date.now()}`,
+        tipo: 'DESPESA',
+        descricao: `Compra de ${item?.nome || 'Item'}`,
+        valor: quantidade * novoCusto,
+        dataVencimento: new Date().toISOString(),
+        status: 'PENDENTE',
+        origem: `COMPRA-${itemId}`
+      };
+
+      const itemAtualizado = novosInventoryItems.find(i => i.id === itemId);
+      if (itemAtualizado) {
+        fetch('/api/data?resource=inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(itemAtualizado)
+        }).catch(err => console.error('[ERPContext] erro ao salvar estoque:', err));
+      }
+      salvarTransacaoApi(transacao);
+
       return {
         ...prev,
         inventory: novoEstoque,
         inventoryItems: novosInventoryItems,
-        transacoesFinanceiras: [...(prev.transacoesFinanceiras || []), {
-          id: `DESP-${Date.now()}`,
-          tipo: 'DESPESA',
-          descricao: `Compra de ${item?.nome || 'Item'}`,
-          valor: quantidade * novoCusto,
-          dataVencimento: new Date().toISOString(),
-          status: 'PENDENTE',
-          origem: `COMPRA-${itemId}`
-        }]
+        transacoesFinanceiras: [...(prev.transacoesFinanceiras || []), transacao]
       };
     });
   };

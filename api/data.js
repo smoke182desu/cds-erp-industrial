@@ -36,6 +36,47 @@ const FUNCIONARIOS_IA = [
   }
 ];
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function soDigitos(valor) {
+  return String(valor || '').replace(/\D/g, '');
+}
+
+function variantesTelefone(valor) {
+  const d = soDigitos(valor);
+  const variantes = new Set();
+  if (!d) return [];
+  variantes.add(d);
+
+  if (d.startsWith('55')) {
+    const ddi = d.slice(0, 2);
+    const ddd = d.slice(2, 4);
+    const local = d.slice(4);
+    if (ddd.length === 2 && local.length === 9) {
+      variantes.add(`${ddi}${ddd}${local.slice(1)}`);
+      if (local[0] !== '9') variantes.add(`${ddi}${ddd}9${local.slice(1)}`);
+    }
+    if (ddd.length === 2 && local.length === 8) {
+      variantes.add(`${ddi}${ddd}9${local}`);
+    }
+  }
+
+  return [...variantes];
+}
+
+async function upsertLeadPorTelefone(payload) {
+  for (const tel of variantesTelefone(payload.telefone)) {
+    const existentes = await selectAll('leads', { filters: { telefone: `eq.${tel}` }, limit: 1 });
+    if (existentes[0]?.id) {
+      return await update('leads', 'id', existentes[0].id, {
+        ...payload,
+        telefone: existentes[0].telefone || payload.telefone
+      });
+    }
+  }
+  return await upsertByField('leads', payload, 'telefone');
+}
+
 function sanitizeClientePayload(data = {}) {
   const payload = {
     nome: data.nome || '',
@@ -59,7 +100,7 @@ function sanitizeClientePayload(data = {}) {
     dores: Array.isArray(data.dores) ? data.dores : []
   };
 
-  if (data.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(data.id))) {
+  if (data.id && UUID_RE.test(String(data.id))) {
     payload.id = data.id;
   }
   return payload;
@@ -263,7 +304,7 @@ async function handleEvolutionDiag(req, res) {
             else results.errors.push({ numero, status: batchRes.status });
             const lastMsg = rows[rows.length - 1];
             const pushNameValido = pushName && pushName !== 'CDS' ? pushName : (rows.find(r => r.tipo === 'entrada' && r.remetente !== 'CDS')?.remetente || numero);
-            await upsertByField('leads', { telefone: numero, nome: pushNameValido, etapa: 'lead_novo', ultima_mensagem: lastMsg.texto || '', criado_em: lastMsg.criado_em, atualizado_em: lastMsg.criado_em }, 'telefone');
+            await upsertLeadPorTelefone({ telefone: numero, nome: pushNameValido, etapa: 'lead_novo', ultima_mensagem: lastMsg.texto || '', criado_em: lastMsg.criado_em, atualizado_em: lastMsg.criado_em });
             results.leadsCreated++;
           }
         } catch (e) {
@@ -332,9 +373,80 @@ async function handleConfig(req, res) {
   }
 }
 
+async function handleInventory(req, res) {
+  if (req.method === 'GET') {
+    const rows = await selectAll('inventory_items', { orderBy: 'nome', limit: 1000 });
+    return res.status(200).json(rows.map(item => ({
+      id: item.id,
+      codigo: item.codigo || '',
+      nome: item.nome || '',
+      categoria: item.categoria || '',
+      unidade: item.unidade || '',
+      custo: Number(item.custo) || 0,
+      precoVenda: Number(item.preco_venda) || 0,
+      quantidadeEstoque: Number(item.quantidade_estoque) || 0,
+      estoqueMinimo: Number(item.estoque_minimo) || 0
+    })));
+  }
+
+  if (req.method === 'POST' || req.method === 'PATCH') {
+    const body = req.body || {};
+    const payload = {
+      codigo: body.codigo || '',
+      nome: body.nome || '',
+      categoria: body.categoria || '',
+      unidade: body.unidade || '',
+      custo: Number(body.custo) || 0,
+      preco_venda: Number(body.precoVenda ?? body.preco_venda) || 0,
+      quantidade_estoque: Number(body.quantidadeEstoque ?? body.quantidade_estoque) || 0,
+      estoque_minimo: Number(body.estoqueMinimo ?? body.estoque_minimo) || 0
+    };
+    const saved = payload.codigo
+      ? await upsertByField('inventory_items', payload, 'codigo')
+      : await insert('inventory_items', payload);
+    return res.status(200).json(saved);
+  }
+
+  return res.status(405).json({ error: 'Metodo nao permitido' });
+}
+
+async function handleTransacoes(req, res) {
+  if (req.method === 'GET') {
+    const rows = await selectAll('transacoes_financeiras', { orderBy: 'criado_em', limit: 1000 });
+    return res.status(200).json(rows.map(t => ({
+      id: t.id,
+      tipo: t.tipo,
+      descricao: t.descricao || '',
+      valor: Number(t.valor) || 0,
+      dataVencimento: t.data_vencimento || '',
+      status: t.status || 'PENDENTE',
+      origem: t.origem || ''
+    })));
+  }
+
+  if (req.method === 'POST' || req.method === 'PATCH') {
+    const body = req.body || {};
+    const payload = {
+      tipo: body.tipo,
+      descricao: body.descricao || '',
+      valor: Number(body.valor) || 0,
+      data_vencimento: body.dataVencimento || body.data_vencimento || null,
+      data_pagamento: body.dataPagamento || body.data_pagamento || null,
+      status: body.status || 'PENDENTE',
+      origem: body.origem || ''
+    };
+    const saved = body.id && UUID_RE.test(String(body.id))
+      ? await update('transacoes_financeiras', 'id', body.id, payload)
+      : await insert('transacoes_financeiras', payload);
+    return res.status(200).json(saved);
+  }
+
+  return res.status(405).json({ error: 'Metodo nao permitido' });
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   const resource = String(req.query.resource || '').toLowerCase();
@@ -346,7 +458,9 @@ export default async function handler(req, res) {
     if (resource === 'relink-leads') return await handleRelinkLeads(req, res);
     if (resource === 'fotos') return await handleFotos(req, res);
     if (resource === 'config') return await handleConfig(req, res);
-    return res.status(400).json({ error: 'resource invalido (use clientes|projects|calculadora|evolution-diag|relink-leads|fotos|config)' });
+    if (resource === 'inventory') return await handleInventory(req, res);
+    if (resource === 'transacoes') return await handleTransacoes(req, res);
+    return res.status(400).json({ error: 'resource invalido (use clientes|projects|calculadora|evolution-diag|relink-leads|fotos|config|inventory|transacoes)' });
   } catch (err) {
     console.error(`[data] erro (${resource}):`, err.message);
     return res.status(500).json({ error: err.message });
