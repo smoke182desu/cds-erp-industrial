@@ -441,10 +441,10 @@ export default function ConversaInteligente({
                         <span className="text-gray-400">SKU: {p.skuCatalogo}</span>
                       )}
                     </div>
-                    {!p.produtoPadrao && p.opcoesSugeridas && p.opcoesSugeridas.length > 0 && (
+                    {p.opcoesSugeridas && p.opcoesSugeridas.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-amber-200/50">
                         <p className="text-[10px] text-amber-800 font-medium mb-1 flex items-center gap-1">
-                          <Sparkles className="w-3 h-3" /> Voce quis dizer:
+                          <Sparkles className="w-3 h-3" /> {p.produtoPadrao ? 'Outras opcoes do catalogo:' : 'Voce quis dizer:'}
                         </p>
                         <div className="flex flex-col gap-1">
                           {p.opcoesSugeridas.map((opt, idx) => (

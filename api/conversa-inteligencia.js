@@ -58,6 +58,8 @@ function tituloCase(s) {
 function normalizarTexto(s) {
   return normalizarDimensoes(String(s || ''))
     .toLowerCase()
+    .replace(/(\d+)\s*kgs?\b/g, '$1kg')
+    .replace(/(\d+)\s*quilos?\b/g, '$1kg')
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -106,10 +108,16 @@ function filtrarProdutosRelevantes(produtos, palavrasChave, limite = MAX_PRODUTO
     const descN = normalizarTexto(p.descricao);
     let score = 0;
     for (const palavra of palavrasChave) {
-      if (nomeN.includes(palavra)) score += 3;
-      if (skuN.includes(palavra))  score += 4;
-      if (catN.includes(palavra))  score += 2;
-      if (descN.includes(palavra)) score += 1;
+      const variantes = [palavra];
+      if (palavra.endsWith('s')) variantes.push(palavra.slice(0, -1));
+      if (!palavra.endsWith('s')) variantes.push(`${palavra}s`);
+      for (const termo of variantes) {
+        if (!termo || termo.length < 3) continue;
+        if (nomeN.includes(termo)) score += 4;
+        if (skuN.includes(termo))  score += 5;
+        if (catN.includes(termo))  score += 2;
+        if (descN.includes(termo)) score += 1;
+      }
     }
     return { p, score };
   });
@@ -119,6 +127,87 @@ function filtrarProdutosRelevantes(produtos, palavrasChave, limite = MAX_PRODUTO
     .sort((a, b) => b.score - a.score)
     .slice(0, limite)
     .map(s => s.p);
+}
+
+function pontuarProdutoCatalogo(produtoDetectado, produtoCatalogo) {
+  const alvo = normalizarTexto([
+    produtoDetectado?.nome,
+    produtoDetectado?.descricao,
+    produtoDetectado?.skuCatalogo,
+  ].filter(Boolean).join(' '));
+  if (!alvo) return 0;
+
+  const nome = normalizarTexto(produtoCatalogo.nome);
+  const sku = normalizarTexto(produtoCatalogo.sku);
+  const categoria = normalizarTexto(produtoCatalogo.categoria);
+  const descricao = normalizarTexto(produtoCatalogo.descricao);
+  const textoCatalogo = `${nome} ${sku} ${categoria} ${descricao}`;
+  const palavras = [...new Set(alvo.split(' ').filter(p => p.length >= 3 && !STOPWORDS.has(p)))];
+
+  let score = 0;
+  for (const palavra of palavras) {
+    const variantes = [palavra];
+    if (palavra.endsWith('s')) variantes.push(palavra.slice(0, -1));
+    if (!palavra.endsWith('s')) variantes.push(`${palavra}s`);
+
+    for (const termo of variantes) {
+      if (!termo || termo.length < 3) continue;
+      if (nome.includes(termo)) score += 12;
+      if (sku.includes(termo)) score += 14;
+      if (categoria.includes(termo)) score += 5;
+      if (descricao.includes(termo)) score += 3;
+    }
+  }
+
+  const numerosAlvo = alvo.match(/\d+/g) || [];
+  for (const numero of numerosAlvo) {
+    if (textoCatalogo.includes(numero)) score += 12;
+  }
+
+  if (nome && alvo.includes(nome)) score += 30;
+  if (alvo.includes('carrinho') && textoCatalogo.includes('carrinho')) score += 18;
+  if (alvo.includes('carga') && textoCatalogo.includes('carga')) score += 10;
+  if (alvo.includes('kg') && textoCatalogo.includes('kg')) score += 8;
+
+  return score;
+}
+
+function buscarOpcoesCatalogo(produtoDetectado, catalogo, limite = 5) {
+  return (catalogo || [])
+    .map(p => ({ p, score: pontuarProdutoCatalogo(produtoDetectado, p) }))
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limite)
+    .map(({ p, score }) => ({
+      nome: p.nome,
+      sku: p.sku,
+      precoUnitario: Number(p.preco || p.precoRegular || 0),
+      probabilidade: Math.max(35, Math.min(98, Math.round(score))),
+      produtoId: p.id,
+    }));
+}
+
+function aplicarMatchesCatalogo(analise, catalogo) {
+  if (!Array.isArray(analise?.produtos) || !Array.isArray(catalogo) || catalogo.length === 0) return analise;
+
+  for (const item of analise.produtos) {
+    const opcoes = buscarOpcoesCatalogo(item, catalogo, 5);
+    if (!opcoes.length) continue;
+
+    const melhor = opcoes[0];
+    item.opcoesSugeridas = opcoes;
+
+    if (!item.produtoPadrao && melhor.probabilidade >= 70) {
+      item.produtoPadrao = true;
+      item.nome = melhor.nome;
+      item.nomeCatalogo = melhor.nome;
+      item.skuCatalogo = melhor.sku;
+      item.produtoId = melhor.produtoId;
+      item.precoUnitario = item.precoUnitario || melhor.precoUnitario || 0;
+    }
+  }
+
+  return analise;
 }
 
 // Extrai alternativas (telefones, emails, cnpjs, cpfs, ceps) da conversa bruta
@@ -525,12 +614,14 @@ export default async function handler(req, res) {
     }
     removerCamposFaltandoPreenchidos(analise);
 
+    const catalogoCompleto = CACHE_PRODUTOS.data || produtosRelevantes;
+    aplicarMatchesCatalogo(analise, catalogoCompleto);
+
     if (analise.produtos?.length) {
       // Garante Title Case em todos os nomes de produto retornados pela IA
       for (const item of analise.produtos) {
         if (item.nome) item.nome = tituloCase(item.nome);
       }
-      const catalogoCompleto = CACHE_PRODUTOS.data || produtosRelevantes;
       for (const item of analise.produtos) {
         const nomeItem = (item.nome || '').toLowerCase();
         const match = catalogoCompleto.find(p => {
