@@ -520,7 +520,7 @@ export default async function handler(req, res) {
       produtosCatalogo: totalCatalogo,
       produtosRelevantes: produtosRelevantes.length,
       palavrasChaveBusca: palavrasChave.slice(0, 20),
-      modelo: response?.data?.model || 'desconhecido',
+      modelo: 'multi-provedor',
     });
 
   } catch (err) {
