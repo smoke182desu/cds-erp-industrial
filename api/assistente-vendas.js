@@ -45,12 +45,15 @@ async function buscarContextoExtra() {
 
 async function buscarMensagens(telefone) {
   try {
-    const data = await selectAll('mensagens', { filters: { telefone: `eq.${telefone}` } });
+    const data = await selectAll('mensagens', { filters: { telefone: `eq.${telefone}` }, orderBy: 'criado_em' });
     const rows = Array.isArray(data) ? data : [];
     return rows.map(row => ({
       tipo: row.tipo || 'entrada',
       texto: row.texto || row.conteudo || '',
-    })).filter(m => m.texto.trim());
+      criadoEm: row.criado_em || row.created_at || '',
+    }))
+      .filter(m => m.texto.trim())
+      .sort((a, b) => new Date(a.criadoEm || 0) - new Date(b.criadoEm || 0));
   } catch {
     return [];
   }
@@ -61,23 +64,52 @@ async function buscarMensagens(telefone) {
 const cache = new Map();
 const CACHE_TTL = 180000; // Aumentado para 3 minutos (evita frontend spam)
 
-function getCacheKey(telefone) { return `assistente_${telefone}`; }
+function getCacheKey(telefone, mensagens = []) {
+  const ultima = mensagens[mensagens.length - 1] || {};
+  return `assistente_${telefone}_${mensagens.length}_${ultima.tipo || ''}_${ultima.criadoEm || ''}_${ultima.texto || ''}`;
+}
 
-function getCache(telefone) {
-  const key = getCacheKey(telefone);
+function getCache(telefone, mensagens) {
+  const key = getCacheKey(telefone, mensagens);
   const entry = cache.get(key);
   if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data;
   cache.delete(key);
   return null;
 }
 
-function setCache(telefone, data) {
-  cache.set(getCacheKey(telefone), { data, ts: Date.now() });
+function setCache(telefone, mensagens, data) {
+  cache.set(getCacheKey(telefone, mensagens), { data, ts: Date.now() });
   // Limpa cache antigo (max 50 entries)
   if (cache.size > 50) {
     const oldest = [...cache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
     if (oldest) cache.delete(oldest[0]);
   }
+}
+
+function obterSaudacao() {
+  const hora = Number(new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    hour12: false,
+  }).format(new Date()));
+  return hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+}
+
+function aplicarSaudacaoInicial(analise, saudacao, precisaSaudacao) {
+  if (!precisaSaudacao || !Array.isArray(analise?.sugestoes) || analise.sugestoes.length === 0) {
+    return analise;
+  }
+
+  const primeira = analise.sugestoes[0];
+  const mensagem = String(primeira?.mensagem || '').trim();
+  const semSaudacaoAntiga = mensagem
+    .replace(/^(oi|ola|olá)[!,.\s-]*/i, '')
+    .replace(/^(bom dia|boa tarde|boa noite)[!,.\s-]*/i, '')
+    .trim();
+
+  primeira.label = 'saudacao';
+  primeira.mensagem = semSaudacaoAntiga ? `${saudacao}! ${semSaudacaoAntiga}` : `${saudacao}!`;
+  return analise;
 }
 
 // Chamada com Fallback Automático
@@ -165,11 +197,10 @@ async function analisarConversa(mensagens, lead) {
     ? ultimas.map(m => `[${m.tipo === 'saida' ? 'JEAN' : 'CLIENTE'}]: ${m.texto}`).join('\n')
     : '(sem mensagens ainda)';
 
-  // Saudacao baseada no horario de Brasilia (UTC-3)
-  const agora = new Date(Date.now() - 3 * 60 * 60 * 1000);
-  const hora = agora.getUTCHours();
-  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+  const saudacao = obterSaudacao();
   const nomeCliente = (lead.nome || '').split(' ')[0] || 'cliente';
+  const ultimaMensagem = ultimas[ultimas.length - 1];
+  const precisaSaudacao = !ultimaMensagem || ultimaMensagem.tipo !== 'saida';
 
   let observacoesAtuais = lead.observacoes || '';
   let memoriaAtual = '';
@@ -202,6 +233,7 @@ Sua PRIMEIRA TAREFA ABSOLUTA é a TRIAGEM DE CONTEXTO para ativar o avatar corre
 
 DIRETRIZES PARA AS MENSAGENS SUGERIDAS (Efeito Doppelgänger):
 - Espelhe a vibe da pessoa (se formal seja direto, se informal seja ágil estilo WhatsApp: "vc", "pra", "blz").
+- Se a última mensagem foi do CLIENTE, a primeira sugestão deve começar obrigatoriamente com a saudação do horário atual ("Bom dia", "Boa tarde" ou "Boa noite").
 - REGRA DE OURO: Textos extremamente curtos! MÁXIMO ABSOLUTO DE 2 LINHAS (cerca de 15 a 20 palavras). NUNCA escreva parágrafos.
 - MANTENHA O CONTROLE: Termine a sugestão com uma pergunta ou diretriz que faça a conversa avançar no sentido estratégico do Avatar ativo.
 
@@ -211,6 +243,7 @@ Analise o momento exato da conversa e retorne APENAS um JSON válido.`;
 ${CONHECIMENTO_EMPRESA}${extra}
 LEAD: nome="${lead.nome || ''}" empresa="${lead.empresa || ''}" etapa=${etapa}
 HORÁRIO: ${saudacao} | NOME CLIENTE: ${nomeCliente}
+ÚLTIMA MENSAGEM FOI DO: ${precisaSaudacao ? 'CLIENTE - primeira sugestão deve iniciar com "' + saudacao + '!"' : 'JEAN - não precisa repetir saudação'}
 
 MEMÓRIA DE LONGO PRAZO DA IA (LTM):
 ${memoriaAtual ? memoriaAtual : '(Nenhuma memória anterior registrada para este contato. Inicie a análise do zero.)'}
@@ -242,6 +275,7 @@ REGRAS CRÍTICAS DE ESTRUTURA:
 1. IMPORTANTE: Crie labels (Ação 1, Ação 2, etc) personalizadas para o contexto. Não use "Qualificação" ou "Apresentar Solução" se for um papo com funcionário!
 2. FUNCIONÁRIO / PESSOAL: Use etapa "funcionario", "nao_se_aplica" ou "fornecedor". Não aplique SPIN. Fale do assunto que está sendo falado na conversa (ex: dia de trabalho, faltas, etc).
 3. PÓS-VENDA: Se a venda já foi concluída, use "pos_venda" e apenas alinhe a entrega.
+4. SAUDAÇÃO: Quando a última mensagem for do CLIENTE, a sugestão 1 deve ter label "saudacao" e a mensagem deve começar com "${saudacao}!" antes de qualquer pergunta.
 
 EXEMPLOS DE TOM (INSPIRAÇÃO APENAS - NÃO COPIE):
 [MOMENTO: VENDAS - PROBLEMA]
@@ -266,6 +300,8 @@ ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conve
     if (m) { try { analise = JSON.parse(m[0]); } catch {} }
     if (!analise) throw new Error('JSON invalido: ' + raw.substring(0, 200));
   }
+
+  analise = aplicarSaudacaoInicial(analise, saudacao, precisaSaudacao);
 
   // Persistir Memoria no Supabase em background
   if (analise && analise.novaMemoria && lead.id) {
@@ -292,18 +328,19 @@ export default async function handler(req, res) {
     const { telefone, nome, empresa, etapa } = req.body || {};
     if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) return res.status(503).json({ error: 'Nenhuma API KEY configurada.' });
 
-    // Verifica cache antes de chamar Groq
-    const cached = telefone ? getCache(telefone) : null;
+    const mensagens = telefone ? await buscarMensagens(telefone) : [];
+
+    // Verifica cache para esta versao exata da conversa antes de chamar IA
+    const cached = telefone ? getCache(telefone, mensagens) : null;
     if (cached) {
       return res.status(200).json(cached);
     }
 
-    const mensagens = telefone ? await buscarMensagens(telefone) : [];
     const analise = await analisarConversa(mensagens, { nome, empresa, etapa, telefone });
     const resultado = { analise, totalMensagens: mensagens.length };
 
     // Armazena no cache
-    if (telefone) setCache(telefone, resultado);
+    if (telefone) setCache(telefone, mensagens, resultado);
 
     return res.status(200).json(resultado);
   } catch (e) {
