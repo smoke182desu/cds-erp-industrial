@@ -457,6 +457,7 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
   const etapaDetectada = analise?.etapaDetectada as EtapaFunil | undefined;
   const etapaLabel = ETAPAS_FUNIL.find(e => e.id === etapaDetectada)?.label;
   const deveAvancar = analise?.deveAvancarEtapa && etapaDetectada && etapaDetectada !== lead.etapa;
+  const checkupAtendimento = analise?.diretorVendas?.checkupAtendimento;
 
   return (
     <div className="flex flex-col h-full bg-white border-l overflow-hidden">
@@ -547,6 +548,42 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
                 )}
                 {analise.diretorVendas.recomendacaoDono && (
                   <p className="text-xs text-slate-700 leading-relaxed">{analise.diretorVendas.recomendacaoDono}</p>
+                )}
+                {checkupAtendimento && (
+                  <div className="mt-2 rounded-lg border border-white bg-white p-2">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Checkup do atendimento</p>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase ${
+                        checkupAtendimento.prioridade === 'alta'
+                          ? 'bg-red-100 text-red-700'
+                          : checkupAtendimento.prioridade === 'media'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {checkupAtendimento.prioridade || 'baixa'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-700 leading-relaxed">{checkupAtendimento.motivo}</p>
+                    {checkupAtendimento.prazoResposta && (
+                      <p className="text-[10px] text-slate-500 mt-1">Prazo: <span className="font-semibold">{checkupAtendimento.prazoResposta}</span></p>
+                    )}
+                    {checkupAtendimento.tarefas?.length > 0 && (
+                      <div className="flex flex-col gap-1 mt-2">
+                        {checkupAtendimento.tarefas.slice(0, 3).map((t: any, i: number) => (
+                          <div key={i} className="rounded-md bg-slate-50 border border-slate-100 px-2 py-1">
+                            <p className="text-[11px] font-semibold text-slate-700">{t.titulo}</p>
+                            <p className="text-[10px] text-slate-500">{t.prazo}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {checkupAtendimento.avaliacaoVenda && (
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-slate-500">Nota atendimento</span>
+                        <span className="text-xs font-bold text-slate-800">{checkupAtendimento.avaliacaoVenda.nota}/100</span>
+                      </div>
+                    )}
+                  </div>
                 )}
                 {analise.diretorVendas.dadosFaltantesProduto?.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
@@ -805,6 +842,135 @@ function LeadItem({ lead, ativo, naoLido, onClick }: {
 }
 
 // ─── Modal de Novo Lead ────────────────────────────────────────────────────
+function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => void }) {
+  const [checkup, setCheckup] = useState<any>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState('');
+
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro('');
+    try {
+      const res = await fetch('/api/assistente-vendas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modo: 'checkup-geral' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erro no checkup');
+      setCheckup(json.checkupGeral);
+    } catch (e: any) {
+      setErro(e.message || 'Erro no checkup');
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+    const id = setInterval(carregar, 120000);
+    return () => clearInterval(id);
+  }, [carregar]);
+
+  const indicadores = checkup?.indicadores || {};
+  const cobrancas = Array.isArray(checkup?.cobrancas) ? checkup.cobrancas : [];
+  const metas = Array.isArray(checkup?.metas) ? checkup.metas : [];
+
+  const prioridadeClasse = (prioridade?: string) => {
+    if (prioridade === 'alta' || prioridade === 'critica') return 'border-red-200 bg-red-50 text-red-700';
+    if (prioridade === 'media') return 'border-amber-200 bg-amber-50 text-amber-700';
+    return 'border-slate-200 bg-slate-50 text-slate-600';
+  };
+
+  return (
+    <div className="border-b bg-slate-50 p-2">
+      <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-700">Bruno - Checkup geral</p>
+            <p className="text-[10px] text-slate-500 truncate">{checkup?.resumoGerencial || 'Varrendo vendas e cobrancas...'}</p>
+          </div>
+          <button
+            onClick={carregar}
+            disabled={carregando}
+            title="Atualizar checkup"
+            className="h-7 w-7 flex-shrink-0 rounded-md border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {carregando ? '...' : '↻'}
+          </button>
+        </div>
+
+        {erro && (
+          <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700">{erro}</p>
+        )}
+
+        <div className="mt-2 grid grid-cols-3 gap-1">
+          <div className="rounded-md bg-red-50 px-2 py-1">
+            <p className="text-sm font-bold text-red-700">{indicadores.altaPrioridade || 0}</p>
+            <p className="text-[9px] uppercase text-red-500">urgentes</p>
+          </div>
+          <div className="rounded-md bg-amber-50 px-2 py-1">
+            <p className="text-sm font-bold text-amber-700">{indicadores.respostasPendentes || 0}</p>
+            <p className="text-[9px] uppercase text-amber-500">respostas</p>
+          </div>
+          <div className="rounded-md bg-indigo-50 px-2 py-1">
+            <p className="text-sm font-bold text-indigo-700">{indicadores.followUps || 0}</p>
+            <p className="text-[9px] uppercase text-indigo-500">follow-up</p>
+          </div>
+        </div>
+
+        {metas.length > 0 && (
+          <div className="mt-2 flex flex-col gap-1.5">
+            {metas.slice(0, 3).map((meta: any, i: number) => (
+              <div key={i} className="rounded-md bg-slate-50 px-2 py-1.5">
+                <div className="flex items-center justify-between gap-2 text-[10px]">
+                  <span className="truncate font-semibold text-slate-600">{meta.nome}</span>
+                  <span className={`flex-shrink-0 rounded px-1.5 py-0.5 font-semibold ${
+                    meta.status === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                  }`}>
+                    {meta.atingido || 0}%
+                  </span>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className={meta.status === 'ok' ? 'h-full bg-emerald-500' : 'h-full bg-amber-500'}
+                    style={{ width: `${Math.max(0, Math.min(100, meta.atingido || 0))}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-[9px] text-slate-500">
+                  Atual: {meta.atual}{meta.unidade ? ` ${meta.unidade}` : ''} | Falta: {meta.falta}{meta.unidade ? ` ${meta.unidade}` : ''}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-2 flex max-h-48 flex-col gap-1 overflow-y-auto">
+          {cobrancas.length === 0 && !carregando && (
+            <p className="rounded-md bg-emerald-50 px-2 py-1.5 text-[10px] font-medium text-emerald-700">
+              Sem cobranca critica agora.
+            </p>
+          )}
+          {cobrancas.slice(0, 5).map((c: any, i: number) => (
+            <button
+              key={`${c.leadId || i}-${c.tipo}`}
+              onClick={() => c.leadId && onAbrirLead(c.leadId)}
+              className={`rounded-md border px-2 py-1.5 text-left transition-colors hover:bg-white ${prioridadeClasse(c.prioridade)}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-[11px] font-bold">{c.nome || c.telefone || 'Lead'}</p>
+                <span className="flex-shrink-0 text-[9px] font-bold uppercase">{c.prioridade}</span>
+              </div>
+              <p className="mt-0.5 text-[10px] font-semibold">{c.titulo}</p>
+              <p className="mt-0.5 line-clamp-2 text-[10px] opacity-80">{c.prazoTexto} - {c.acao}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NovoLeadModal({ onClose, onSave }: { onClose: () => void; onSave: (l: Omit<Lead,'id'|'criadoEm'>) => void }) {
   const [form, setForm] = useState({ nome: '', empresa: '', email: '', telefone: '', observacoes: '', etapa: 'lead_novo' as EtapaFunil, origem: 'manual' as const, valor: '' });
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
@@ -1345,6 +1511,12 @@ export function Leads() {
     setLeadAtivo(atualizado);
     setLeads(prev => prev.map(l => l.id === leadAtivo.id ? atualizado : l));
   };
+  const abrirLeadPorId = useCallback((leadId: string) => {
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+    setLeadAtivo(lead);
+    marcarComoLido(lead);
+  }, [leads, marcarComoLido]);
 
   const filtrados = leads
     .filter(l => {
@@ -1391,6 +1563,7 @@ export function Leads() {
             <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar lead..."
               className="w-full text-sm border rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
           </div>
+          <CheckupBrunoGeral onAbrirLead={abrirLeadPorId} />
           <div className="flex-1 overflow-y-auto">
             {loading && <div className="text-center text-xs text-gray-400 py-8">Carregando...</div>}
             {!loading && filtrados.length === 0 && (

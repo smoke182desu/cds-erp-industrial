@@ -5,7 +5,7 @@ const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
-const PROMPT_VERSION = 'momento-conversa-v4';
+const PROMPT_VERSION = 'momento-conversa-v5-checkup';
 
 const GEMINI_MODELS = [
   'gemini-2.5-flash',
@@ -136,6 +136,380 @@ function sugestoesDepoisDaRespostaDoJean(ultimaMensagem) {
     { label: 'Próximo passo', mensagem: 'Se fizer sentido, avanço com o orçamento.' },
     { label: 'Confirmar', mensagem: 'Pode me confirmar se ficou claro?' },
   ];
+}
+
+function minutosDesde(data) {
+  const t = new Date(data || 0).getTime();
+  if (!Number.isFinite(t) || t <= 0) return 0;
+  return Math.max(0, Math.round((Date.now() - t) / 60000));
+}
+
+function textoIndicaOrcamento(texto) {
+  return /\b(valor|preco|preço|prazo|entrega|orcamento|orçamento|quanto fica|quanto custa)\b/i.test(String(texto || ''));
+}
+
+function gerarCheckupAtendimento(analise, mensagens) {
+  const lista = Array.isArray(mensagens) ? mensagens : [];
+  const ultima = lista[lista.length - 1] || null;
+  const ultimaCliente = [...lista].reverse().find(m => m.tipo !== 'saida') || null;
+  const ultimaJean = [...lista].reverse().find(m => m.tipo === 'saida') || null;
+  const pendenteCliente = !!ultima && ultima.tipo !== 'saida';
+  const minutos = ultima ? minutosDesde(ultima.criadoEm) : 0;
+  const faltantes = analise?.diretorVendas?.dadosFaltantesProduto || [];
+  const pediuOrcamento = textoIndicaOrcamento(ultimaCliente?.texto);
+
+  let status = 'em_acompanhamento';
+  let prioridade = 'media';
+  let prazoResposta = 'Hoje';
+  let motivo = 'Atendimento em andamento.';
+  const tarefas = [];
+
+  if (!ultima) {
+    status = 'sem_conversa';
+    prioridade = 'baixa';
+    prazoResposta = 'Sem prazo';
+    motivo = 'Lead sem conversa recente.';
+  } else if (pendenteCliente) {
+    status = 'responder_cliente';
+    prioridade = minutos >= 60 || pediuOrcamento ? 'alta' : 'media';
+    prazoResposta = minutos >= 60 || pediuOrcamento ? 'Responder agora' : 'Responder em ate 15 min';
+    motivo = pediuOrcamento
+      ? 'Cliente pediu valor/prazo e precisa de retorno comercial.'
+      : 'Cliente foi o ultimo a falar e aguarda resposta.';
+    tarefas.push({
+      tipo: pediuOrcamento ? 'orcamento' : 'resposta',
+      titulo: pediuOrcamento ? 'Responder valor/prazo ou pedir dado faltante' : 'Responder cliente',
+      prazo: prazoResposta,
+    });
+  } else {
+    status = 'aguardando_cliente';
+    prioridade = 'baixa';
+    prazoResposta = 'Relembrar em 2 horas uteis';
+    motivo = 'Jean foi o ultimo a responder. Acompanhar retorno do cliente.';
+    tarefas.push({
+      tipo: 'follow_up',
+      titulo: 'Relembrar cliente se nao responder',
+      prazo: prazoResposta,
+    });
+  }
+
+  if (faltantes.length > 0) {
+    tarefas.push({
+      tipo: 'coleta_dados',
+      titulo: `Coletar dados faltantes: ${faltantes.slice(0, 3).join(', ')}`,
+      prazo: pendenteCliente ? 'Na proxima resposta' : 'Antes do orcamento',
+    });
+  }
+
+  const parametrosVenda = [
+    'Produto/familia identificado corretamente',
+    'Medidas e quantidade confirmadas',
+    'Carga/uso/ambiente avaliados quando relevante',
+    'Material e acabamento definidos',
+    'Valor, prazo e proximo passo alinhados',
+  ];
+
+  const riscos = [];
+  if (pendenteCliente) riscos.push('Cliente aguardando resposta.');
+  if (pediuOrcamento && faltantes.length > 0) riscos.push('Orcamento pode sair impreciso sem dados faltantes.');
+  if (!ultimaJean) riscos.push('Jean ainda nao conduziu o atendimento.');
+
+  const notaAtendimento = Math.max(45, Math.min(95,
+    80
+    - (pendenteCliente ? 20 : 0)
+    - (faltantes.length > 0 ? 10 : 0)
+    + (ultimaJean ? 5 : 0)
+  ));
+
+  return {
+    status,
+    prioridade,
+    prazoResposta,
+    motivo,
+    tarefas: tarefas.slice(0, 4),
+    parametrosVenda,
+    avaliacaoVenda: {
+      nota: notaAtendimento,
+      pontosFortes: ultimaJean ? ['Jean respondeu e manteve a conversa ativa.'] : [],
+      riscos,
+      cobranca: pendenteCliente ? 'Responder este cliente dentro do prazo.' : 'Monitorar retorno e fazer follow-up no prazo.',
+    },
+  };
+}
+
+function aplicarCheckupAtendimento(analise, mensagens) {
+  if (!analise) return analise;
+  if (!analise.diretorVendas) analise.diretorVendas = {};
+  analise.diretorVendas.checkupAtendimento = gerarCheckupAtendimento(analise, mensagens);
+  return analise;
+}
+
+function telefoneKey(valor) {
+  return String(valor || '').replace(/\D/g, '');
+}
+
+function normalizarLead(row = {}) {
+  return {
+    id: String(row.id || ''),
+    nome: row.nome || row.contato_nome || row.telefone || 'Lead',
+    telefone: row.telefone || '',
+    empresa: row.empresa || '',
+    etapa: row.etapa || row.status_funil || 'lead_novo',
+    valor: Number(row.valor || row.valor_estimado || 0) || 0,
+    criadoEm: row.criado_em || row.criadoEm || row.created_at || '',
+    atualizadoEm: row.atualizado_em || row.atualizadoEm || row.updated_at || '',
+    ultimaMensagem: row.ultima_mensagem || row.ultimaMensagem || row.mensagem || '',
+    ultimaHora: row.ultima_hora || row.ultimaHora || row.atualizado_em || row.criado_em || '',
+  };
+}
+
+function normalizarMensagem(row = {}) {
+  return {
+    telefone: telefoneKey(row.telefone || row.remote_jid || row.numero || ''),
+    tipo: row.tipo || row.direcao || 'entrada',
+    texto: row.texto || row.conteudo || row.body || '',
+    criadoEm: row.criado_em || row.criadoEm || row.created_at || '',
+  };
+}
+
+function prioridadePeso(prioridade) {
+  return prioridade === 'critica' ? 0 : prioridade === 'alta' ? 1 : prioridade === 'media' ? 2 : 3;
+}
+
+function pct(valor, total) {
+  if (!total) return valor ? 0 : 100;
+  return Math.max(0, Math.min(100, Math.round((valor / total) * 100)));
+}
+
+function metaReducao(nome, alvoZero, atual, unidade, descricao) {
+  const atingido = atual <= alvoZero ? 100 : 0;
+  return {
+    nome,
+    direcao: 'reducao',
+    alvo: alvoZero,
+    atual,
+    falta: Math.max(0, atual - alvoZero),
+    unidade,
+    atingido,
+    status: atingido >= 100 ? 'ok' : 'cobrar',
+    descricao,
+  };
+}
+
+function metaPercentual(nome, alvo, atual, unidade, descricao) {
+  const atingido = alvo > 0 ? pct(atual, alvo) : 100;
+  return {
+    nome,
+    direcao: 'aumento',
+    alvo,
+    atual,
+    falta: Math.max(0, alvo - atual),
+    unidade,
+    atingido,
+    status: atingido >= 100 ? 'ok' : atingido >= 70 ? 'acompanhar' : 'cobrar',
+    descricao,
+  };
+}
+
+function etapaAtiva(etapa) {
+  return !['fechado_ganho', 'fechado_perdido', 'pos_venda'].includes(String(etapa || ''));
+}
+
+function encontrarMensagensDoLead(mensagensPorTelefone, telefone) {
+  const key = telefoneKey(telefone);
+  if (!key) return [];
+  if (mensagensPorTelefone.has(key)) return mensagensPorTelefone.get(key);
+
+  const tail = key.slice(-10);
+  if (!tail) return [];
+  for (const [mapKey, lista] of mensagensPorTelefone.entries()) {
+    if (mapKey.endsWith(tail) || tail.endsWith(mapKey.slice(-10))) return lista;
+  }
+  return [];
+}
+
+function prazoISO(minutosAFrente) {
+  return new Date(Date.now() + minutosAFrente * 60000).toISOString();
+}
+
+function montarCobranca({ lead, tipo, prioridade, titulo, motivo, prazoTexto, prazoMinutos, acao, minutosParado = 0 }) {
+  return {
+    leadId: lead.id,
+    nome: lead.nome,
+    telefone: lead.telefone,
+    empresa: lead.empresa,
+    etapa: lead.etapa,
+    etapaLabel: ETAPAS_LABEL[lead.etapa] || lead.etapa || 'Lead',
+    tipo,
+    prioridade,
+    titulo,
+    motivo,
+    prazoTexto,
+    prazoEm: prazoISO(prazoMinutos),
+    acao,
+    minutosParado,
+  };
+}
+
+async function gerarCheckupGeralVendas() {
+  const [leadsRaw, mensagensRaw] = await Promise.all([
+    selectAll('leads', { orderBy: 'atualizado_em', limit: 300 }),
+    selectAll('mensagens', { orderBy: 'criado_em', limit: 1200 }),
+  ]);
+
+  const mensagensPorTelefone = new Map();
+  for (const row of Array.isArray(mensagensRaw) ? mensagensRaw : []) {
+    const msg = normalizarMensagem(row);
+    if (!msg.telefone) continue;
+    const lista = mensagensPorTelefone.get(msg.telefone) || [];
+    lista.push(msg);
+    mensagensPorTelefone.set(msg.telefone, lista);
+  }
+  for (const lista of mensagensPorTelefone.values()) {
+    lista.sort((a, b) => new Date(a.criadoEm || 0) - new Date(b.criadoEm || 0));
+  }
+
+  const todosLeads = (Array.isArray(leadsRaw) ? leadsRaw : []).map(normalizarLead).filter(lead => lead.id);
+  const leads = todosLeads.filter(lead => etapaAtiva(lead.etapa));
+
+  const cobrancas = [];
+  let aguardandoCliente = 0;
+  let semMovimento = 0;
+  let propostasAbertas = 0;
+  let orcamentosPendentes = 0;
+
+  for (const lead of leads) {
+    if (lead.etapa === 'proposta_enviada' || lead.etapa === 'negociacao') propostasAbertas++;
+
+    const mensagens = encontrarMensagensDoLead(mensagensPorTelefone, lead.telefone);
+    const ultima = mensagens[mensagens.length - 1] || null;
+    const ultimaCliente = [...mensagens].reverse().find(m => m.tipo !== 'saida') || null;
+    const ultimaJean = [...mensagens].reverse().find(m => m.tipo === 'saida') || null;
+    const textoAtual = ultimaCliente?.texto || lead.ultimaMensagem || '';
+    const pediuOrcamento = textoIndicaOrcamento(textoAtual);
+
+    if (!ultima) {
+      const minutosLead = minutosDesde(lead.atualizadoEm || lead.criadoEm);
+      if (minutosLead >= 1440) {
+        semMovimento++;
+        cobrancas.push(montarCobranca({
+          lead,
+          tipo: 'sem_movimento',
+          prioridade: 'baixa',
+          titulo: 'Lead sem conversa registrada',
+          motivo: 'Lead ativo sem atendimento recente registrado no WhatsApp.',
+          prazoTexto: 'Revisar hoje',
+          prazoMinutos: 240,
+          acao: 'Conferir se precisa primeiro contato, cadastro ou descarte.',
+          minutosParado: minutosLead,
+        }));
+      }
+      continue;
+    }
+
+    const minutosUltima = minutosDesde(ultima.criadoEm);
+    if (ultima.tipo !== 'saida') {
+      const critica = minutosUltima >= 60 || pediuOrcamento;
+      if (pediuOrcamento) orcamentosPendentes++;
+      cobrancas.push(montarCobranca({
+        lead,
+        tipo: pediuOrcamento ? 'orcamento_pendente' : 'resposta_pendente',
+        prioridade: critica ? 'alta' : 'media',
+        titulo: pediuOrcamento ? 'Cliente pediu valor/prazo' : 'Cliente aguardando resposta',
+        motivo: pediuOrcamento
+          ? 'Pedido comercial claro. Bruno cobra retorno com valor, prazo ou dado faltante.'
+          : 'A ultima mensagem foi do cliente. Atendimento precisa voltar para o vendedor.',
+        prazoTexto: critica ? 'Responder agora' : 'Responder em ate 15 min',
+        prazoMinutos: critica ? 0 : 15,
+        acao: pediuOrcamento
+          ? 'Responder valor/prazo ou pedir somente o dado faltante para orcar.'
+          : 'Responder objetivamente e conduzir para o proximo dado.',
+        minutosParado: minutosUltima,
+      }));
+      continue;
+    }
+
+    aguardandoCliente++;
+    const minutosDesdeJean = ultimaJean ? minutosDesde(ultimaJean.criadoEm) : minutosUltima;
+    if ((lead.etapa === 'proposta_enviada' || lead.etapa === 'negociacao') && minutosDesdeJean >= 1440) {
+      cobrancas.push(montarCobranca({
+        lead,
+        tipo: 'follow_up_proposta',
+        prioridade: 'alta',
+        titulo: 'Cobrar retorno de proposta',
+        motivo: 'Proposta/negociacao parada ha mais de 24h sem retorno do cliente.',
+        prazoTexto: 'Fazer follow-up hoje',
+        prazoMinutos: 120,
+        acao: 'Chamar o cliente com proximo passo simples: aprovar, ajustar ou descartar.',
+        minutosParado: minutosDesdeJean,
+      }));
+    } else if (minutosDesdeJean >= 360) {
+      cobrancas.push(montarCobranca({
+        lead,
+        tipo: 'follow_up',
+        prioridade: 'media',
+        titulo: 'Relembrar cliente',
+        motivo: 'Vendedor respondeu e o cliente ainda nao voltou.',
+        prazoTexto: 'Relembrar ainda hoje',
+        prazoMinutos: 240,
+        acao: 'Enviar follow-up curto sem repetir perguntas ja feitas.',
+        minutosParado: minutosDesdeJean,
+      }));
+    }
+  }
+
+  cobrancas.sort((a, b) => {
+    const p = prioridadePeso(a.prioridade) - prioridadePeso(b.prioridade);
+    if (p !== 0) return p;
+    return (b.minutosParado || 0) - (a.minutosParado || 0);
+  });
+
+  const respostasPendentes = cobrancas.filter(c => c.tipo === 'resposta_pendente' || c.tipo === 'orcamento_pendente').length;
+  const followUps = cobrancas.filter(c => c.tipo === 'follow_up' || c.tipo === 'follow_up_proposta').length;
+  const altaPrioridade = cobrancas.filter(c => c.prioridade === 'alta' || c.prioridade === 'critica').length;
+  const ganhos = todosLeads.filter(lead => lead.etapa === 'fechado_ganho').length;
+  const perdidos = todosLeads.filter(lead => lead.etapa === 'fechado_perdido').length;
+  const totalComFechamento = leads.length + ganhos + perdidos;
+  const taxaConversao = totalComFechamento > 0 ? Math.round((ganhos / totalComFechamento) * 100) : 0;
+  const metaConversao = Number(process.env.META_CONVERSAO_CRM || 20);
+  const atendimentoSemPendencia = leads.length ? Math.max(0, leads.length - respostasPendentes) : 0;
+  const percentualFilaRespondida = pct(atendimentoSemPendencia, leads.length);
+
+  return {
+    atualizadoEm: new Date().toISOString(),
+    resumoGerencial: altaPrioridade > 0
+      ? `Bruno encontrou ${altaPrioridade} atendimento(s) que precisam de acao imediata.`
+      : 'Fila sem urgencia critica. Manter follow-ups e padrao de atendimento.',
+    indicadores: {
+      leadsAtivos: leads.length,
+      respostasPendentes,
+      orcamentosPendentes,
+      followUps,
+      propostasAbertas,
+      aguardandoCliente,
+      semMovimento,
+      altaPrioridade,
+      taxaConversao,
+      ganhos,
+      perdidos,
+      percentualFilaRespondida,
+    },
+    parametros: [
+      'Responder cliente em ate 15 min quando a ultima mensagem for dele.',
+      'Pedido de valor/prazo deve virar orcamento ou pergunta de dado faltante no mesmo atendimento.',
+      'Proposta enviada nao pode ficar mais de 24h sem follow-up.',
+      'Produto sob medida precisa de medida, quantidade, material, acabamento e uso/carga quando relevante.',
+      'Lead sem movimento precisa ser reativado, qualificado ou descartado.',
+    ],
+    metas: [
+      metaPercentual('Fila respondida', 100, percentualFilaRespondida, '%', 'Meta: todos os leads ativos sem cliente aguardando resposta.'),
+      metaReducao('Pendencias de resposta', 0, respostasPendentes, 'lead(s)', 'Meta: nenhuma conversa com a ultima mensagem do cliente parada.'),
+      metaReducao('Orcamentos sem decisao', 0, orcamentosPendentes, 'pedido(s)', 'Meta: todo pedido de valor/prazo vira orcamento ou coleta de dado faltante.'),
+      metaReducao('Follow-ups atrasados', 0, followUps, 'lead(s)', 'Meta: proposta e negociacao acompanhadas no prazo.'),
+      metaPercentual('Conversao CRM', metaConversao, taxaConversao, '%', 'Meta gerencial configuravel por META_CONVERSAO_CRM.'),
+    ],
+    cobrancas: cobrancas.slice(0, 30),
+  };
 }
 
 function normalizarSugestoes(analise, saudacao, precisaSaudacao, contexto = {}) {
@@ -274,6 +648,12 @@ FUNCIONARIOS IA:
 
 Cada funcionario deve agir com informacoes atuais e relevantes do cargo. Giorno vende com clareza e perguntas curtas. Bruno pensa como gerente de vendas industrial, sem floreios, separando atendimento normal, produto de catalogo, sob medida e oportunidade de novo produto.
 
+REGRAS DE PAPEL:
+- Eles nao sao agentes genericos. Cada um tem conhecimento profundo do cargo e deve agir com foco proprio.
+- Giorno pensa como vendedor de industria metalica: qualifica necessidade, conduz valor/prazo e evita pergunta repetida.
+- Bruno pensa como gerente/diretor comercial: mede atendimento, compara contra metas, cobra vendedores, organiza prioridades, aponta riscos e sugere acao para o dono.
+- Bruno nunca escreve mensagem para cliente. Bruno fala para o superior com gestao, parametros, metas e cobrancas.
+
 Sua PRIMEIRA TAREFA ABSOLUTA é a TRIAGEM DE CONTEXTO para ativar o avatar correto:
 
 1. [GIORNO VENDEDOR] -> O contato quer COMPRAR escadas/materiais?
@@ -343,6 +723,8 @@ QUESTIONARIO IDEAL POR FAMILIA:
 - Sob medida em aco: a CDS fabrica qualquer produto em aco sob medida. Pergunte finalidade, medidas, carga, ambiente, acabamento e quantidade.
 
 PAPEL DO GERENTE DE VENDAS IA (BRUNO BUCCIARATI):
+- Cobrar o atendimento: prazo de resposta, follow-up, qualidade da venda, risco de perder cliente e proxima acao do vendedor.
+- Comparar a conversa contra parametros comerciais: produto correto, medida, quantidade, material, acabamento, uso/carga, valor, prazo e proximo passo.
 - Avaliar se esta conversa indica produto novo ideal para fabricar/cadastrar.
 - Distinguir caso isolado de demanda com potencial recorrente.
 - Sugerir ao dono ação objetiva: acompanhar, cadastrar produto, criar protótipo, tratar como sob medida ou priorizar orçamento.
@@ -428,6 +810,7 @@ ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conve
   }
 
   analise = normalizarSugestoes(analise, saudacao, precisaSaudacao, { ultimaMensagem });
+  analise = aplicarCheckupAtendimento(analise, mensagens);
 
   // Persistir Memoria no Supabase em background
   if (analise && analise.novaMemoria && lead.id) {
@@ -451,7 +834,13 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
   try {
-    const { telefone, nome, empresa, etapa } = req.body || {};
+    const { telefone, nome, empresa, etapa, modo } = req.body || {};
+
+    if (modo === 'checkup-geral') {
+      const checkupGeral = await gerarCheckupGeralVendas();
+      return res.status(200).json({ checkupGeral });
+    }
+
     if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) return res.status(503).json({ error: 'Nenhuma API KEY configurada.' });
 
     const mensagens = telefone ? await buscarMensagens(telefone) : [];
