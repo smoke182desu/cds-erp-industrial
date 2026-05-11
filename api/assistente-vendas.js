@@ -153,7 +153,10 @@ async function chamarIAComFallback(systemPrompt, userPrompt) {
 }
 
 async function analisarConversa(mensagens, lead) {
-  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no servidor.');
+  if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) {
+    throw new Error('Nenhuma API KEY (Groq, Gemini ou OpenAI) configurada no servidor.');
+  }
+
   const etapa = ETAPAS_LABEL[lead.etapa] || lead.etapa;
   const contextoExtra = await buscarContextoExtra();
   const extra = contextoExtra ? `\nEXTRA: ${contextoExtra}` : '';
@@ -254,10 +257,6 @@ ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conve
 
   let resp;
   
-  if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) {
-    throw new Error('Nenhuma API KEY (Groq, Gemini ou OpenAI) configurada no servidor.');
-  }
-
   resp = await chamarIAComFallback(systemPrompt, userPrompt);
   
   const raw = resp.data?.choices?.[0]?.message?.content || '';

@@ -252,7 +252,9 @@ async function consultarCEP(cep) {
 }
 
 async function analisarConversaComGroq(conversa, produtosRelevantes, leadInfo, metaCatalogo = {}) {
-  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY nao configurada no servidor');
+  if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) {
+    throw new Error('Nenhuma API KEY (Groq, Gemini ou OpenAI) configurada no servidor');
+  }
 
   const catalogoResumo = produtosRelevantes.length > 0
     ? produtosRelevantes.map(p => {
@@ -531,11 +533,11 @@ export default async function handler(req, res) {
       analise: {
         cliente: { nome: leadNome || null, telefone: tel, empresa: leadEmpresa || null },
         produtos: [],
-        resumoConversa: `[DEBUG Groq] ${msg}`,
+        resumoConversa: `[DEBUG IA] ${msg}`,
         confianca: 5,
         prontoParaProposta: false,
       },
-      aviso: `[DEBUG Groq] ${msg}`,
+      aviso: `[DEBUG IA] ${msg}`,
     });
   }
 }
