@@ -15,12 +15,38 @@ export const config = {
 
 // Mapeia campos do Supabase para o formato esperado pelo frontend
 function inferMediaType(row) {
+  // 1. Coluna explícita
   if (row.media_type) return row.media_type;
-  const texto = String(row.texto || row.conteudo || '').toLowerCase();
+
+  // 2. Texto contém marcador de mídia
+  const texto = String(row.texto || row.conteudo || '').toLowerCase().trim();
+  if (/^\[?(image|video|audio|document|sticker|media)\]?$/i.test(texto)) {
+    const match = texto.replace(/[\[\]]/g, '');
+    if (match === 'media' || match === 'sticker') return 'image';
+    return match;
+  }
   if (texto.includes('[image]') || texto.includes('imagem')) return 'image';
   if (texto.includes('[video]')) return 'video';
   if (texto.includes('[audio]')) return 'audio';
+  if (texto.includes('[document]')) return 'document';
+
+  // 3. payload_bruto contém mensagem de mídia do WhatsApp/Evolution
+  const payload = row.payload_bruto;
+  if (payload && typeof payload === 'object') {
+    const data = payload.data || payload;
+    const message = data?.message || payload?.message || {};
+    if (message.imageMessage) return 'image';
+    if (message.videoMessage) return 'video';
+    if (message.audioMessage) return 'audio';
+    if (message.documentMessage) return 'document';
+    if (message.stickerMessage) return 'image';
+    // Evolution API v2 pode ter mediaType direto
+    if (data.mediaType) return data.mediaType;
+  }
+
+  // 4. media_url presente é sinal de mídia
   if (row.media_url) return 'image';
+
   return undefined;
 }
 
@@ -38,6 +64,7 @@ function mapMensagem(row) {
     mediaType,
   };
 }
+
 
 // Detecta mediatype a partir do mimetype
 function detectMediaType(mimetype) {
