@@ -855,7 +855,7 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
   const [checkup, setCheckup] = useState<any>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
-  const [expandido, setExpandido] = useState(true);
+  const [expandido, setExpandido] = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -944,7 +944,7 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
 
       {erro && <p className="mx-4 mb-2 rounded-md bg-red-500/20 border border-red-400/30 px-3 py-1.5 text-[10px] text-red-300">{erro}</p>}
 
-      <div className="px-4 pb-3 grid grid-cols-3 lg:grid-cols-6 gap-2">
+      <div className="px-4 pb-2 grid grid-cols-6 gap-1.5">
         {[
           { label: 'Leads Ativos', valor: String(ind.leadsAtivos || 0), grad: 'from-indigo-500 to-indigo-600', sub: `${ind.semMovimento || 0} parados`, pulse: false },
           { label: 'Urgentes', valor: String(ind.altaPrioridade || 0), grad: corKPI(ind.altaPrioridade || 0, 0, 2, true), sub: `${ind.respostasPendentes || 0} s/ resposta`, pulse: (ind.altaPrioridade || 0) > 0 },
@@ -953,41 +953,40 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
           { label: 'Conversao', valor: `${ind.taxaConversao || 0}%`, grad: corKPI(ind.taxaConversao || 0, 20, 5), sub: `${ind.ganhos || 0}W / ${ind.perdidos || 0}L`, pulse: false },
           { label: 'Propostas', valor: String(ind.propostasAbertas || 0), grad: 'from-amber-500 to-amber-600', sub: `${ind.followUps || 0} follow-ups`, pulse: false },
         ].map((kpi, i) => (
-          <div key={i} className={`rounded-lg bg-white/5 backdrop-blur-sm border border-white/10 p-2.5 ${kpi.pulse ? 'animate-pulse' : ''}`}>
-            <p className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold mb-1">{kpi.label}</p>
-            <p className={`text-xl font-black bg-gradient-to-r ${kpi.grad} bg-clip-text text-transparent`}>{kpi.valor}</p>
-            <p className="text-[9px] text-slate-500 mt-0.5">{kpi.sub}</p>
+          <div key={i} className={`rounded-md bg-white/5 border border-white/10 px-2 py-1.5 ${kpi.pulse ? 'animate-pulse' : ''}`}>
+            <p className="text-[8px] uppercase tracking-wider text-slate-400 font-semibold">{kpi.label}</p>
+            <p className={`text-base font-black bg-gradient-to-r ${kpi.grad} bg-clip-text text-transparent leading-tight`}>{kpi.valor}</p>
+            <p className="text-[8px] text-slate-500">{kpi.sub}</p>
           </div>
         ))}
       </div>
 
-      <div className="px-4 pb-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="rounded-lg bg-white/5 backdrop-blur-sm border border-white/10 p-3">
-          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">Funil de Vendas</p>
-          <div className="flex flex-col gap-1.5">
+      <div className="px-4 pb-2 grid grid-cols-3 gap-2">
+        <div className="rounded-md bg-white/5 border border-white/10 p-2">
+          <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Funil de Vendas</p>
+          <div className="flex flex-col gap-1">
             {funil.filter((f: any) => f.total > 0).map((f: any, i: number) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-[9px] text-slate-400 w-16 truncate text-right font-medium">{f.label}</span>
-                <div className="flex-1 h-4 bg-slate-700/50 rounded-sm overflow-hidden">
+              <div key={i} className="flex items-center gap-1.5">
+                <span className="text-[8px] text-slate-400 w-14 truncate text-right font-medium">{f.label}</span>
+                <div className="flex-1 h-3 bg-slate-700/50 rounded-sm overflow-hidden">
                   <div className="h-full rounded-sm transition-all duration-700" style={{ width: `${Math.max(8, (f.total / maxFunil) * 100)}%`, backgroundColor: f.cor }} />
                 </div>
-                <span className="text-[10px] text-white font-bold w-5 text-right">{f.total}</span>
+                <span className="text-[9px] text-white font-bold w-4 text-right">{f.total}</span>
               </div>
             ))}
-            {funil.every((f: any) => f.total === 0) && <p className="text-[10px] text-slate-500 text-center py-2">Sem dados</p>}
           </div>
         </div>
 
-        <div className="rounded-lg bg-white/5 backdrop-blur-sm border border-white/10 p-3">
-          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">Metas</p>
-          <div className="flex flex-col gap-2">
+        <div className="rounded-md bg-white/5 border border-white/10 p-2">
+          <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Metas</p>
+          <div className="flex flex-col gap-1">
             {metas.map((meta: any, i: number) => (
               <div key={i}>
-                <div className="flex items-center justify-between gap-2 text-[10px] mb-0.5">
+                <div className="flex items-center justify-between gap-1 text-[9px] mb-0.5">
                   <span className="text-slate-300 font-medium truncate">{meta.nome}</span>
                   <span className={`font-bold ${meta.status === 'ok' ? 'text-emerald-400' : meta.status === 'cobrar' ? 'text-red-400' : 'text-amber-400'}`}>{meta.atingido || 0}%</span>
                 </div>
-                <div className="h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
+                <div className="h-1 bg-slate-700/50 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full transition-all duration-700 ${meta.status === 'ok' ? 'bg-emerald-500' : meta.status === 'cobrar' ? 'bg-red-500' : 'bg-amber-500'}`}
                     style={{ width: `${Math.max(0, Math.min(100, meta.atingido || 0))}%` }} />
                 </div>
@@ -996,59 +995,37 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
           </div>
         </div>
 
-        <div className="rounded-lg bg-white/5 backdrop-blur-sm border border-white/10 p-3">
-          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">Cobranças ({cobrancas.length})</p>
-          <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
-            {cobrancas.length === 0 && !carregando && <p className="text-[10px] text-emerald-400 font-medium py-2 text-center">Tudo em dia.</p>}
-            {cobrancas.slice(0, 8).map((c: any, i: number) => (
+        <div className="rounded-md bg-white/5 border border-white/10 p-2">
+          <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Cobranças ({cobrancas.length})</p>
+          <div className="flex flex-col gap-1 max-h-24 overflow-y-auto pr-1">
+            {cobrancas.length === 0 && !carregando && <p className="text-[9px] text-emerald-400 font-medium py-1 text-center">Tudo em dia.</p>}
+            {cobrancas.slice(0, 5).map((c: any, i: number) => (
               <button key={`${c.leadId || i}-${c.tipo}`} onClick={() => c.leadId && onAbrirLead(c.leadId)}
-                className={`rounded-md border px-2.5 py-1.5 text-left transition-all hover:bg-white/5 ${priorClasse(c.prioridade)}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-[10px] font-bold">{c.nome || c.telefone || 'Lead'}</p>
-                  <span className={`flex-shrink-0 text-[8px] font-black uppercase rounded px-1 py-0.5 ${c.prioridade === 'alta' ? 'bg-red-500/20 text-red-300' : c.prioridade === 'media' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-500/20 text-slate-400'}`}>{c.prioridade}</span>
+                className={`rounded border px-2 py-1 text-left transition-all hover:bg-white/5 ${priorClasse(c.prioridade)}`}>
+                <div className="flex items-center justify-between gap-1">
+                  <p className="truncate text-[9px] font-bold">{c.nome || c.telefone || 'Lead'}</p>
+                  <span className={`flex-shrink-0 text-[7px] font-black uppercase rounded px-1 py-0.5 ${c.prioridade === 'alta' ? 'bg-red-500/20 text-red-300' : c.prioridade === 'media' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-500/20 text-slate-400'}`}>{c.prioridade}</span>
                 </div>
-                <p className="mt-0.5 text-[9px] font-semibold opacity-90">{c.titulo}</p>
-                <p className="mt-0.5 line-clamp-1 text-[9px] opacity-60">{c.prazoTexto}</p>
+                <p className="text-[8px] font-semibold opacity-90 truncate">{c.titulo}</p>
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {(processos.length > 0 || insights.length > 0) && (
-        <div className="px-4 pb-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {processos.length > 0 && (
-            <div className="rounded-lg bg-red-500/5 backdrop-blur-sm border border-red-400/20 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-red-400 font-bold mb-2">Processos que Faltam</p>
-              <div className="flex flex-col gap-1.5">
-                {processos.map((p: any, i: number) => (
-                  <div key={i} className="flex items-start gap-2">
-                    <span className={`flex-shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${p.prioridade === 'alta' ? 'bg-red-400' : 'bg-amber-400'}`} />
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-200">{p.titulo}</p>
-                      <p className="text-[9px] text-slate-400 leading-relaxed">{p.descricao}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+      {processos.length > 0 && (
+        <div className="px-4 pb-2">
+          <div className="rounded-md bg-red-500/5 border border-red-400/20 px-3 py-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              {processos.slice(0, 2).map((p: any, i: number) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${p.prioridade === 'alta' ? 'bg-red-400' : 'bg-amber-400'}`} />
+                  <p className="text-[9px] font-bold text-slate-200">{p.titulo}</p>
+                  <p className="text-[8px] text-slate-400 truncate max-w-xs">{p.descricao}</p>
+                </div>
+              ))}
             </div>
-          )}
-          {insights.length > 0 && (
-            <div className="rounded-lg bg-violet-500/5 backdrop-blur-sm border border-violet-400/20 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-violet-400 font-bold mb-2">Aprendizados do Bruno</p>
-              <div className="flex flex-col gap-1.5">
-                {insights.map((ins: any, i: number) => (
-                  <div key={i} className="flex items-start gap-2">
-                    <span className={`flex-shrink-0 text-[9px] mt-0.5 ${ins.tipo === 'tecnica_efetiva' ? 'text-emerald-400' : 'text-red-400'}`}>{ins.tipo === 'tecnica_efetiva' ? '✓' : '✗'}</span>
-                    <div>
-                      <p className="text-[9px] text-slate-300 leading-relaxed line-clamp-2">{ins.insight}</p>
-                      <p className="text-[8px] text-slate-500 mt-0.5">confiança: {ins.confianca}%</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       )}
     </div>
@@ -1558,6 +1535,7 @@ export function Leads() {
   const [textoInjetado, setTextoInjetado] = useState({ v: '', n: 0 });
   const [tabPainel, setTabPainel] = useState<'detalhes' | 'inteligencia'>('inteligencia');
   const [produtoCadastrar, setProdutoCadastrar] = useState<any>(null);
+  const [painelExpandido, setPainelExpandido] = useState(false);
 
   // Rastreia quais leads foram lidos — persiste em localStorage (cache) + Supabase (permanente)
   const [lidos, setLidos] = useState<Record<string, string>>(() => {
@@ -1715,7 +1693,7 @@ export function Leads() {
         </div>
 
         {leadAtivo && (
-          <div className="w-72 flex-shrink-0 border-l bg-white flex flex-col overflow-hidden">
+          <div className={`${painelExpandido ? 'w-[500px]' : 'w-72'} flex-shrink-0 border-l bg-white flex flex-col overflow-hidden transition-all duration-300`}>
             {/* Tabs: Inteligencia | Detalhes */}
             <div className="flex border-b flex-shrink-0">
               <button
@@ -1729,6 +1707,13 @@ export function Leads() {
                 className={`flex-1 text-xs py-2 font-semibold transition-colors ${tabPainel === 'detalhes' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 👤 Detalhes
+              </button>
+              <button
+                onClick={() => setPainelExpandido(p => !p)}
+                title={painelExpandido ? 'Recolher painel' : 'Expandir painel'}
+                className="px-2 text-xs text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors border-l"
+              >
+                {painelExpandido ? '▶' : '◀'}
               </button>
             </div>
             <div className="flex-1 overflow-y-auto overflow-x-hidden">
