@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Lead, EtapaFunil,
   ETAPAS_FUNIL, ORIGEM_LABELS,
@@ -43,6 +43,47 @@ function horaMsg(iso: string) {
     return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+// ─── helpers de mídia ─────────────────────────────────────────────────────────
+function textoSomenteMidia(texto?: string): boolean {
+  if (!texto) return false;
+  return /^\[?(Media|image|video|audio|document|sticker)\]?$/i.test(texto.trim());
+}
+
+function MidiaMensagem({ mensagem }: { mensagem: Mensagem }) {
+  const { mediaUrl, mediaType, texto } = mensagem;
+  const tipo = mediaType || (texto ? texto.replace(/[\[\]]/g, '').toLowerCase() : '');
+
+  if (mediaUrl && (tipo === 'image' || tipo === 'sticker')) {
+    return (
+      <img src={mediaUrl} alt="imagem" className="rounded-lg max-w-full max-h-64 mb-1 cursor-pointer hover:opacity-90"
+        onClick={() => window.open(mediaUrl, '_blank')} />
+    );
+  }
+  if (mediaUrl && tipo === 'video') {
+    return <video src={mediaUrl} controls className="rounded-lg max-w-full max-h-64 mb-1" />;
+  }
+  if (mediaUrl && tipo === 'audio') {
+    return <audio src={mediaUrl} controls className="mb-1 w-full" />;
+  }
+  if (mediaUrl && tipo === 'document') {
+    return (
+      <a href={mediaUrl} target="_blank" rel="noopener noreferrer"
+        className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-1 hover:bg-gray-100 transition-colors">
+        <span className="text-2xl">📄</span>
+        <span className="text-xs text-blue-600 font-medium underline">Abrir documento</span>
+      </a>
+    );
+  }
+  // fallback: sem URL mas texto indica mídia
+  const icone = tipo.includes('image') ? '🖼️' : tipo.includes('video') ? '🎬' : tipo.includes('audio') ? '🎵' : '📎';
+  return (
+    <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-1">
+      <span className="text-lg">{icone}</span>
+      <span className="text-xs text-gray-500 italic">Mídia recebida</span>
+    </div>
+  );
 }
 
 // ─── Painel de Conversa (com suporte a mídias) ───────────────────────────────
