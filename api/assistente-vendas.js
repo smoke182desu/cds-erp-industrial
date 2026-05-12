@@ -1091,6 +1091,176 @@ export default async function handler(req, res) {
       return res.status(200).json(result);
     }
 
+    // ── Marketing IA — Leone Abbacchio (Trafego) e Narancia Ghirga (Conteudo) ──
+    if (modo === 'marketing-abbacchio' || modo === 'marketing-narancia') {
+      if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) return res.status(503).json({ error: 'Nenhuma API KEY configurada.' });
+
+      const { produto, publicoAlvo, objetivo, budget, plataforma, contextoExtra: ctxExtra, campanhaAtual } = body;
+
+      const cacheKeyMkt = `mkt_${modo}_${produto || ''}_${objetivo || ''}_${publicoAlvo || ''}`;
+      const cachedMkt = cache.get(cacheKeyMkt);
+      if (cachedMkt && Date.now() - cachedMkt.ts < 120000) {
+        return res.status(200).json(cachedMkt.data);
+      }
+
+      const conhecimentoBase = `CDS Industrial - fabrica metalica em Brasilia/DF. Vendedor: Jean.
+Produtos: chapas dobradas, pecas em metalon/tubo/chapa, pes de mesa, carrinhos, tampas para casas de maquinas, containers de lixo, escadas/rampas (ABNT/NR+ART), bancadas e projetos sob encomenda.
+PIX 7% OFF | cupom 1COMPRA 5% OFF | Entrega Brasil todo + Munck 14t.
+Site: cdsind.com.br | Instagram: @cdsindustrial | WhatsApp: (61) 99XXX-XXXX`;
+
+      let systemPrompt, userPrompt;
+
+      if (modo === 'marketing-abbacchio') {
+        systemPrompt = `Voce e Leone Abbacchio, Gestor de Marketing e Trafego IA da CDS Industrial.
+Seu papel: estrategista de marketing digital e trafego pago para uma industria metalica em Brasilia/DF.
+
+PERSONALIDADE: Analitico, meticuloso, direto. Voce nao tolera achismo — tudo precisa de dado, metrica e ROI.
+Voce e o tipo de gestor que olha os numeros antes de aprovar qualquer campanha.
+
+CONHECIMENTO DA EMPRESA:
+${conhecimentoBase}
+
+SUAS COMPETENCIAS:
+- Trafego pago: Google Ads (Search, Display, Shopping), Meta Ads (Facebook/Instagram), TikTok Ads
+- Funil de aquisicao: TOFU (awareness), MOFU (consideracao), BOFU (conversao)
+- Metricas: CPL, CPA, ROAS, CTR, CAC, LTV, frequencia, impressoes, alcance
+- Segmentacao: lookalike, remarketing, interesses, geografico, demografico
+- Budget: alocacao por canal, otimizacao de investimento, ROI projetado
+- Automacao: pixels, eventos de conversao, UTMs, integracao com CRM
+
+REGRAS:
+- Sempre justifique decisoes com logica de negocio e metricas
+- Sugira budgets realistas para uma industria metalica PME
+- Priorize canais com melhor custo-beneficio para B2B industrial
+- Fale como gestor senior: objetivo, sem floreios, com dados
+- Retorne APENAS JSON valido`;
+
+        userPrompt = `Preciso de uma estrategia de marketing para:
+PRODUTO/SERVICO: ${produto || 'Produtos metalicos sob medida'}
+PUBLICO-ALVO: ${publicoAlvo || 'Empresas, construtoras e pessoas fisicas que precisam de produtos metalicos'}
+OBJETIVO: ${objetivo || 'Gerar leads qualificados'}
+BUDGET MENSAL: ${budget || 'A definir'}
+PLATAFORMA PREFERIDA: ${plataforma || 'Melhor custo-beneficio'}
+${ctxExtra ? `CONTEXTO ADICIONAL: ${ctxExtra}` : ''}
+${campanhaAtual ? `CAMPANHA ATUAL: ${campanhaAtual}` : ''}
+
+Retorne APENAS este JSON:
+{
+  "diagnostico": "Analise breve do cenario atual e oportunidades",
+  "estrategia": {
+    "posicionamento": "Como a CDS deve se posicionar neste mercado",
+    "canaisPrioritarios": [{"canal": "nome", "motivo": "porque", "budgetSugerido": "R$ X/mes", "roiEsperado": "X:1"}],
+    "funil": {
+      "tofu": "Estrategia de awareness",
+      "mofu": "Estrategia de consideracao",
+      "bofu": "Estrategia de conversao"
+    }
+  },
+  "campanhas": [
+    {
+      "nome": "Nome da campanha",
+      "plataforma": "Google/Meta/TikTok",
+      "objetivo": "Conversao/Trafego/Awareness",
+      "segmentacao": "Descricao do publico",
+      "orcamentoDiario": "R$ X",
+      "metricasAlvo": {"cpl": "R$ X", "ctr": "X%", "conversoes": "X/mes"},
+      "duracao": "X dias"
+    }
+  ],
+  "kpis": [{"nome": "Metrica", "meta": "Valor", "prazo": "Periodo"}],
+  "proximosPassos": ["Passo 1", "Passo 2", "Passo 3"],
+  "alertas": ["Risco ou observacao importante"]
+}`;
+      } else {
+        systemPrompt = `Voce e Narancia Ghirga, Criador de Conteudo e Design IA da CDS Industrial.
+Seu papel: criativo publicitario especializado em industria metalica. Voce cria copys, anuncios, posts e briefings de design.
+
+PERSONALIDADE: Criativo, energetico, visual. Voce pensa em imagens e palavras que impactam.
+Mas voce e profissional — sabe que copy de industria precisa de credibilidade, nao de hype vazio.
+
+CONHECIMENTO DA EMPRESA:
+${conhecimentoBase}
+
+SUAS COMPETENCIAS:
+- Copywriting: headlines, bodys, CTAs para anuncios pagos e organicos
+- Formatos: carrossel, reels, stories, single image, video script
+- Plataformas: Instagram, Facebook, Google Ads, LinkedIn, TikTok
+- Design thinking: briefing para designers, paleta de cores, tipografia, composicao
+- Tom de voz: industrial profissional mas acessivel, sem ser generico
+- A/B testing: gerar variacoes de copy para testar performance
+- SEO: meta titles, descriptions, alt texts
+
+REGRAS:
+- Copies curtas e impactantes. Industria nao precisa de texto de influencer.
+- Use numeros concretos quando possivel (7% PIX, entrega nacional, 14t Munck)
+- Destaque diferenciais reais: fabricacao propria, sob medida, Brasilia/DF
+- Briefings de design devem ser claros e executaveis por qualquer designer
+- Retorne APENAS JSON valido`;
+
+        userPrompt = `Preciso de conteudo de marketing para:
+PRODUTO/SERVICO: ${produto || 'Produtos metalicos sob medida da CDS Industrial'}
+PUBLICO-ALVO: ${publicoAlvo || 'Empresas e pessoas que precisam de produtos metalicos'}
+OBJETIVO: ${objetivo || 'Gerar engajamento e leads'}
+PLATAFORMA: ${plataforma || 'Instagram e Facebook'}
+${ctxExtra ? `CONTEXTO ADICIONAL: ${ctxExtra}` : ''}
+
+Retorne APENAS este JSON:
+{
+  "analiseCreativa": "Sua leitura do cenario e angulo criativo escolhido",
+  "copies": [
+    {
+      "tipo": "anuncio|post|stories|carrossel|reels_script",
+      "plataforma": "Instagram/Facebook/Google/LinkedIn",
+      "headline": "Titulo impactante",
+      "corpo": "Texto do anuncio/post",
+      "cta": "Call to action",
+      "hashtags": ["#tag1", "#tag2"],
+      "observacao": "Nota sobre tom ou variacao"
+    }
+  ],
+  "variacoes": [
+    {
+      "original": "Copy A",
+      "variacao": "Copy B (teste A/B)",
+      "hipotese": "Porque testar essa variacao"
+    }
+  ],
+  "briefingDesign": [
+    {
+      "peca": "Nome da peca (ex: Post feed quadrado)",
+      "formato": "1080x1080 / 1080x1920 / 1200x628",
+      "elementosVisuais": "Foto de produto, fundo escuro, texto em destaque",
+      "paleta": "Cores sugeridas",
+      "tipografia": "Bold sans-serif para headline, regular para corpo",
+      "referencia": "Estilo industrial premium, limpo"
+    }
+  ],
+  "calendarioSugerido": [
+    {"dia": "Segunda", "conteudo": "Tipo de post", "formato": "Feed/Stories/Reels"}
+  ],
+  "proximosPassos": ["Passo 1", "Passo 2"]
+}`;
+      }
+
+      const resp = await chamarIAComFallback(systemPrompt, userPrompt);
+      const raw = resp.data?.choices?.[0]?.message?.content || '';
+      let resultado;
+      try { resultado = JSON.parse(raw); } catch {
+        const m = raw.match(/\{[\s\S]*\}/);
+        if (m) { try { resultado = JSON.parse(m[0]); } catch {} }
+        if (!resultado) throw new Error('JSON invalido do marketing IA');
+      }
+
+      const response = { resultado, modo, personagem: modo === 'marketing-abbacchio' ? 'Leone Abbacchio' : 'Narancia Ghirga' };
+      cache.set(cacheKeyMkt, { data: response, ts: Date.now() });
+      if (cache.size > 50) {
+        const oldest = [...cache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+        if (oldest) cache.delete(oldest[0]);
+      }
+
+      return res.status(200).json(response);
+    }
+
     // ── Analise de conversa (modo padrao) ──
     const { telefone, nome, empresa, etapa } = body;
     if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) return res.status(503).json({ error: 'Nenhuma API KEY configurada.' });

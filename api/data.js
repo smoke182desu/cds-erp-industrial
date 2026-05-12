@@ -33,6 +33,38 @@ const FUNCIONARIOS_IA = [
     complemento: 'Gerente de Vendas IA',
     orgao: 'Gestao Comercial',
     dores: ['Gerenciar atendimentos', 'Identificar novos produtos', 'Orientar o dono']
+  },
+  {
+    nome: 'Leone Abbacchio',
+    email: 'abbacchio.marketing@cdsind.com.br',
+    telefone: '',
+    tipo: 'FUNC',
+    documento: '',
+    cep: '',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    cidade: 'Brasilia',
+    uf: 'DF',
+    complemento: 'Gestor de Marketing e Trafego IA',
+    orgao: 'Marketing e Publicidade',
+    dores: ['Estrategia de trafego pago', 'Planejamento de campanhas', 'Analise de ROI e metricas']
+  },
+  {
+    nome: 'Narancia Ghirga',
+    email: 'narancia.conteudo@cdsind.com.br',
+    telefone: '',
+    tipo: 'FUNC',
+    documento: '',
+    cep: '',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    cidade: 'Brasilia',
+    uf: 'DF',
+    complemento: 'Criador de Conteudo e Design IA',
+    orgao: 'Marketing e Publicidade',
+    dores: ['Criar copys de anuncios', 'Briefings de design', 'Posts para redes sociais']
   }
 ];
 

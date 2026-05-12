@@ -29,6 +29,7 @@ import { Contabilidade } from './pages/Contabilidade';
 import { PatrimonioVisual } from './pages/PatrimonioVisual';
 import { Leads } from './pages/Leads';
 import { Produtos } from './pages/Produtos';
+import { Marketing } from './pages/Marketing';
 import { Configurador } from './components/Configurador';
 import { CheckoutPropostaModal } from './components/CheckoutPropostaModal';
 
@@ -84,6 +85,7 @@ function AppContent() {
       case 'caixa':             return <FluxoCaixa />;
       case 'contabilidade':     return <Contabilidade />;
       case 'patrimonio':        return <PatrimonioVisual />;
+      case 'marketing':         return <Marketing />;
       default:                  return <DashboardBI />;
     }
   };
