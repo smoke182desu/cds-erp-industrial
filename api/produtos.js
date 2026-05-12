@@ -1,5 +1,5 @@
 ﻿import axios from 'axios';
-import { selectAll, upsertByField } from './_lib/supabase.js';
+import { selectAll, upsertByField, insert, update, remove } from './_lib/supabase.js';
 
 const WC_URL = process.env.WOOCOMMERCE_URL || process.env.WC_URL || '';
 const WC_KEY = process.env.WOOCOMMERCE_CONSUMER_KEY || process.env.WC_KEY || '';
@@ -110,7 +110,6 @@ async function syncBatch(startPage = 1, batchSize = 5) {
 }
 
 // ── CRUD de produto unitario (consolidado de produto.js) ────────────────────
-import { insert, update, remove } from './_lib/supabase.js';
 
 function validarProduto(p) {
   const erros = [];

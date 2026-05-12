@@ -1,6 +1,7 @@
 ﻿// api/leads.js
 // CRUD de leads para o funil CRM
 import { selectAll, insert, update, remove } from './_lib/supabase.js';
+import { createClient } from '@supabase/supabase-js';
 
 const TABLE = 'leads';
 const WEBHOOK_SECRET = process.env.LEADS_WEBHOOK_SECRET || 'cds-leads-secret';
@@ -233,8 +234,6 @@ async function deletarLead(id) {
 }
 
 // ── Leads Leitura (consolidado de leads-leitura.js) ──────────────────────────
-import { createClient } from '@supabase/supabase-js';
-
 const supabaseDirect = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
