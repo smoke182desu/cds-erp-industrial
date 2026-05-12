@@ -1,7 +1,6 @@
-﻿// api/leads.js
+// api/leads.js
 // CRUD de leads para o funil CRM
-import { selectAll, insert, update, remove } from './_lib/supabase.js';
-import { createClient } from '@supabase/supabase-js';
+import { selectAll, insert, update, remove, sb } from './_lib/supabase.js';
 
 const TABLE = 'leads';
 const WEBHOOK_SECRET = process.env.LEADS_WEBHOOK_SECRET || 'cds-leads-secret';
@@ -234,31 +233,28 @@ async function deletarLead(id) {
 }
 
 // ── Leads Leitura (consolidado de leads-leitura.js) ──────────────────────────
-const supabaseDirect = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
-);
-
 async function handleLeitura(req, res) {
   if (req.method === 'GET') {
     const id = req.query.id;
     if (id) {
-      const { data, error } = await supabaseDirect.from('leads_leitura').select('lead_id, ultima_leitura_em').eq('lead_id', id).maybeSingle();
-      if (error) throw error;
-      return res.status(200).json(data || { lead_id: id, ultima_leitura_em: null });
+      const rows = await selectAll('leads_leitura', { filters: { lead_id: `eq.${id}` }, limit: 1 });
+      return res.status(200).json(rows[0] || { lead_id: id, ultima_leitura_em: null });
     }
-    const { data, error } = await supabaseDirect.from('leads_leitura').select('lead_id, ultima_leitura_em');
-    if (error) throw error;
+    const rows = await selectAll('leads_leitura', { limit: 5000 });
     const lidos = {};
-    for (const row of data || []) lidos[row.lead_id] = row.ultima_leitura_em;
+    for (const row of rows) lidos[row.lead_id] = row.ultima_leitura_em;
     return res.status(200).json({ lidos });
   }
   if (req.method === 'POST') {
     const { lead_id, ultima_hora } = req.body || {};
     if (!lead_id) return res.status(400).json({ error: 'lead_id obrigatorio' });
     const agora = ultima_hora || new Date().toISOString();
-    const { error } = await supabaseDirect.from('leads_leitura').upsert({ lead_id, ultima_leitura_em: agora, atualizado_em: new Date().toISOString() }, { onConflict: 'lead_id' });
-    if (error) throw error;
+    const r = await sb('/leads_leitura?on_conflict=lead_id', {
+      method: 'POST',
+      body: { lead_id, ultima_leitura_em: agora, atualizado_em: new Date().toISOString() },
+      prefer: 'resolution=merge-duplicates,return=representation',
+    });
+    if (!r.ok) throw new Error('upsert leitura falhou');
     return res.status(200).json({ ok: true, lead_id, ultima_leitura_em: agora });
   }
   return res.status(405).json({ error: 'Method not allowed' });
