@@ -53,19 +53,52 @@ async function buscarContextoExtra() {
 
 async function buscarMensagens(telefone) {
   try {
-    const data = await selectAll('mensagens', { filters: { telefone: `eq.${telefone}` }, orderBy: 'criado_em' });
-    const rows = Array.isArray(data) ? data : [];
-    return rows.map(row => ({
-      tipo: row.tipo || 'entrada',
-      texto: row.texto || row.conteudo || '',
-      criadoEm: row.criado_em || row.created_at || '',
-    }))
-      .filter(m => m.texto.trim())
-      .sort((a, b) => new Date(a.criadoEm || 0) - new Date(b.criadoEm || 0));
+    const d = String(telefone || '').replace(/\D/g, '');
+    if (!d) return [];
+
+    // Gera variantes do telefone (com/sem DDI 55, com/sem nono digito)
+    const variantes = new Set([d]);
+    if (d.startsWith('55')) {
+      const ddd = d.slice(2, 4);
+      const local = d.slice(4);
+      if (ddd.length === 2 && local.length === 9) {
+        variantes.add(`${ddd}${local}`);
+        variantes.add(`55${ddd}${local.slice(1)}`);
+        variantes.add(`${ddd}${local.slice(1)}`);
+      }
+      if (ddd.length === 2 && local.length === 8) {
+        variantes.add(`${ddd}${local}`);
+        variantes.add(`55${ddd}9${local}`);
+        variantes.add(`${ddd}9${local}`);
+      }
+    } else if (d.length === 11) {
+      variantes.add(`55${d}`);
+      variantes.add(`55${d.slice(0, 2)}${d.slice(3)}`);
+    } else if (d.length === 10) {
+      variantes.add(`55${d}`);
+      variantes.add(`55${d.slice(0, 2)}9${d.slice(2)}`);
+    }
+
+    // Tenta cada variante ate achar mensagens
+    for (const tel of variantes) {
+      const data = await selectAll('mensagens', { filters: { telefone: `eq.${tel}` }, orderBy: 'criado_em' });
+      const rows = Array.isArray(data) ? data : [];
+      if (rows.length > 0) {
+        return rows.map(row => ({
+          tipo: row.tipo || 'entrada',
+          texto: row.texto || row.conteudo || '',
+          criadoEm: row.criado_em || row.created_at || '',
+        }))
+          .filter(m => m.texto.trim())
+          .sort((a, b) => new Date(a.criadoEm || 0) - new Date(b.criadoEm || 0));
+      }
+    }
+    return [];
   } catch {
     return [];
   }
 }
+
 
 // Busca insights globais aprendidos pelo Bruno para injetar no prompt de Giorno
 async function buscarInsightsGlobais(etapa) {
