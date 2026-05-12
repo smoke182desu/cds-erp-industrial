@@ -1,0 +1,157 @@
+// api/agents/narancia.js
+// Narancia Ghirga — Criador de Conteudo & Design IA
+// Gera copies, anuncios, briefings de design e calendario de conteudo.
+
+import { chamarIA, parseIAResponse } from '../_lib/ai-fallback.js';
+import { emitEvent } from '../_lib/events.js';
+import { insert } from '../_lib/supabase.js';
+
+const CONHECIMENTO_BASE = `CDS Industrial - fabrica metalica em Brasilia/DF. Vendedor: Jean.
+Produtos: chapas dobradas, pecas em metalon/tubo/chapa, pes de mesa, carrinhos, tampas para casas de maquinas, containers de lixo, escadas/rampas (ABNT/NR+ART), bancadas e projetos sob encomenda.
+PIX 7% OFF | cupom 1COMPRA 5% OFF | Entrega Brasil todo + Munck 14t.
+Site: cdsind.com.br | Instagram: @cdsindustrial | WhatsApp: (61) 99308-1396`;
+
+function buildSystemPrompt() {
+  return `Voce e Narancia Ghirga, Criador de Conteudo e Design IA da CDS Industrial.
+Seu papel: criativo publicitario especializado em industria metalica. Voce cria copys, anuncios, posts e briefings de design.
+
+PERSONALIDADE: Criativo, energetico, visual. Voce pensa em imagens e palavras que impactam.
+Mas voce e profissional — sabe que copy de industria precisa de credibilidade, nao de hype vazio.
+
+CONHECIMENTO DA EMPRESA:
+${CONHECIMENTO_BASE}
+
+SUAS COMPETENCIAS:
+- Copywriting: headlines, bodys, CTAs para anuncios pagos e organicos
+- Formatos: carrossel, reels, stories, single image, video script
+- Plataformas: Instagram, Facebook, Google Ads, LinkedIn, TikTok
+- Design thinking: briefing para designers, paleta de cores, tipografia, composicao
+- Tom de voz: industrial profissional mas acessivel, sem ser generico
+- A/B testing: gerar variacoes de copy para testar performance
+- SEO: meta titles, descriptions, alt texts
+
+REGRAS:
+- Copies curtas e impactantes. Industria nao precisa de texto de influencer.
+- Use numeros concretos quando possivel (7% PIX, entrega nacional, 14t Munck)
+- Destaque diferenciais reais: fabricacao propria, sob medida, Brasilia/DF
+- Briefings de design devem ser claros e executaveis por qualquer designer
+- Retorne APENAS JSON valido`;
+}
+
+function buildUserPrompt(params) {
+  const { produto, publicoAlvo, objetivo, plataforma, contextoExtra } = params;
+
+  return `Preciso de conteudo de marketing para:
+PRODUTO/SERVICO: ${produto || 'Produtos metalicos sob medida da CDS Industrial'}
+PUBLICO-ALVO: ${publicoAlvo || 'Empresas e pessoas que precisam de produtos metalicos'}
+OBJETIVO: ${objetivo || 'Gerar engajamento e leads'}
+PLATAFORMA: ${plataforma || 'Instagram e Facebook'}
+${contextoExtra ? `CONTEXTO ADICIONAL: ${contextoExtra}` : ''}
+
+Retorne APENAS este JSON:
+{
+  "analiseCreativa": "Sua leitura do cenario e angulo criativo escolhido",
+  "copies": [
+    {
+      "tipo": "anuncio|post|stories|carrossel|reels_script",
+      "plataforma": "Instagram/Facebook/Google/LinkedIn",
+      "headline": "Titulo impactante",
+      "corpo": "Texto do anuncio/post",
+      "cta": "Call to action",
+      "hashtags": ["#tag1", "#tag2"],
+      "observacao": "Nota sobre tom ou variacao"
+    }
+  ],
+  "variacoes": [
+    {
+      "original": "Copy A",
+      "variacao": "Copy B (teste A/B)",
+      "hipotese": "Porque testar essa variacao"
+    }
+  ],
+  "briefingDesign": [
+    {
+      "peca": "Nome da peca (ex: Post feed quadrado)",
+      "formato": "1080x1080 / 1080x1920 / 1200x628",
+      "elementosVisuais": "Foto de produto, fundo escuro, texto em destaque",
+      "paleta": "Cores sugeridas",
+      "tipografia": "Bold sans-serif para headline, regular para corpo",
+      "referencia": "Estilo industrial premium, limpo"
+    }
+  ],
+  "calendarioSugerido": [
+    {"dia": "Segunda", "conteudo": "Tipo de post", "formato": "Feed/Stories/Reels"}
+  ],
+  "proximosPassos": ["Passo 1", "Passo 2"]
+}`;
+}
+
+/**
+ * Executa o agente Narancia: gera conteudo criativo completo.
+ * Opcionalmente persiste conteudos vinculados a uma campanha.
+ */
+export async function executar(params, opts = {}) {
+  const { campaignId = null } = opts;
+  const startTime = Date.now();
+
+  const systemPrompt = buildSystemPrompt();
+  const userPrompt = buildUserPrompt(params);
+
+  const { content, provider, model } = await chamarIA(systemPrompt, userPrompt);
+  const resultado = parseIAResponse(content);
+
+  const durationMs = Date.now() - startTime;
+
+  // Emitir evento de sessao
+  emitEvent({
+    type: 'agent.session_completed',
+    source: 'agent',
+    actor: 'agente:narancia',
+    payload: {
+      trigger: 'user_request',
+      provider,
+      model,
+      duration_ms: durationMs,
+      produto: params.produto,
+      copies_geradas: resultado.copies?.length || 0,
+    },
+  });
+
+  // Persistir conteudos se ha campanha vinculada
+  if (campaignId && resultado.copies?.length > 0) {
+    for (const copy of resultado.copies) {
+      try {
+        await insert('campaign_contents', {
+          campaign_id: campaignId,
+          type: copy.tipo || 'post',
+          platform: copy.plataforma || params.plataforma,
+          headline: copy.headline,
+          body: copy.corpo,
+          cta: copy.cta,
+          hashtags: copy.hashtags || [],
+          design_brief: resultado.briefingDesign?.[0] || null,
+          status: 'draft',
+          created_by: 'agente:narancia',
+        });
+      } catch (err) {
+        console.warn('[narancia] Erro ao persistir conteudo:', err.message);
+      }
+    }
+
+    emitEvent({
+      type: 'content.batch_created',
+      source: 'agent',
+      entity_type: 'campanha',
+      entity_id: campaignId,
+      actor: 'agente:narancia',
+      payload: { count: resultado.copies.length },
+    });
+  }
+
+  return {
+    resultado,
+    modo: 'marketing-narancia',
+    personagem: 'Narancia Ghirga',
+    meta: { provider, model, durationMs },
+  };
+}

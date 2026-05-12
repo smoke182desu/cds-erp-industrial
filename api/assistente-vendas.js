@@ -1,27 +1,19 @@
 import axios from 'axios';
 import { createClient } from '@supabase/supabase-js';
 import { selectAll, update } from './_lib/supabase.js';
+import { chamarIA, hasAnyProvider, parseIAResponse } from './_lib/ai-fallback.js';
+import { emitEvent, emitSuggestionUsed } from './_lib/events.js';
+import { registrarUso, registrarResultado, buscarInsights as buscarInsightsLearning, buscarInsightsGlobais } from './_lib/learning.js';
+import { getCache, setCache, getCacheByKey, setCacheByKey } from './_lib/cache.js';
+import { executar as executarAbbacchio } from './agents/abbacchio.js';
+import { executar as executarNarancia } from './agents/narancia.js';
 
 const supabaseClient = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
 );
 
-const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
-const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
-const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
-const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
-const PROMPT_VERSION = 'momento-conversa-v5-checkup';
 
-const GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash-lite'
-];
-
-const GROQ_MODELS = [
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant'
-];
 
 const ETAPAS_LABEL = {
   lead_novo: 'Lead Novo',
@@ -100,55 +92,7 @@ async function buscarMensagens(telefone) {
 }
 
 
-// Busca insights globais aprendidos pelo Bruno para injetar no prompt de Giorno
-async function buscarInsightsGlobais(etapa) {
-  try {
-    const { data, error } = await supabaseClient
-      .from('ia_insights_globais')
-      .select('tipo, contexto, insight, confianca')
-      .gte('confianca', 40)
-      .gte('usos', 3)
-      .order('confianca', { ascending: false })
-      .limit(10);
-    if (error) throw error;
-    // Prioriza insights relevantes para a etapa atual
-    const relevantes = (data || []).sort((a, b) => {
-      const aRel = a.contexto?.includes(etapa) ? 1 : 0;
-      const bRel = b.contexto?.includes(etapa) ? 1 : 0;
-      return bRel - aRel;
-    });
-    return relevantes;
-  } catch {
-    return []; // falha silenciosa — insights sao bonus, nao bloqueantes
-  }
-}
 
-
-// Em serverless, vive durante warm instances (~5-15min)
-const cache = new Map();
-const CACHE_TTL = 180000; // Aumentado para 3 minutos (evita frontend spam)
-
-function getCacheKey(telefone, mensagens = []) {
-  const ultima = mensagens[mensagens.length - 1] || {};
-  return `assistente_${PROMPT_VERSION}_${telefone}_${mensagens.length}_${ultima.tipo || ''}_${ultima.criadoEm || ''}_${ultima.texto || ''}`;
-}
-
-function getCache(telefone, mensagens) {
-  const key = getCacheKey(telefone, mensagens);
-  const entry = cache.get(key);
-  if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data;
-  cache.delete(key);
-  return null;
-}
-
-function setCache(telefone, mensagens, data) {
-  cache.set(getCacheKey(telefone, mensagens), { data, ts: Date.now() });
-  // Limpa cache antigo (max 50 entries)
-  if (cache.size > 50) {
-    const oldest = [...cache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
-    if (oldest) cache.delete(oldest[0]);
-  }
-}
 
 function obterSaudacao() {
   const hora = Number(new Intl.DateTimeFormat('pt-BR', {
@@ -687,80 +631,10 @@ function normalizarSugestoes(analise, saudacao, precisaSaudacao, contexto = {}) 
   return analise;
 }
 
-// Chamada com Fallback Automático
-async function chamarIAComFallback(systemPrompt, userPrompt) {
-  let lastError;
 
-  // TIER 1: Gemini
-  if (GEMINI_API_KEY) {
-    for (const model of GEMINI_MODELS) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-        const payload = {
-          contents: [{ role: 'user', parts: [{ text: `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nUSER PROMPT:\n${userPrompt}` }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 800, responseMimeType: "application/json" }
-        };
-        const resp = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 15000 });
-        const content = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        return { data: { choices: [{ message: { content } }] } }; // mock formato OpenAI
-      } catch (err) {
-        console.log(`[assistente-vendas] Gemini (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
-        lastError = err;
-        continue;
-      }
-    }
-  }
-
-  // TIER 2: Groq Fallbacks
-  if (GROQ_API_KEY) {
-    const payload = {
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      response_format: { type: 'json_object' },
-      temperature: 0.7,
-      max_tokens: 800,
-    };
-    for (const model of GROQ_MODELS) {
-      try {
-        payload.model = model;
-        const resp = await axios.post(`${GROQ_BASE_URL}/chat/completions`, payload, {
-          headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-          timeout: 15000,
-        });
-        return resp;
-      } catch (err) {
-        console.log(`[assistente-vendas] Groq (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
-        lastError = err;
-        continue;
-      }
-    }
-  }
-
-  // TIER 3: OpenAI Fallback
-  if (OPENAI_API_KEY) {
-    try {
-      const payload = {
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-        response_format: { type: 'json_object' },
-        temperature: 0.7,
-        max_tokens: 800,
-      };
-      const resp = await axios.post('https://api.openai.com/v1/chat/completions', payload, {
-        headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-        timeout: 15000,
-      });
-      return resp;
-    } catch (err) {
-      console.log('[assistente-vendas] OpenAI falhou.');
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error('Todos os motores de IA esgotaram a cota (Gemini + Groq + OpenAI).');
-}
 
 async function analisarConversa(mensagens, lead) {
-  if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) {
+  if (!hasAnyProvider()) {
     throw new Error('Nenhuma API KEY (Groq, Gemini ou OpenAI) configurada no servidor.');
   }
 
@@ -961,17 +835,8 @@ EXEMPLOS DE TOM (INSPIRAÇÃO APENAS - NÃO COPIE):
 
 ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conversando normalmente.`;
 
-  let resp;
-  
-  resp = await chamarIAComFallback(systemPrompt, userPrompt);
-  
-  const raw = resp.data?.choices?.[0]?.message?.content || '';
-  let analise;
-  try { analise = JSON.parse(raw); } catch {
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (m) { try { analise = JSON.parse(m[0]); } catch {} }
-    if (!analise) throw new Error('JSON invalido: ' + raw.substring(0, 200));
-  }
+  const iaResult = await chamarIA(systemPrompt, userPrompt);
+  let analise = parseIAResponse(iaResult.content);
 
   analise = normalizarSugestoes(analise, saudacao, precisaSaudacao, { ultimaMensagem });
   analise = aplicarCheckupAtendimento(analise, mensagens);
@@ -991,72 +856,6 @@ ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conve
   return { analise, variantId };
 }
 
-// ── Aprendizado IA — consolidado de ia-aprendizado.js ─────────────────────────
-const MIN_USOS_PARA_INSIGHT = 8;
-const TAXA_SUCESSO_POSITIVO = 0.55;
-const TAXA_SUCESSO_NEGATIVO = 0.25;
-
-async function aprendizadoRegistrarUso(body) {
-  const { lead_id, telefone, variant_id = 'A', label, mensagem, etapa, tecnica } = body;
-  if (!lead_id || !label) return { ok: false, erro: 'lead_id e label obrigatorios' };
-  const { data, error } = await supabaseClient.from('ia_experimentos').insert({
-    lead_id, telefone: telefone || '', variant_id,
-    label_sugestao: label, mensagem_sugestao: mensagem || '',
-    etapa_no_momento: etapa || '', tecnica_usada: tecnica || '',
-    usada: true, resultado: 'pendente',
-  }).select('id').single();
-  if (error) throw error;
-  aprendizadoConsolidarLazy(label, etapa).catch(() => {});
-  return { ok: true, experimento_id: data?.id };
-}
-
-async function aprendizadoRegistrarResultado(body) {
-  const { lead_id, experimento_id, resultado } = body;
-  if (!lead_id && !experimento_id) return { ok: false };
-  if (experimento_id) {
-    await supabaseClient.from('ia_experimentos').update({ resultado, atualizado_em: new Date().toISOString() }).eq('id', experimento_id);
-  } else {
-    await supabaseClient.from('ia_experimentos').update({ resultado, atualizado_em: new Date().toISOString() }).eq('lead_id', lead_id).eq('resultado', 'pendente').order('criado_em', { ascending: false }).limit(1);
-  }
-  return { ok: true };
-}
-
-async function aprendizadoBuscarInsights(contexto = '') {
-  try {
-    let query = supabaseClient.from('ia_insights_globais').select('tipo, contexto, insight, confianca, usos, sucessos').gte('confianca', 40).gte('usos', 3).order('confianca', { ascending: false }).limit(12);
-    if (contexto) query = query.or(`contexto.ilike.%${contexto}%,contexto.is.null`);
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
-  } catch (err) {
-    console.warn('[aprendizado] buscarInsights falhou:', err.message);
-    return [];
-  }
-}
-
-async function aprendizadoConsolidarLazy(label, etapa) {
-  const contextoKey = etapa ? `label:${label};etapa:${etapa}` : `label:${label}`;
-  const { data: exps, error } = await supabaseClient.from('ia_experimentos').select('variant_id, usada, resultado').eq('label_sugestao', label).eq('etapa_no_momento', etapa || '').eq('usada', true);
-  if (error || !exps || exps.length < MIN_USOS_PARA_INSIGHT) return;
-  const total = exps.length;
-  const sucessos = exps.filter(e => e.resultado === 'etapa_avancou' || e.resultado === 'resposta_recebida').length;
-  const taxa = sucessos / total;
-  let tipo, insight;
-  if (taxa >= TAXA_SUCESSO_POSITIVO) {
-    tipo = 'tecnica_efetiva';
-    insight = `Sugestoes com label "${label}" no contexto "${etapa || 'geral'}" tiveram ${Math.round(taxa * 100)}% de taxa de sucesso (${sucessos}/${total} usos resultaram em avanco). Giorno deve priorizar esse estilo de abordagem.`;
-  } else if (taxa <= TAXA_SUCESSO_NEGATIVO) {
-    tipo = 'abordagem_falhou';
-    insight = `Sugestoes com label "${label}" no contexto "${etapa || 'geral'}" tiveram apenas ${Math.round(taxa * 100)}% de sucesso (${sucessos}/${total}). Giorno deve evitar esse padrao e tentar abordagem diferente.`;
-  } else { return; }
-  const confianca = Math.min(95, 40 + Math.round(taxa * 60));
-  const { data: existente } = await supabaseClient.from('ia_insights_globais').select('id').eq('tipo', tipo).eq('contexto', contextoKey).maybeSingle();
-  if (existente) {
-    await supabaseClient.from('ia_insights_globais').update({ insight, confianca, usos: total, sucessos, atualizado_em: new Date().toISOString() }).eq('id', existente.id);
-  } else {
-    await supabaseClient.from('ia_insights_globais').insert({ tipo, contexto: contextoKey, insight, confianca, usos: total, sucessos });
-  }
-}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1067,7 +866,7 @@ export default async function handler(req, res) {
   try {
     // GET — buscar insights aprendidos (usado pelo prompt e pelo frontend)
     if (req.method === 'GET') {
-      const insights = await aprendizadoBuscarInsights(req.query?.contexto || '');
+      const insights = await buscarInsightsLearning(req.query?.contexto || '');
       return res.status(200).json({ insights });
     }
 
@@ -1081,189 +880,48 @@ export default async function handler(req, res) {
       return res.status(200).json({ checkupGeral });
     }
 
-    // ── Modos de aprendizado (consolidados de ia-aprendizado.js) ──
+    // ── Modos de aprendizado (delegados para _lib/learning.js) ──
     if (modo === 'aprendizado-uso') {
-      const result = await aprendizadoRegistrarUso(body);
+      const result = await registrarUso(body);
       return res.status(result.ok ? 200 : 400).json(result);
     }
     if (modo === 'aprendizado-resultado') {
-      const result = await aprendizadoRegistrarResultado(body);
+      const result = await registrarResultado(body);
       return res.status(200).json(result);
     }
 
-    // ── Marketing IA — Leone Abbacchio (Trafego) e Narancia Ghirga (Conteudo) ──
+    // ── Marketing IA — delegado para agents/abbacchio.js e agents/narancia.js ──
     if (modo === 'marketing-abbacchio' || modo === 'marketing-narancia') {
-      if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) return res.status(503).json({ error: 'Nenhuma API KEY configurada.' });
+      if (!hasAnyProvider()) return res.status(503).json({ error: 'Nenhuma API KEY configurada.' });
 
-      const { produto, publicoAlvo, objetivo, budget, plataforma, contextoExtra: ctxExtra, campanhaAtual } = body;
+      const params = {
+        produto: body.produto,
+        publicoAlvo: body.publicoAlvo,
+        objetivo: body.objetivo,
+        budget: body.budget,
+        plataforma: body.plataforma,
+        contextoExtra: body.contextoExtra,
+        campanhaAtual: body.campanhaAtual,
+      };
 
-      const cacheKeyMkt = `mkt_${modo}_${produto || ''}_${objetivo || ''}_${publicoAlvo || ''}`;
-      const cachedMkt = cache.get(cacheKeyMkt);
-      if (cachedMkt && Date.now() - cachedMkt.ts < 120000) {
-        return res.status(200).json(cachedMkt.data);
-      }
+      const cacheKeyMkt = `mkt_${modo}_${params.produto || ''}_${params.objetivo || ''}_${params.publicoAlvo || ''}`;
+      const cached = getCacheByKey(cacheKeyMkt);
+      if (cached) return res.status(200).json(cached);
 
-      const conhecimentoBase = `CDS Industrial - fabrica metalica em Brasilia/DF. Vendedor: Jean.
-Produtos: chapas dobradas, pecas em metalon/tubo/chapa, pes de mesa, carrinhos, tampas para casas de maquinas, containers de lixo, escadas/rampas (ABNT/NR+ART), bancadas e projetos sob encomenda.
-PIX 7% OFF | cupom 1COMPRA 5% OFF | Entrega Brasil todo + Munck 14t.
-Site: cdsind.com.br | Instagram: @cdsindustrial | WhatsApp: (61) 99XXX-XXXX`;
-
-      let systemPrompt, userPrompt;
-
+      let response;
       if (modo === 'marketing-abbacchio') {
-        systemPrompt = `Voce e Leone Abbacchio, Gestor de Marketing e Trafego IA da CDS Industrial.
-Seu papel: estrategista de marketing digital e trafego pago para uma industria metalica em Brasilia/DF.
-
-PERSONALIDADE: Analitico, meticuloso, direto. Voce nao tolera achismo — tudo precisa de dado, metrica e ROI.
-Voce e o tipo de gestor que olha os numeros antes de aprovar qualquer campanha.
-
-CONHECIMENTO DA EMPRESA:
-${conhecimentoBase}
-
-SUAS COMPETENCIAS:
-- Trafego pago: Google Ads (Search, Display, Shopping), Meta Ads (Facebook/Instagram), TikTok Ads
-- Funil de aquisicao: TOFU (awareness), MOFU (consideracao), BOFU (conversao)
-- Metricas: CPL, CPA, ROAS, CTR, CAC, LTV, frequencia, impressoes, alcance
-- Segmentacao: lookalike, remarketing, interesses, geografico, demografico
-- Budget: alocacao por canal, otimizacao de investimento, ROI projetado
-- Automacao: pixels, eventos de conversao, UTMs, integracao com CRM
-
-REGRAS:
-- Sempre justifique decisoes com logica de negocio e metricas
-- Sugira budgets realistas para uma industria metalica PME
-- Priorize canais com melhor custo-beneficio para B2B industrial
-- Fale como gestor senior: objetivo, sem floreios, com dados
-- Retorne APENAS JSON valido`;
-
-        userPrompt = `Preciso de uma estrategia de marketing para:
-PRODUTO/SERVICO: ${produto || 'Produtos metalicos sob medida'}
-PUBLICO-ALVO: ${publicoAlvo || 'Empresas, construtoras e pessoas fisicas que precisam de produtos metalicos'}
-OBJETIVO: ${objetivo || 'Gerar leads qualificados'}
-BUDGET MENSAL: ${budget || 'A definir'}
-PLATAFORMA PREFERIDA: ${plataforma || 'Melhor custo-beneficio'}
-${ctxExtra ? `CONTEXTO ADICIONAL: ${ctxExtra}` : ''}
-${campanhaAtual ? `CAMPANHA ATUAL: ${campanhaAtual}` : ''}
-
-Retorne APENAS este JSON:
-{
-  "diagnostico": "Analise breve do cenario atual e oportunidades",
-  "estrategia": {
-    "posicionamento": "Como a CDS deve se posicionar neste mercado",
-    "canaisPrioritarios": [{"canal": "nome", "motivo": "porque", "budgetSugerido": "R$ X/mes", "roiEsperado": "X:1"}],
-    "funil": {
-      "tofu": "Estrategia de awareness",
-      "mofu": "Estrategia de consideracao",
-      "bofu": "Estrategia de conversao"
-    }
-  },
-  "campanhas": [
-    {
-      "nome": "Nome da campanha",
-      "plataforma": "Google/Meta/TikTok",
-      "objetivo": "Conversao/Trafego/Awareness",
-      "segmentacao": "Descricao do publico",
-      "orcamentoDiario": "R$ X",
-      "metricasAlvo": {"cpl": "R$ X", "ctr": "X%", "conversoes": "X/mes"},
-      "duracao": "X dias"
-    }
-  ],
-  "kpis": [{"nome": "Metrica", "meta": "Valor", "prazo": "Periodo"}],
-  "proximosPassos": ["Passo 1", "Passo 2", "Passo 3"],
-  "alertas": ["Risco ou observacao importante"]
-}`;
+        response = await executarAbbacchio(params, { persistCampaign: true });
       } else {
-        systemPrompt = `Voce e Narancia Ghirga, Criador de Conteudo e Design IA da CDS Industrial.
-Seu papel: criativo publicitario especializado em industria metalica. Voce cria copys, anuncios, posts e briefings de design.
-
-PERSONALIDADE: Criativo, energetico, visual. Voce pensa em imagens e palavras que impactam.
-Mas voce e profissional — sabe que copy de industria precisa de credibilidade, nao de hype vazio.
-
-CONHECIMENTO DA EMPRESA:
-${conhecimentoBase}
-
-SUAS COMPETENCIAS:
-- Copywriting: headlines, bodys, CTAs para anuncios pagos e organicos
-- Formatos: carrossel, reels, stories, single image, video script
-- Plataformas: Instagram, Facebook, Google Ads, LinkedIn, TikTok
-- Design thinking: briefing para designers, paleta de cores, tipografia, composicao
-- Tom de voz: industrial profissional mas acessivel, sem ser generico
-- A/B testing: gerar variacoes de copy para testar performance
-- SEO: meta titles, descriptions, alt texts
-
-REGRAS:
-- Copies curtas e impactantes. Industria nao precisa de texto de influencer.
-- Use numeros concretos quando possivel (7% PIX, entrega nacional, 14t Munck)
-- Destaque diferenciais reais: fabricacao propria, sob medida, Brasilia/DF
-- Briefings de design devem ser claros e executaveis por qualquer designer
-- Retorne APENAS JSON valido`;
-
-        userPrompt = `Preciso de conteudo de marketing para:
-PRODUTO/SERVICO: ${produto || 'Produtos metalicos sob medida da CDS Industrial'}
-PUBLICO-ALVO: ${publicoAlvo || 'Empresas e pessoas que precisam de produtos metalicos'}
-OBJETIVO: ${objetivo || 'Gerar engajamento e leads'}
-PLATAFORMA: ${plataforma || 'Instagram e Facebook'}
-${ctxExtra ? `CONTEXTO ADICIONAL: ${ctxExtra}` : ''}
-
-Retorne APENAS este JSON:
-{
-  "analiseCreativa": "Sua leitura do cenario e angulo criativo escolhido",
-  "copies": [
-    {
-      "tipo": "anuncio|post|stories|carrossel|reels_script",
-      "plataforma": "Instagram/Facebook/Google/LinkedIn",
-      "headline": "Titulo impactante",
-      "corpo": "Texto do anuncio/post",
-      "cta": "Call to action",
-      "hashtags": ["#tag1", "#tag2"],
-      "observacao": "Nota sobre tom ou variacao"
-    }
-  ],
-  "variacoes": [
-    {
-      "original": "Copy A",
-      "variacao": "Copy B (teste A/B)",
-      "hipotese": "Porque testar essa variacao"
-    }
-  ],
-  "briefingDesign": [
-    {
-      "peca": "Nome da peca (ex: Post feed quadrado)",
-      "formato": "1080x1080 / 1080x1920 / 1200x628",
-      "elementosVisuais": "Foto de produto, fundo escuro, texto em destaque",
-      "paleta": "Cores sugeridas",
-      "tipografia": "Bold sans-serif para headline, regular para corpo",
-      "referencia": "Estilo industrial premium, limpo"
-    }
-  ],
-  "calendarioSugerido": [
-    {"dia": "Segunda", "conteudo": "Tipo de post", "formato": "Feed/Stories/Reels"}
-  ],
-  "proximosPassos": ["Passo 1", "Passo 2"]
-}`;
+        response = await executarNarancia(params, { campaignId: body.campaignId || null });
       }
 
-      const resp = await chamarIAComFallback(systemPrompt, userPrompt);
-      const raw = resp.data?.choices?.[0]?.message?.content || '';
-      let resultado;
-      try { resultado = JSON.parse(raw); } catch {
-        const m = raw.match(/\{[\s\S]*\}/);
-        if (m) { try { resultado = JSON.parse(m[0]); } catch {} }
-        if (!resultado) throw new Error('JSON invalido do marketing IA');
-      }
-
-      const response = { resultado, modo, personagem: modo === 'marketing-abbacchio' ? 'Leone Abbacchio' : 'Narancia Ghirga' };
-      cache.set(cacheKeyMkt, { data: response, ts: Date.now() });
-      if (cache.size > 50) {
-        const oldest = [...cache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
-        if (oldest) cache.delete(oldest[0]);
-      }
-
+      setCacheByKey(cacheKeyMkt, response, 120000);
       return res.status(200).json(response);
     }
 
-    // ── Analise de conversa (modo padrao) ──
+    // ── Analise de conversa (modo padrao — Giorno + Bruno) ──
     const { telefone, nome, empresa, etapa } = body;
-    if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) return res.status(503).json({ error: 'Nenhuma API KEY configurada.' });
+    if (!hasAnyProvider()) return res.status(503).json({ error: 'Nenhuma API KEY configurada.' });
 
     const mensagens = telefone ? await buscarMensagens(telefone) : [];
 
