@@ -17,7 +17,6 @@ const sections: SidebarSection[] = [
       { name: 'Dashboard', icon: LayoutDashboard, id: 'dashboard' },
       { name: 'Assistente IA', icon: Sparkles, id: 'assistente-ia' },
       { name: 'Funil de Vendas', icon: TrendingUp, id: 'leads', badge: 'CRM' },
-      { name: 'Clientes', icon: Users, id: 'crm' },
       { name: 'Produtos', icon: ShoppingBag, id: 'produtos' },
       { name: 'Propostas', icon: FileText, id: 'propostas' },
       { name: 'Projetos 3D', icon: Box, id: 'projetos-3d' },
@@ -62,7 +61,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const { user, logout } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const crmIds = ['dashboard','projetos-3d','crm','assistente-ia','propostas','checkout','licitacoes','locacoes','leads','produtos'];
+  const crmIds = ['dashboard','projetos-3d','cadastro-clientes','assistente-ia','propostas','checkout','licitacoes','locacoes','leads','produtos','cadastro-fornecedores','cadastro-governo','cadastro-funcionarios'];
   const prodIds = ['corte','dobra','solda','pintura','embalagem','entrega','pcp-kanban','faturamento','estoque','entrada-inteligente'];
 
   const filteredSections = sections

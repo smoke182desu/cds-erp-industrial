@@ -317,7 +317,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('@cds-inventoryItems');
     localStorage.removeItem('@cds-ordensServico');
     localStorage.removeItem('@cds-transacoesFinanceiras');
-    fetch('/api/clientes')
+    fetch('/api/data?resource=clientes')
       .then(r => r.ok ? r.json() : Promise.reject(new Error('Falha ao buscar clientes')))
       .then(data => {
         if (!ativo) return;
@@ -846,7 +846,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clientes: [...prev.clientes, clienteTemporario]
     }));
 
-    fetch('/api/clientes', {
+    fetch('/api/data?resource=clientes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(prepararClienteApi(clienteTemporario))
@@ -875,7 +875,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setTimeout(() => {
       if (!clienteAtualizado) return;
-      fetch('/api/clientes', {
+      fetch('/api/data?resource=clientes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(prepararClienteApi(clienteAtualizado))
