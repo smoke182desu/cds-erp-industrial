@@ -591,10 +591,11 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
                     <button key={i} onClick={() => {
                       onUsarSugestao(s.mensagem);
                       // Registra uso para aprendizado do Bruno
-                      fetch('/api/ia-aprendizado', {
+                      fetch('/api/assistente-vendas', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
+                          modo: 'aprendizado-uso',
                           lead_id: lead.id,
                           telefone: lead.telefone,
                           variant_id: variantId,
@@ -1412,7 +1413,7 @@ function CadastrarProdutoModal({ produto, onClose, onSalvo }: {
     setSalvando(true);
     setErro('');
     try {
-      const res = await fetch('/api/produto', {
+      const res = await fetch('/api/produtos?crud=1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1526,7 +1527,7 @@ export function Leads() {
 
   // Carrega estado de lidos do servidor ao montar (sincroniza entre dispositivos)
   useEffect(() => {
-    fetch('/api/leads-leitura')
+    fetch('/api/leads?recurso=leitura')
       .then(r => r.json())
       .then(data => {
         if (data.lidos && typeof data.lidos === 'object') {
@@ -1548,7 +1549,7 @@ export function Leads() {
       return next;
     });
     // Persiste no Supabase — memória permanente entre dispositivos/sessões
-    fetch('/api/leads-leitura', {
+    fetch('/api/leads?recurso=leitura', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lead_id: lead.id, ultima_hora: hora }),
@@ -1578,10 +1579,10 @@ export function Leads() {
     setLeadAtivo(atualizado);
     setLeads(prev => prev.map(l => l.id === leadAtivo.id ? atualizado : l));
     // Registra resultado positivo — Bruno aprende que a abordagem funcionou
-    fetch('/api/ia-aprendizado?acao=resultado', {
+    fetch('/api/assistente-vendas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lead_id: leadAtivo.id, resultado: 'etapa_avancou' }),
+      body: JSON.stringify({ modo: 'aprendizado-resultado', lead_id: leadAtivo.id, resultado: 'etapa_avancou' }),
     }).catch(() => {});
   };
   const abrirLeadPorId = useCallback((leadId: string) => {

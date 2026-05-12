@@ -958,25 +958,112 @@ ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conve
   return { analise, variantId };
 }
 
+// ── Aprendizado IA — consolidado de ia-aprendizado.js ─────────────────────────
+const MIN_USOS_PARA_INSIGHT = 8;
+const TAXA_SUCESSO_POSITIVO = 0.55;
+const TAXA_SUCESSO_NEGATIVO = 0.25;
+
+async function aprendizadoRegistrarUso(body) {
+  const { lead_id, telefone, variant_id = 'A', label, mensagem, etapa, tecnica } = body;
+  if (!lead_id || !label) return { ok: false, erro: 'lead_id e label obrigatorios' };
+  const { data, error } = await supabaseClient.from('ia_experimentos').insert({
+    lead_id, telefone: telefone || '', variant_id,
+    label_sugestao: label, mensagem_sugestao: mensagem || '',
+    etapa_no_momento: etapa || '', tecnica_usada: tecnica || '',
+    usada: true, resultado: 'pendente',
+  }).select('id').single();
+  if (error) throw error;
+  aprendizadoConsolidarLazy(label, etapa).catch(() => {});
+  return { ok: true, experimento_id: data?.id };
+}
+
+async function aprendizadoRegistrarResultado(body) {
+  const { lead_id, experimento_id, resultado } = body;
+  if (!lead_id && !experimento_id) return { ok: false };
+  if (experimento_id) {
+    await supabaseClient.from('ia_experimentos').update({ resultado, atualizado_em: new Date().toISOString() }).eq('id', experimento_id);
+  } else {
+    await supabaseClient.from('ia_experimentos').update({ resultado, atualizado_em: new Date().toISOString() }).eq('lead_id', lead_id).eq('resultado', 'pendente').order('criado_em', { ascending: false }).limit(1);
+  }
+  return { ok: true };
+}
+
+async function aprendizadoBuscarInsights(contexto = '') {
+  try {
+    let query = supabaseClient.from('ia_insights_globais').select('tipo, contexto, insight, confianca, usos, sucessos').gte('confianca', 40).gte('usos', 3).order('confianca', { ascending: false }).limit(12);
+    if (contexto) query = query.or(`contexto.ilike.%${contexto}%,contexto.is.null`);
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.warn('[aprendizado] buscarInsights falhou:', err.message);
+    return [];
+  }
+}
+
+async function aprendizadoConsolidarLazy(label, etapa) {
+  const contextoKey = etapa ? `label:${label};etapa:${etapa}` : `label:${label}`;
+  const { data: exps, error } = await supabaseClient.from('ia_experimentos').select('variant_id, usada, resultado').eq('label_sugestao', label).eq('etapa_no_momento', etapa || '').eq('usada', true);
+  if (error || !exps || exps.length < MIN_USOS_PARA_INSIGHT) return;
+  const total = exps.length;
+  const sucessos = exps.filter(e => e.resultado === 'etapa_avancou' || e.resultado === 'resposta_recebida').length;
+  const taxa = sucessos / total;
+  let tipo, insight;
+  if (taxa >= TAXA_SUCESSO_POSITIVO) {
+    tipo = 'tecnica_efetiva';
+    insight = `Sugestoes com label "${label}" no contexto "${etapa || 'geral'}" tiveram ${Math.round(taxa * 100)}% de taxa de sucesso (${sucessos}/${total} usos resultaram em avanco). Giorno deve priorizar esse estilo de abordagem.`;
+  } else if (taxa <= TAXA_SUCESSO_NEGATIVO) {
+    tipo = 'abordagem_falhou';
+    insight = `Sugestoes com label "${label}" no contexto "${etapa || 'geral'}" tiveram apenas ${Math.round(taxa * 100)}% de sucesso (${sucessos}/${total}). Giorno deve evitar esse padrao e tentar abordagem diferente.`;
+  } else { return; }
+  const confianca = Math.min(95, 40 + Math.round(taxa * 60));
+  const { data: existente } = await supabaseClient.from('ia_insights_globais').select('id').eq('tipo', tipo).eq('contexto', contextoKey).maybeSingle();
+  if (existente) {
+    await supabaseClient.from('ia_insights_globais').update({ insight, confianca, usos: total, sucessos, atualizado_em: new Date().toISOString() }).eq('id', existente.id);
+  } else {
+    await supabaseClient.from('ia_insights_globais').insert({ tipo, contexto: contextoKey, insight, confianca, usos: total, sucessos });
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
+
   try {
-    const { telefone, nome, empresa, etapa, modo } = req.body || {};
+    // GET — buscar insights aprendidos (usado pelo prompt e pelo frontend)
+    if (req.method === 'GET') {
+      const insights = await aprendizadoBuscarInsights(req.query?.contexto || '');
+      return res.status(200).json({ insights });
+    }
+
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
+
+    const body = req.body || {};
+    const modo = body.modo || '';
 
     if (modo === 'checkup-geral') {
       const checkupGeral = await gerarCheckupGeralVendas();
       return res.status(200).json({ checkupGeral });
     }
 
+    // ── Modos de aprendizado (consolidados de ia-aprendizado.js) ──
+    if (modo === 'aprendizado-uso') {
+      const result = await aprendizadoRegistrarUso(body);
+      return res.status(result.ok ? 200 : 400).json(result);
+    }
+    if (modo === 'aprendizado-resultado') {
+      const result = await aprendizadoRegistrarResultado(body);
+      return res.status(200).json(result);
+    }
+
+    // ── Analise de conversa (modo padrao) ──
+    const { telefone, nome, empresa, etapa } = body;
     if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) return res.status(503).json({ error: 'Nenhuma API KEY configurada.' });
 
     const mensagens = telefone ? await buscarMensagens(telefone) : [];
 
-    // Verifica cache para esta versao exata da conversa antes de chamar IA
     const cached = telefone ? getCache(telefone, mensagens) : null;
     if (cached) {
       return res.status(200).json(cached);
@@ -985,7 +1072,6 @@ export default async function handler(req, res) {
     const { analise, variantId } = await analisarConversa(mensagens, { nome, empresa, etapa, telefone });
     const resultado = { analise, variantId, totalMensagens: mensagens.length };
 
-    // Armazena no cache
     if (telefone) setCache(telefone, mensagens, resultado);
 
     return res.status(200).json(resultado);

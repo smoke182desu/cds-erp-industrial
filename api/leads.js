@@ -1,4 +1,4 @@
-// api/leads.js
+﻿// api/leads.js
 // CRUD de leads para o funil CRM
 import { selectAll, insert, update, remove } from './_lib/supabase.js';
 
@@ -232,6 +232,39 @@ async function deletarLead(id) {
   return id;
 }
 
+// ── Leads Leitura (consolidado de leads-leitura.js) ──────────────────────────
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseDirect = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
+);
+
+async function handleLeitura(req, res) {
+  if (req.method === 'GET') {
+    const id = req.query.id;
+    if (id) {
+      const { data, error } = await supabaseDirect.from('leads_leitura').select('lead_id, ultima_leitura_em').eq('lead_id', id).maybeSingle();
+      if (error) throw error;
+      return res.status(200).json(data || { lead_id: id, ultima_leitura_em: null });
+    }
+    const { data, error } = await supabaseDirect.from('leads_leitura').select('lead_id, ultima_leitura_em');
+    if (error) throw error;
+    const lidos = {};
+    for (const row of data || []) lidos[row.lead_id] = row.ultima_leitura_em;
+    return res.status(200).json({ lidos });
+  }
+  if (req.method === 'POST') {
+    const { lead_id, ultima_hora } = req.body || {};
+    if (!lead_id) return res.status(400).json({ error: 'lead_id obrigatorio' });
+    const agora = ultima_hora || new Date().toISOString();
+    const { error } = await supabaseDirect.from('leads_leitura').upsert({ lead_id, ultima_leitura_em: agora, atualizado_em: new Date().toISOString() }, { onConflict: 'lead_id' });
+    if (error) throw error;
+    return res.status(200).json({ ok: true, lead_id, ultima_leitura_em: agora });
+  }
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -239,6 +272,11 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') return res.status(200).end();
   try {
+    // Recurso leitura (consolidado de leads-leitura.js)
+    if (req.query.recurso === 'leitura') {
+      return await handleLeitura(req, res);
+    }
+
     if (req.method === 'GET') {
       const raw = await listarLeads();
       const incluirOcultos = req.query.incluirOcultos === '1';

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import { buscarProdutos, fmtPreco } from '../services/produtosService';
 import {
   RefreshCw, Search, Package, Plus, Edit2, Trash2, X,
@@ -198,7 +198,7 @@ export function Produtos() {
   const salvar = async () => {
     setSalvando(true); setErrosForm([]);
     try {
-      const url    = modal === 'edit' ? `/api/produto?id=${editando.id}` : '/api/produto';
+      const url    = modal === 'edit' ? `/api/produtos?crud=1&id=${editando.id}` : '/api/produtos?crud=1';
       const method = modal === 'edit' ? 'PUT' : 'POST';
       const res    = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(form) });
       const data   = await res.json();
@@ -213,7 +213,7 @@ export function Produtos() {
   const confirmarDelete = async () => {
     if (!deletandoId) return;
     try {
-      await fetch(`/api/produto?id=${deletandoId}`, { method:'DELETE' });
+      await fetch(`/api/produtos?crud=1&id=${deletandoId}`, { method:'DELETE' });
       showToast('Produto excluído');
       setProdutos(prev => prev.filter(p => p.id !== deletandoId));
     } catch (e: any) { showToast(`Erro: ${e.message}`); }
