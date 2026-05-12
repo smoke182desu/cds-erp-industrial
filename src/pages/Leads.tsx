@@ -839,10 +839,8 @@ function LeadItem({ lead, ativo, naoLido, onClick }: {
         )}
         <div className="flex items-center justify-between gap-1 mt-0.5">
           <p className={`text-xs truncate ${naoLido ? 'text-gray-700 font-medium' : 'text-gray-500'}`}>{preview}</p>
-          {(lead.totalMensagens ?? 0) > 0 && !ativo && (
-            <span className="flex-shrink-0 bg-[#25D366] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-              {lead.totalMensagens}
-            </span>
+          {naoLido && !ativo && (
+            <span className="flex-shrink-0 bg-[#25D366] rounded-full w-[10px] h-[10px]" />
           )}
         </div>
       </div>
