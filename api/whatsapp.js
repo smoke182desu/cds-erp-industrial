@@ -200,6 +200,7 @@ export default async function handler(req, res) {
     if (!norm.numero) {
       const lidPuro = (norm.remoteJid || '').split('@')[0].replace(/\D/g, '');
       if (lidPuro) {
+        const mensagemCriadaEm = new Date(norm.timestamp).toISOString();
         const msgData = {
           telefone: lidPuro,
           texto: norm.texto,
@@ -207,12 +208,13 @@ export default async function handler(req, res) {
           remetente: norm.pushName,
           instancia: norm.instance,
           payload_bruto: body,
-          criado_em: new Date(norm.timestamp).toISOString()
+          criado_em: mensagemCriadaEm,
+          timestamp_msg: mensagemCriadaEm
         };
         if (norm.mediaUrl) { msgData.media_url = norm.mediaUrl; msgData.media_type = norm.mediaType; }
         await insert('mensagens', msgData).catch(async (err) => {
           if (err.message?.includes('PGRST204')) {
-            delete msgData.media_url; delete msgData.media_type;
+            delete msgData.media_url; delete msgData.media_type; delete msgData.timestamp_msg;
             return insert('mensagens', msgData).catch(() => {});
           }
         });
@@ -221,6 +223,7 @@ export default async function handler(req, res) {
     }
 
     // 1. Salva a mensagem
+    const mensagemCriadaEm = new Date(norm.timestamp).toISOString();
     const msgData = {
       telefone: norm.numero,
       texto: norm.texto,
@@ -228,12 +231,13 @@ export default async function handler(req, res) {
       remetente: norm.pushName,
       instancia: norm.instance,
       payload_bruto: body,
-      criado_em: new Date(norm.timestamp).toISOString()
+      criado_em: mensagemCriadaEm,
+      timestamp_msg: mensagemCriadaEm
     };
     if (norm.mediaUrl) { msgData.media_url = norm.mediaUrl; msgData.media_type = norm.mediaType; }
     await insert('mensagens', msgData).catch(async (err) => {
       if (err.message?.includes('PGRST204')) {
-        delete msgData.media_url; delete msgData.media_type;
+        delete msgData.media_url; delete msgData.media_type; delete msgData.timestamp_msg;
         return insert('mensagens', msgData);
       }
       throw err;
@@ -246,7 +250,7 @@ export default async function handler(req, res) {
         nome: norm.pushName || norm.numero,
         etapa: 'lead_novo',
         ultima_mensagem: norm.texto,
-        atualizado_em: new Date().toISOString()
+        atualizado_em: mensagemCriadaEm
       }, 'telefone');
     }
 

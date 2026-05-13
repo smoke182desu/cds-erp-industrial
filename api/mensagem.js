@@ -59,12 +59,21 @@ function mapMensagem(row) {
     tipo: row.tipo || 'entrada',
     origem: row.origem || 'whatsapp',
     leadId: row.lead_id || row.leadId || '',
-    criadoEm: row.criado_em || row.created_at || new Date().toISOString(),
+    criadoEm: row.timestamp_msg || row.criado_em || row.created_at || new Date().toISOString(),
     mediaUrl: mediaType ? `/api/media?id=${encodeURIComponent(row.id)}` : undefined,
     mediaType,
   };
 }
 
+function tempoMensagem(row) {
+  const raw = row?.timestamp_msg || row?.criado_em || row?.created_at || row?.criadoEm || '';
+  const time = new Date(raw).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function ordenarMensagens(rows) {
+  return [...rows].sort((a, b) => tempoMensagem(a) - tempoMensagem(b));
+}
 
 // Detecta mediatype a partir do mimetype
 function detectMediaType(mimetype) {
@@ -118,6 +127,38 @@ function evolutionErroDetalhado(err) {
   return err.message || 'Erro desconhecido';
 }
 
+async function postarMediaMultipart({ numero, mediaType, mimetype, caption, mediaInfo, fileName }) {
+  if (typeof FormData === 'undefined' || typeof Blob === 'undefined') {
+    throw new Error('FormData indisponivel no runtime');
+  }
+
+  const form = new FormData();
+  form.append('number', numero);
+  form.append('mediatype', mediaType);
+  form.append('mimetype', mimetype);
+  form.append('caption', caption || '');
+  form.append('fileName', fileName);
+  form.append('media', new Blob([Buffer.from(mediaInfo.rawBase64, 'base64')], { type: mimetype }), fileName);
+
+  const resp = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`, {
+    method: 'POST',
+    headers: { apikey: EVOLUTION_API_KEY },
+    body: form,
+  });
+  const text = await resp.text();
+  let data = text;
+  try { data = text ? JSON.parse(text) : null; } catch {}
+
+  if (!resp.ok) {
+    const msg = typeof data === 'string' ? data : data?.response?.message || data?.message || data?.error || JSON.stringify(data);
+    const e = new Error(`multipart ${resp.status}: ${String(msg || 'erro sem detalhe').slice(0, 300)}`);
+    e.response = { status: resp.status, data };
+    throw e;
+  }
+
+  return { data, status: resp.status };
+}
+
 async function enviarMediaEvolution({ numero, mediaType, mimetype, caption, mediaInfo, fileName }) {
   const url = `${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`;
   const headers = { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' };
@@ -140,16 +181,17 @@ async function enviarMediaEvolution({ numero, mediaType, mimetype, caption, medi
   };
 
   const tentativas = [
-    { nome: 'v2-base64', body: { ...commonV2, media: mediaInfo.rawBase64 } },
-    { nome: 'v2-dataurl', body: { ...commonV2, media: mediaInfo.dataUrl } },
-    { nome: 'v1-base64', body: { ...commonV1, mediaMessage: { ...commonV1.mediaMessage, media: mediaInfo.rawBase64 } } },
-    { nome: 'v1-dataurl', body: { ...commonV1, mediaMessage: { ...commonV1.mediaMessage, media: mediaInfo.dataUrl } } },
+    { nome: 'multipart-file', run: () => postarMediaMultipart({ numero, mediaType, mimetype, caption, mediaInfo, fileName }) },
+    { nome: 'v2-base64', run: () => axios.post(url, { ...commonV2, media: mediaInfo.rawBase64 }, { headers, timeout }) },
+    { nome: 'v2-dataurl', run: () => axios.post(url, { ...commonV2, media: mediaInfo.dataUrl }, { headers, timeout }) },
+    { nome: 'v1-base64', run: () => axios.post(url, { ...commonV1, mediaMessage: { ...commonV1.mediaMessage, media: mediaInfo.rawBase64 } }, { headers, timeout }) },
+    { nome: 'v1-dataurl', run: () => axios.post(url, { ...commonV1, mediaMessage: { ...commonV1.mediaMessage, media: mediaInfo.dataUrl } }, { headers, timeout }) },
   ];
 
   let lastErr;
   for (const tentativa of tentativas) {
     try {
-      return await axios.post(url, tentativa.body, { headers, timeout });
+      return await tentativa.run();
     } catch (err) {
       lastErr = err;
       const status = err.response?.status;
@@ -200,7 +242,7 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Erro ao buscar mensagens' });
       }
       const rows = Array.isArray(r.body) ? r.body : [];
-      return res.status(200).json(rows.map(mapMensagem));
+      return res.status(200).json(ordenarMensagens(rows).map(mapMensagem));
     }
 
     if (req.method === 'POST') {

@@ -15,12 +15,21 @@ export interface Mensagem {
 
 const API_BASE = '/api';
 
+function tempoMensagem(mensagem: Mensagem): number {
+  const time = new Date(mensagem.criadoEm || '').getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function ordenarMensagens(mensagens: Mensagem[]): Mensagem[] {
+  return [...mensagens].sort((a, b) => tempoMensagem(a) - tempoMensagem(b));
+}
+
 // ---------- buscar historico de um telefone ----------
 export async function buscarMensagens(telefone: string): Promise<Mensagem[]> {
   const tel = telefone.replace(/\D/g, '');
   const res = await fetch(`${API_BASE}/mensagem?telefone=${tel}`);
   const data = await res.json();
-  return (Array.isArray(data) ? data : []) as Mensagem[];
+  return ordenarMensagens((Array.isArray(data) ? data : []) as Mensagem[]);
 }
 
 // ---------- enviar mensagem de texto via WhatsApp ----------
@@ -34,7 +43,17 @@ export async function enviarMensagem(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ telefone, mensagem, leadId }),
   });
-  return res.json();
+  return lerRespostaApi(res);
+}
+
+async function lerRespostaApi(res: Response): Promise<any> {
+  const text = await res.text();
+  let data: any = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
+  if (!res.ok) {
+    return { ok: false, error: data.error || data.message || text || `HTTP ${res.status}` };
+  }
+  return data;
 }
 
 // ---------- converter File para base64 ----------
@@ -72,7 +91,7 @@ export async function enviarMidia(
       caption: caption || '',
     }),
   });
-  return res.json();
+  return lerRespostaApi(res);
 }
 
 // ---------- formatar conversa para copiar ----------
