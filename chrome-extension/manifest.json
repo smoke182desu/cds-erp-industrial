@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "CDS Industrial - Auto Poster",
+  "version": "1.0.0",
+  "description": "Publica anuncios automaticamente na OLX, Marketplace e Instagram a partir do ERP CDS Industrial",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.olx.com.br/*",
+    "https://www.facebook.com/*",
+    "https://business.facebook.com/*",
+    "https://creator.facebook.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.olx.com.br/*"],
+      "js": ["content-scripts/olx.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.facebook.com/marketplace/*"],
+      "js": ["content-scripts/marketplace.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

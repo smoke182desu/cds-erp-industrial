@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="20" fill="#7c3aed"/>
+  <text x="64" y="52" text-anchor="middle" font-family="Arial Black" font-size="32" fill="white" font-weight="bold">CDS</text>
+  <text x="64" y="84" text-anchor="middle" font-family="Arial" font-size="16" fill="#e2e8f0">AUTO</text>
+  <text x="64" y="104" text-anchor="middle" font-family="Arial" font-size="14" fill="#a78bfa">POSTER</text>
+</svg>

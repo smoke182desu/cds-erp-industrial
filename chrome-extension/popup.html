@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CDS Auto Poster</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { width: 380px; font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+    
+    .header { background: linear-gradient(135deg, #e11d48, #7c3aed); padding: 14px 16px; }
+    .header h1 { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .header p { font-size: 10px; opacity: 0.7; margin-top: 2px; }
+    
+    .config-bar { background: #1e293b; padding: 10px 16px; border-bottom: 1px solid #334155; }
+    .config-bar label { font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .config-bar input { width: 100%; margin-top: 4px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 6px 10px; color: #e2e8f0; font-size: 12px; outline: none; }
+    .config-bar input:focus { border-color: #7c3aed; }
+    
+    .content { padding: 12px 16px; }
+    
+    .section-title { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    
+    .post-card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+    .post-card .type-badge { font-size: 9px; background: #7c3aed33; color: #a78bfa; padding: 2px 8px; border-radius: 20px; font-weight: 600; display: inline-block; margin-bottom: 6px; }
+    .post-card h3 { font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+    .post-card .body { font-size: 11px; color: #94a3b8; line-height: 1.5; max-height: 60px; overflow: hidden; }
+    .post-card .meta { font-size: 10px; color: #64748b; margin-top: 6px; }
+    
+    .platform-buttons { display: flex; gap: 6px; margin-top: 10px; }
+    .platform-btn { flex: 1; padding: 10px 8px; border: none; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: all 0.2s; }
+    .platform-btn:hover { transform: translateY(-1px); }
+    .platform-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .platform-btn .icon { font-size: 18px; }
+    
+    .btn-olx { background: #6b21a8; color: white; }
+    .btn-olx:hover:not(:disabled) { background: #7c3aed; }
+    .btn-marketplace { background: #1d4ed8; color: white; }
+    .btn-marketplace:hover:not(:disabled) { background: #2563eb; }
+    .btn-all { background: linear-gradient(135deg, #e11d48, #7c3aed); color: white; border: none; padding: 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; width: 100%; margin-top: 8px; transition: all 0.2s; }
+    .btn-all:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    .btn-all:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+    .status { padding: 8px 16px; }
+    .status-msg { font-size: 11px; padding: 8px 12px; border-radius: 8px; display: flex; align-items: center; gap: 6px; }
+    .status-success { background: #064e3b; color: #6ee7b7; }
+    .status-error { background: #7f1d1d; color: #fca5a5; }
+    .status-info { background: #1e3a5f; color: #93c5fd; }
+    
+    .empty { text-align: center; padding: 30px 16px; color: #64748b; }
+    .empty .icon { font-size: 32px; margin-bottom: 8px; }
+    .empty p { font-size: 11px; }
+    
+    .load-btn { background: #334155; color: #e2e8f0; border: 1px solid #475569; padding: 8px 16px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 8px; }
+    .load-btn:hover { background: #475569; }
+    
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .field-group { margin-top: 8px; }
+    .field-group label { font-size: 10px; color: #64748b; }
+    .field-group input, .field-group textarea { width: 100%; margin-top: 2px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 6px 10px; color: #e2e8f0; font-size: 11px; outline: none; resize: vertical; }
+    .field-group textarea { min-height: 50px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>&#9889; CDS Auto Poster</h1>
+    <p>Publique nos classificados direto do ERP</p>
+  </div>
+
+  <div class="config-bar">
+    <label>URL do ERP (Vercel)</label>
+    <input type="text" id="erpUrl" placeholder="https://seu-erp.vercel.app" />
+  </div>
+
+  <div class="content">
+    <!-- Manual content entry -->
+    <div class="section-title">Conteudo do Anuncio</div>
+    <div class="post-card" id="contentCard">
+      <div class="field-group">
+        <label>Titulo do anuncio</label>
+        <input type="text" id="postTitle" placeholder="Ex: Escada Metalica Sob Medida - CDS Industrial" />
+      </div>
+      <div class="field-group">
+        <label>Descricao</label>
+        <textarea id="postBody" placeholder="Descricao completa do produto/servico..."></textarea>
+      </div>
+      <div class="field-group" style="display:flex;gap:8px">
+        <div style="flex:1">
+          <label>Preco (R$)</label>
+          <input type="text" id="postPrice" placeholder="1500" />
+        </div>
+        <div style="flex:1">
+          <label>Categoria</label>
+          <input type="text" id="postCategory" placeholder="Servicos" />
+        </div>
+      </div>
+    </div>
+
+    <button class="load-btn" id="loadFromErp">Carregar do ERP (ultima estrategia do Narancia)</button>
+
+    <div class="section-title" style="margin-top:12px">Publicar em</div>
+    <div class="platform-buttons">
+      <button class="platform-btn btn-olx" id="postOlx">
+        <span class="icon">&#x1F7E2;</span>
+        OLX
+      </button>
+      <button class="platform-btn btn-marketplace" id="postMarketplace">
+        <span class="icon">&#x1F6CD;&#xFE0F;</span>
+        Marketplace
+      </button>
+    </div>
+    <button class="btn-all" id="postAll">&#9889; Publicar em Todos</button>
+  </div>
+
+  <div class="status" id="statusArea" style="display:none">
+    <div class="status-msg" id="statusMsg"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

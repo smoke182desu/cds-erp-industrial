@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { Loader2, Target, Palette, TrendingUp, BarChart3, Megaphone, RefreshCw, ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, Sparkles, Send, HelpCircle, ArrowRight, Zap } from 'lucide-react';
+import { Loader2, Target, Palette, TrendingUp, BarChart3, Megaphone, RefreshCw, ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, Sparkles, Send, HelpCircle, ArrowRight, Zap, Upload } from 'lucide-react';
 
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false);
@@ -50,11 +50,38 @@ export function Marketing() {
   const [naExpand, setNaExpand] = useState(true);
 
   const [copied, setCopied] = useState('');
+  const [sending, setSending] = useState('');
 
   const copyText = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopied(id);
     setTimeout(() => setCopied(''), 2000);
+  };
+
+  const sendToExtension = async (copy: any, id: string) => {
+    setSending(id);
+    try {
+      const res = await fetch('/api/extension-posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titulo: copy.headline,
+          descricao: `${copy.corpo}${copy.cta ? '\n\n' + copy.cta : ''}${copy.hashtags?.length ? '\n\n' + copy.hashtags.join(' ') : ''}`,
+          preco: '',
+          categoria: 'Servicos',
+          plataformas: ['olx', 'marketplace'],
+          copyOriginal: copy,
+        }),
+      });
+      if (res.ok) {
+        setSending(id + '-ok');
+        setTimeout(() => setSending(''), 3000);
+      } else {
+        setSending('');
+      }
+    } catch {
+      setSending('');
+    }
   };
 
   const chamarAbbacchio = useCallback(async () => {
@@ -307,10 +334,18 @@ export function Marketing() {
                             <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium">{c.tipo}</span>
                             <span className="text-[10px] text-gray-400">{c.plataforma}</span>
                           </div>
-                          <button onClick={() => copyText(`${c.headline}\n\n${c.corpo}\n\n${c.cta}${c.hashtags?.length ? '\n\n' + c.hashtags.join(' ') : ''}`, `copy-${i}`)}
-                            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-orange-500 transition-all" title="Copiar">
-                            {copied === `copy-${i}` ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <Tooltip text="Enviar para a extensao Chrome publicar automaticamente">
+                              <button onClick={() => sendToExtension(c, `ext-${i}`)}
+                                className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-teal-500 transition-all" title="Enviar para Extensao">
+                                {sending === `ext-${i}` ? <Loader2 className="w-4 h-4 animate-spin text-teal-500" /> : sending === `ext-${i}-ok` ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <Upload className="w-4 h-4" />}
+                              </button>
+                            </Tooltip>
+                            <button onClick={() => copyText(`${c.headline}\n\n${c.corpo}\n\n${c.cta}${c.hashtags?.length ? '\n\n' + c.hashtags.join(' ') : ''}`, `copy-${i}`)}
+                              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-orange-500 transition-all" title="Copiar">
+                              {copied === `copy-${i}` ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                            </button>
+                          </div>
                         </div>
                         <p className="text-sm font-bold text-gray-900 mb-1">{c.headline}</p>
                         <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">{c.corpo}</p>
