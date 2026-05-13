@@ -997,7 +997,12 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
   const ind = checkup?.indicadores || {};
   const cobrancas: any[] = Array.isArray(checkup?.cobrancas) ? checkup.cobrancas : [];
   const metas: any[] = Array.isArray(checkup?.metas) ? checkup.metas : [];
+  const metasAtendimento: any[] = Array.isArray(checkup?.metasAtendimento) ? checkup.metasAtendimento : metas.slice(0, 5);
+  const metasFechamento: any[] = Array.isArray(checkup?.metasFechamento) ? checkup.metasFechamento : metas.slice(5);
   const funil: any[] = Array.isArray(checkup?.distribuicaoFunil) ? checkup.distribuicaoFunil : [];
+  const saude = checkup?.saudeFunil || {};
+  const filaAtendimento: any[] = Array.isArray(checkup?.ordemAtendimento) ? checkup.ordemAtendimento : [];
+  const atendimentos: any[] = Array.isArray(checkup?.atendimentosAvaliados) ? checkup.atendimentosAvaliados : [];
   const processos: any[] = Array.isArray(checkup?.processosQueFaltam) ? checkup.processosQueFaltam : [];
   const cronograma: any[] = Array.isArray(checkup?.cronograma) ? checkup.cronograma : [];
   const ordemProcessos: string[] = Array.isArray(checkup?.ordemProcessos) ? checkup.ordemProcessos : [];
@@ -1020,6 +1025,29 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
     if (p === 'media') return 'border-amber-400/30 bg-amber-500/10 text-amber-200';
     return 'border-slate-500/30 bg-slate-600/10 text-slate-300';
   };
+  const notaClasse = (nota?: number) => {
+    const n = Number(nota || 0);
+    if (n >= 85) return 'text-emerald-300 bg-emerald-500/10 border-emerald-400/20';
+    if (n >= 70) return 'text-amber-300 bg-amber-500/10 border-amber-400/20';
+    return 'text-red-300 bg-red-500/10 border-red-400/20';
+  };
+  const fmtDin = (valor?: number) => {
+    const n = Number(valor || 0);
+    if (n >= 1000) return `R$ ${(n / 1000).toFixed(1)}k`;
+    return `R$ ${n.toLocaleString('pt-BR')}`;
+  };
+  const cardMeta = (meta: any, i: number) => (
+    <div key={`${meta.nome || i}-${i}`}>
+      <div className="flex items-center justify-between gap-1 text-[9px] mb-0.5">
+        <span className="text-slate-300 font-medium truncate">{meta.nome}</span>
+        <span className={`font-bold ${meta.status === 'ok' ? 'text-emerald-400' : meta.status === 'cobrar' ? 'text-red-400' : 'text-amber-400'}`}>{meta.atingido || 0}%</span>
+      </div>
+      <div className="h-1 bg-slate-700/50 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-700 ${meta.status === 'ok' ? 'bg-emerald-500' : meta.status === 'cobrar' ? 'bg-red-500' : 'bg-amber-500'}`}
+          style={{ width: `${Math.max(0, Math.min(100, meta.atingido || 0))}%` }} />
+      </div>
+    </div>
+  );
 
   if (!expandido) {
     return (
@@ -1031,6 +1059,7 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
         <div className="flex gap-3 text-[10px]">
           {(ind.altaPrioridade || 0) > 0 && <span className="text-red-400 font-bold animate-pulse">{ind.altaPrioridade} urgentes</span>}
           <span className="text-slate-400">{ind.leadsAtivos || 0} ativos</span>
+          <span className={(saude.notaGeral || 0) >= 70 ? 'text-emerald-400' : 'text-red-400'}>nota {saude.notaGeral || 0}/100</span>
           <span className="text-slate-400">{ind.taxaConversao || 0}% conv.</span>
           {(ind.tempoMedioEspera || 0) > 0 && <span className={(ind.tempoMedioEspera || 0) > 60 ? 'text-red-400' : 'text-emerald-400'}>{fmtTempo(ind.tempoMedioEspera || 0)} espera</span>}
         </div>
@@ -1058,8 +1087,10 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
 
       {erro && <p className="mx-4 mb-2 rounded-md bg-red-500/20 border border-red-400/30 px-3 py-1.5 text-[10px] text-red-300">{erro}</p>}
 
-      <div className="px-4 pb-2 grid grid-cols-6 gap-1.5">
+      <div className="px-4 pb-2 grid grid-cols-8 gap-1.5">
         {[
+          { label: 'Nota Geral', valor: `${saude.notaGeral || 0}/100`, grad: corKPI(saude.notaGeral || 0, 85, 60), sub: saude.status || 'sem leitura', pulse: (saude.notaGeral || 0) < 60 },
+          { label: 'Satisfacao', valor: `${ind.indiceSatisfacao || 0}%`, grad: corKPI(ind.indiceSatisfacao || 0, 82, 55), sub: 'indice percebido', pulse: false },
           { label: 'Leads Ativos', valor: String(ind.leadsAtivos || 0), grad: 'from-indigo-500 to-indigo-600', sub: `${ind.semMovimento || 0} parados`, pulse: false },
           { label: 'Urgentes', valor: String(ind.altaPrioridade || 0), grad: corKPI(ind.altaPrioridade || 0, 0, 2, true), sub: `${ind.respostasPendentes || 0} s/ resposta`, pulse: (ind.altaPrioridade || 0) > 0 },
           { label: 'Espera Media', valor: fmtTempo(ind.tempoMedioEspera || 0), grad: corKPI(ind.tempoMedioEspera || 0, 15, 60, true), sub: `max: ${fmtTempo(ind.tempoMaximoEspera || 0)}`, pulse: false },
@@ -1075,7 +1106,116 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
         ))}
       </div>
 
-      <div className="px-4 pb-2 grid grid-cols-3 gap-2">
+      <div className="px-4 pb-2 grid grid-cols-12 gap-2">
+        <div className="col-span-3 rounded-md bg-white/5 border border-white/10 p-2">
+          <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Funil de Vendas</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {funil.map((f: any, i: number) => (
+              <div key={i} className="rounded-md bg-slate-950/25 border border-white/10 px-2 py-1.5">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[8px] text-slate-300 font-semibold truncate">{f.label}</span>
+                  <span className="text-base leading-none font-black text-white">{f.total || 0}</span>
+                </div>
+                <div className="h-1.5 bg-slate-700/60 rounded-full overflow-hidden mt-1">
+                  <div className="h-full rounded-full" style={{ width: `${Math.max(4, ((f.total || 0) / maxFunil) * 100)}%`, backgroundColor: f.cor }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="col-span-2 rounded-md bg-white/5 border border-white/10 p-2">
+          <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Saude do Funil</p>
+          <div className={`rounded-md border px-2 py-2 mb-2 ${notaClasse(saude.notaGeral)}`}>
+            <div className="flex items-end justify-between gap-2">
+              <span className="text-[9px] uppercase font-bold">Nota geral</span>
+              <span className="text-2xl leading-none font-black">{saude.notaGeral || 0}</span>
+            </div>
+            <p className="text-[9px] uppercase font-semibold mt-1">{saude.status || 'sem leitura'}</p>
+          </div>
+          <div className="flex flex-col gap-1">
+            {(saude.melhoresIndices || []).slice(0, 3).map((idx: any, i: number) => (
+              <div key={i} className="flex items-center justify-between gap-1 text-[9px]">
+                <span className="text-slate-300 truncate">{idx.nome}</span>
+                <span className="font-bold text-emerald-300">{idx.valor}{String(idx.nome || '').includes('Nota') ? '' : '%'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="col-span-3 rounded-md bg-white/5 border border-white/10 p-2">
+          <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Metas de Atendimento</p>
+          <div className="flex flex-col gap-1 mb-2">
+            {metasAtendimento.slice(0, 5).map(cardMeta)}
+          </div>
+          <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Metas de Fechamento</p>
+          <div className="flex flex-col gap-1">
+            {metasFechamento.slice(0, 4).map(cardMeta)}
+          </div>
+        </div>
+
+        <div className="col-span-4 rounded-md bg-white/5 border border-white/10 p-2">
+          <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Ordem de Atendimento</p>
+          <div className="flex flex-col gap-1 max-h-44 overflow-y-auto pr-1">
+            {filaAtendimento.length === 0 && !carregando && <p className="text-[9px] text-emerald-400 font-medium py-1 text-center">Tudo em dia.</p>}
+            {filaAtendimento.slice(0, 8).map((a: any, i: number) => (
+              <button key={`${a.leadId || i}-${a.urgenciaScore}`} onClick={() => a.leadId && onAbrirLead(a.leadId)}
+                className={`rounded border px-2 py-1.5 text-left transition-all hover:bg-white/5 ${priorClasse(a.prioridade)}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-[9px] font-bold">{i + 1}. {a.nome || a.telefone || 'Lead'}</p>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <span className={`text-[8px] rounded px-1 py-0.5 border ${notaClasse(a.notaAtendimento)}`}>N {a.notaAtendimento || 0}</span>
+                    <span className="text-[8px] rounded px-1 py-0.5 bg-emerald-500/10 text-emerald-300 border border-emerald-400/20">{fmtDin(a.valorPotencial)}</span>
+                  </div>
+                </div>
+                <p className="text-[8px] font-semibold opacity-90 truncate">{a.chamadaBruno || a.proximaAcao}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 pb-2 grid grid-cols-2 gap-2">
+        <div className="rounded-md bg-white/5 border border-white/10 p-2">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Notas por Atendimento</p>
+            <span className="text-[9px] text-slate-400">media {ind.notaMediaAtendimento || 0}/100</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1 max-h-28 overflow-y-auto pr-1">
+            {atendimentos.slice(0, 10).map((a: any, i: number) => (
+              <button key={`${a.leadId || i}-nota`} onClick={() => a.leadId && onAbrirLead(a.leadId)}
+                className={`rounded border px-2 py-1 text-left hover:bg-white/5 ${notaClasse(a.notaAtendimento)}`}>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[9px] font-bold truncate">{a.nome || a.telefone || 'Lead'}</span>
+                  <span className="text-[10px] font-black">{a.notaAtendimento || 0}</span>
+                </div>
+                <p className="text-[8px] opacity-80 truncate">{a.proximaAcao}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-md bg-white/5 border border-white/10 p-2">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Cobranca Progressiva</p>
+            <span className="text-[9px] text-slate-400">{filaAtendimento.length || cobrancas.length} na fila</span>
+          </div>
+          <div className="flex flex-col gap-1 max-h-28 overflow-y-auto pr-1">
+            {[...filaAtendimento, ...cobrancas].slice(0, 6).map((c: any, i: number) => (
+              <button key={`${c.leadId || i}-cobranca`} onClick={() => c.leadId && onAbrirLead(c.leadId)}
+                className={`rounded border px-2 py-1 text-left hover:bg-white/5 ${priorClasse(c.prioridade)}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[9px] font-bold truncate">{c.nome || c.telefone || 'Lead'}</span>
+                  <span className="text-[8px] uppercase font-black rounded px-1 py-0.5 bg-white/10">{c.nivelCobranca || c.prioridade || 'fila'}</span>
+                </div>
+                <p className="text-[8px] opacity-90 truncate">{c.chamadaBruno || c.titulo || c.proximaAcao}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden">
         <div className="rounded-md bg-white/5 border border-white/10 p-2">
           <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Funil de Vendas</p>
           <div className="flex flex-col gap-1">
@@ -1534,7 +1674,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
       bairro: clientePrev.bairro || '',
       cidade: clientePrev.cidade || cidadePartes[0] || '',
       uf: clientePrev.uf || cidadePartes[1] || '',
-      funnelStage: 'NegociaÃ§Ã£o',
+      funnelStage: 'Negociação',
       mensagens: [],
     };
     // Registra ou atualiza cliente no ERP

@@ -443,6 +443,181 @@ function montarCobranca({ lead, tipo, prioridade, titulo, motivo, prazoTexto, pr
   };
 }
 
+function clampNota(valor, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, Math.round(Number(valor) || 0)));
+}
+
+function mediaNumerica(lista, campo) {
+  const valores = lista.map(item => Number(item?.[campo])).filter(n => Number.isFinite(n));
+  if (!valores.length) return 0;
+  return clampNota(valores.reduce((s, n) => s + n, 0) / valores.length);
+}
+
+function temposRespostaLead(mensagens) {
+  const tempos = [];
+  let ultimaEntrada = null;
+  for (const msg of Array.isArray(mensagens) ? mensagens : []) {
+    if (msg.tipo !== 'saida') {
+      ultimaEntrada = msg;
+      continue;
+    }
+    if (ultimaEntrada) {
+      const diff = (new Date(msg.criadoEm || 0).getTime() - new Date(ultimaEntrada.criadoEm || 0).getTime()) / 60000;
+      if (Number.isFinite(diff) && diff >= 0) tempos.push(diff);
+      ultimaEntrada = null;
+    }
+  }
+  return tempos;
+}
+
+function calcularValorPotencial(lead, pediuOrcamento) {
+  const valor = Number(lead.valor || 0);
+  if (valor > 0) return valor;
+  const porEtapa = {
+    lead_novo: 800,
+    contato_feito: 1200,
+    qualificado: 2500,
+    proposta_enviada: 4500,
+    negociacao: 6000,
+  };
+  return (porEtapa[lead.etapa] || 600) + (pediuOrcamento ? 2500 : 0);
+}
+
+function nivelCobrancaProgressiva({ pendenteCliente, minutosParado, pediuOrcamento, valorPotencial }) {
+  if (!pendenteCliente) {
+    if (minutosParado >= 1440) {
+      return {
+        nivel: 3,
+        titulo: 'Follow-up vencido',
+        texto: 'Bruno cobra retorno: proposta parada, venda esfriando e dinheiro ficando na mesa.',
+      };
+    }
+    return {
+      nivel: 1,
+      titulo: 'Acompanhar retorno',
+      texto: 'Cliente esta com a bola. Monitorar sem parecer ansioso.',
+    };
+  }
+
+  if (minutosParado >= 2880) {
+    return {
+      nivel: 5,
+      titulo: 'Risco de perda',
+      texto: 'Bruno chama atencao forte: cliente abandonado, chance alta de comprar em outro lugar.',
+    };
+  }
+  if (minutosParado >= 240) {
+    return {
+      nivel: 4,
+      titulo: 'Cliente esfriando',
+      texto: 'Bruno cobra agora: atendimento passou do limite e precisa resposta objetiva.',
+    };
+  }
+  if (minutosParado >= 60 || pediuOrcamento || valorPotencial >= 4000) {
+    return {
+      nivel: 3,
+      titulo: 'Responder agora',
+      texto: pediuOrcamento
+        ? 'Cliente pediu valor ou prazo. Bruno exige orcamento ou dado faltante sem enrolar.'
+        : 'Cliente importante esperando. Bruno prioriza antes que vire perda.',
+    };
+  }
+  if (minutosParado >= 15) {
+    return {
+      nivel: 2,
+      titulo: 'Atencao no prazo',
+      texto: 'Bruno alerta: responder antes de passar a imagem de descuido.',
+    };
+  }
+  return {
+    nivel: 1,
+    titulo: 'Dentro do prazo',
+    texto: 'Responder mantendo qualidade e proximo passo claro.',
+  };
+}
+
+function avaliarAtendimentoLead({ lead, mensagens, ultima, ultimaCliente, ultimaJean, pediuOrcamento, minutosParado }) {
+  const pendenteCliente = !!ultima && ultima.tipo !== 'saida';
+  const tempos = temposRespostaLead(mensagens);
+  const tempoMedioResposta = tempos.length ? Math.round(tempos.reduce((s, n) => s + n, 0) / tempos.length) : null;
+  const textoCliente = (Array.isArray(mensagens) ? mensagens : [])
+    .filter(m => m.tipo !== 'saida')
+    .map(m => m.texto || '')
+    .join(' ')
+    .toLowerCase();
+  const positivos = (textoCliente.match(/\b(obrigad|perfeito|combinado|aprov|fechado|gostei|certo|ok|show|excelente)\b/g) || []).length;
+  const negativos = (textoCliente.match(/\b(caro|demora|atras|problema|cancel|reclama|ruim|nao gostei|absurdo)\b/g) || []).length;
+  const valorPotencial = calcularValorPotencial(lead, pediuOrcamento);
+  const etapaPeso = {
+    lead_novo: 4,
+    contato_feito: 8,
+    qualificado: 14,
+    proposta_enviada: 22,
+    negociacao: 28,
+  }[lead.etapa] || 5;
+  const cobranca = nivelCobrancaProgressiva({ pendenteCliente, minutosParado, pediuOrcamento, valorPotencial });
+
+  const notaAtendimento = clampNota(
+    88
+    - (pendenteCliente ? Math.min(38, Math.floor(minutosParado / 8)) : 0)
+    - (!ultimaJean ? 18 : 0)
+    - (pediuOrcamento && pendenteCliente ? 12 : 0)
+    - (tempoMedioResposta && tempoMedioResposta > 60 ? 10 : 0)
+    + (tempoMedioResposta !== null && tempoMedioResposta <= 15 ? 8 : 0)
+    + (lead.etapa === 'negociacao' || lead.etapa === 'proposta_enviada' ? 4 : 0),
+    10,
+    100
+  );
+
+  const indiceSatisfacao = clampNota(
+    76
+    + (positivos * 5)
+    - (negativos * 12)
+    - (pendenteCliente ? Math.min(30, Math.floor(minutosParado / 20)) : 0)
+    + (tempoMedioResposta !== null && tempoMedioResposta <= 15 ? 7 : 0),
+    0,
+    100
+  );
+
+  const urgenciaScore = clampNota(
+    (pendenteCliente ? 35 : 8)
+    + Math.min(35, Math.floor(minutosParado / 20))
+    + (pediuOrcamento ? 20 : 0)
+    + etapaPeso
+    + Math.min(20, Math.floor(valorPotencial / 500)),
+    0,
+    100
+  );
+
+  const prioridade = urgenciaScore >= 85 ? 'critica' : urgenciaScore >= 65 ? 'alta' : urgenciaScore >= 40 ? 'media' : 'baixa';
+  const proximaAcao = pendenteCliente
+    ? (pediuOrcamento ? 'Responder valor/prazo ou pedir so o dado faltante.' : 'Responder cliente e conduzir proximo passo.')
+    : (lead.etapa === 'proposta_enviada' || lead.etapa === 'negociacao' ? 'Fazer follow-up de decisao.' : 'Acompanhar retorno sem repetir pergunta.');
+
+  return {
+    leadId: lead.id,
+    nome: lead.nome,
+    telefone: lead.telefone,
+    empresa: lead.empresa,
+    etapa: lead.etapa,
+    etapaLabel: ETAPAS_LABEL[lead.etapa] || lead.etapa || 'Lead',
+    notaAtendimento,
+    indiceSatisfacao,
+    tempoMedioResposta,
+    valorPotencial,
+    urgenciaScore,
+    prioridade,
+    minutosParado,
+    ultimaTipo: ultima?.tipo || '',
+    pediuOrcamento,
+    nivelCobranca: cobranca.nivel,
+    chamadaBruno: cobranca.texto,
+    tituloCobranca: cobranca.titulo,
+    proximaAcao,
+    ultimoCliente: ultimaCliente?.texto || '',
+  };
+}
+
 async function gerarCheckupGeralVendas() {
   const [leadsRaw, mensagensRaw, insightsRaw] = await Promise.all([
     selectAll('leads', { orderBy: 'atualizado_em', limit: 300 }),
@@ -476,6 +651,7 @@ async function gerarCheckupGeralVendas() {
   let respostasRapidas = 0;
   let respostasLentas = 0;
   let leadsEsquecidos = 0;
+  const atendimentosAvaliados = [];
 
   // Distribuicao do funil
   const CORES_FUNIL = {
@@ -516,6 +692,16 @@ async function gerarCheckupGeralVendas() {
     // Lead esquecido (>48h sem interacao)
     const minutosUltimaInteracao = ultima ? minutosDesde(ultima.criadoEm) : minutosDesde(lead.atualizadoEm || lead.criadoEm);
     if (minutosUltimaInteracao >= 2880) leadsEsquecidos++;
+
+    atendimentosAvaliados.push(avaliarAtendimentoLead({
+      lead,
+      mensagens,
+      ultima,
+      ultimaCliente,
+      ultimaJean,
+      pediuOrcamento,
+      minutosParado: minutosUltimaInteracao,
+    }));
 
     if (!ultima) {
       const minutosLead = minutosDesde(lead.atualizadoEm || lead.criadoEm);
@@ -637,6 +823,56 @@ async function gerarCheckupGeralVendas() {
   }
   const totalRespostas = respostasRapidas + respostasLentas;
   const taxaRespostaRapida = totalRespostas > 0 ? Math.round((respostasRapidas / totalRespostas) * 100) : 100;
+  const notaMediaAtendimento = mediaNumerica(atendimentosAvaliados, 'notaAtendimento');
+  const indiceSatisfacao = mediaNumerica(atendimentosAvaliados, 'indiceSatisfacao');
+  const pipelineEstimado = todosLeads.reduce((s, lead) => s + (Number(lead.valor || 0) || 0), 0);
+  const ordemAtendimento = [...atendimentosAvaliados]
+    .sort((a, b) => {
+      const p = prioridadePeso(a.prioridade) - prioridadePeso(b.prioridade);
+      if (p !== 0) return p;
+      const score = (b.urgenciaScore || 0) - (a.urgenciaScore || 0);
+      if (score !== 0) return score;
+      return (b.valorPotencial || 0) - (a.valorPotencial || 0);
+    })
+    .slice(0, 40);
+  const notaSaudeFunil = clampNota(
+    (notaMediaAtendimento * 0.30)
+    + (indiceSatisfacao * 0.20)
+    + (percentualFilaRespondida * 0.20)
+    + (Math.min(100, metaConversao > 0 ? (taxaConversao / metaConversao) * 100 : 100) * 0.20)
+    + (taxaRespostaRapida * 0.10)
+    - (altaPrioridade * 2)
+  );
+  const saudeFunil = {
+    notaGeral: notaSaudeFunil,
+    status: notaSaudeFunil >= 85 ? 'saudavel' : notaSaudeFunil >= 70 ? 'atencao' : notaSaudeFunil >= 50 ? 'risco' : 'critico',
+    notaMediaAtendimento,
+    indiceSatisfacao,
+    melhoresIndices: [
+      { nome: 'Resposta rapida', valor: taxaRespostaRapida, detalhe: `${respostasRapidas} respostas abaixo de 15min` },
+      { nome: 'Fila respondida', valor: percentualFilaRespondida, detalhe: `${atendimentoSemPendencia}/${leads.length || 0} sem pendencia` },
+      { nome: 'Nota dos atendimentos', valor: notaMediaAtendimento, detalhe: 'Media das conversas ativas' },
+      { nome: 'Satisfacao percebida', valor: indiceSatisfacao, detalhe: 'Inferida por tom e tempo de resposta' },
+    ].sort((a, b) => b.valor - a.valor),
+    pioresIndices: [
+      { nome: 'Urgencias abertas', valor: altaPrioridade, detalhe: `${altaPrioridade} atendimento(s) exigem acao` },
+      { nome: 'Espera maxima', valor: tempoMaximoEspera, detalhe: `${tempoMaximoEspera} min` },
+      { nome: 'Follow-ups', valor: followUps, detalhe: `${followUps} retorno(s) atrasado(s)` },
+    ].sort((a, b) => b.valor - a.valor),
+  };
+  const metasAtendimento = [
+    metaPercentual('Nota media dos atendimentos', 85, notaMediaAtendimento, '/100', 'Bruno quer atendimento acima de 85/100.'),
+    metaPercentual('Satisfacao percebida', 82, indiceSatisfacao, '%', 'Medida por tom do cliente, velocidade e continuidade.'),
+    metaPercentual('Fila respondida', 100, percentualFilaRespondida, '%', 'Nenhum cliente esperando resposta.'),
+    metaPercentual('Resposta rapida', 75, taxaRespostaRapida, '%', 'Responder em ate 15 minutos.'),
+    metaReducao('Tempo medio de espera', 15, tempoMedioEspera, 'min', 'Media de espera abaixo de 15 minutos.'),
+  ];
+  const metasFechamento = [
+    metaPercentual('Conversao CRM', metaConversao, taxaConversao, '%', 'Meta gerencial configuravel por META_CONVERSAO_CRM.'),
+    metaReducao('Propostas sem retorno', 0, followUps, 'lead(s)', 'Toda proposta precisa decisao ou proximo passo.'),
+    metaReducao('Orcamentos sem decisao', 0, orcamentosPendentes, 'pedido(s)', 'Pedido de valor/prazo precisa virar proposta ou coleta de dado.'),
+    metaPercentual('Saude do funil', 85, notaSaudeFunil, '/100', 'Combina atendimento, satisfacao, resposta e conversao.'),
+  ];
 
   return {
     atualizadoEm: new Date().toISOString(),
@@ -662,8 +898,17 @@ async function gerarCheckupGeralVendas() {
       respostasLentas,
       leadsEsquecidos,
       taxaRespostaRapida,
+      notaMediaAtendimento,
+      indiceSatisfacao,
+      notaSaudeFunil,
+      pipelineEstimado,
     },
+    saudeFunil,
     distribuicaoFunil,
+    atendimentosAvaliados: atendimentosAvaliados
+      .sort((a, b) => (b.notaAtendimento || 0) - (a.notaAtendimento || 0))
+      .slice(0, 80),
+    ordemAtendimento,
     processosQueFaltam: processosQueFaltam.slice(0, 5),
     insightsAprendidos: (Array.isArray(insightsRaw) ? insightsRaw : []).map(i => ({
       tipo: i.tipo,
@@ -691,13 +936,9 @@ async function gerarCheckupGeralVendas() {
       'Proposta enviada: Bruno cobra follow-up em ate 24h.',
       'Aprovacao confirmada: mover para ganho e iniciar acompanhamento de entrega.',
     ],
-    metas: [
-      metaPercentual('Fila respondida', 100, percentualFilaRespondida, '%', 'Meta: todos os leads ativos sem cliente aguardando resposta.'),
-      metaReducao('Pendencias de resposta', 0, respostasPendentes, 'lead(s)', 'Meta: nenhuma conversa com a ultima mensagem do cliente parada.'),
-      metaReducao('Orcamentos sem decisao', 0, orcamentosPendentes, 'pedido(s)', 'Meta: todo pedido de valor/prazo vira orcamento ou coleta de dado faltante.'),
-      metaReducao('Follow-ups atrasados', 0, followUps, 'lead(s)', 'Meta: proposta e negociacao acompanhadas no prazo.'),
-      metaPercentual('Conversao CRM', metaConversao, taxaConversao, '%', 'Meta gerencial configuravel por META_CONVERSAO_CRM.'),
-    ],
+    metasAtendimento,
+    metasFechamento,
+    metas: [...metasAtendimento, ...metasFechamento],
     cobrancas: cobrancas.slice(0, 30),
   };
 }
