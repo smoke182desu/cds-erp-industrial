@@ -71,9 +71,23 @@ function previewMensagem(msg) {
   return mediaType ? `[${mediaType}]` : '';
 }
 
+function mensagemTemConteudo(msg) {
+  return !!previewMensagem(msg);
+}
+
 function precisaPreviewAtualizado(valor) {
   const texto = String(valor || '').trim().toLowerCase();
   return !texto || texto === 'sem mensagens ainda';
+}
+
+function dataMensagem(msg) {
+  const raw = msg?.timestamp_msg || msg?.criado_em || msg?.created_at || '';
+  const time = new Date(raw).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function dataMensagemIso(msg, fallback = '') {
+  return msg?.timestamp_msg || msg?.criado_em || msg?.created_at || fallback;
 }
 
 function formatarLead(lead) {
@@ -138,11 +152,13 @@ async function listarLeads() {
   try {
     const [leads, mensagens] = await Promise.all([
       selectAll(TABLE, { orderBy: 'atualizado_em', limit: 300 }),
-      selectAll('mensagens', { orderBy: 'criado_em', limit: 1000 }).catch(() => []),
+      selectAll('mensagens', { orderBy: 'criado_em', limit: 5000 }).catch(() => []),
     ]);
 
     const mensagensPorTelefone = new Map();
     for (const msg of mensagens || []) {
+      if (!mensagemTemConteudo(msg)) continue;
+
       const tel = soDigitos(msg.telefone || msg.remote_jid);
       if (!tel) continue;
 
@@ -150,7 +166,6 @@ async function listarLeads() {
       const chaveExistente = chaves.find(chave => mensagensPorTelefone.has(chave));
       const chavePrincipal = chaveExistente || chaves[0] || tel;
       const atual = mensagensPorTelefone.get(chavePrincipal);
-      const criadoEm = msg.criado_em || msg.created_at || '';
       if (!atual) {
         const info = { total: 1, ultima: msg };
         chaves.forEach(chave => mensagensPorTelefone.set(chave, info));
@@ -158,9 +173,7 @@ async function listarLeads() {
       }
 
       atual.total += 1;
-      const atualData = new Date(atual.ultima?.criado_em || atual.ultima?.created_at || 0).getTime();
-      const msgData = new Date(criadoEm || 0).getTime();
-      if (msgData >= atualData) atual.ultima = msg;
+      if (dataMensagem(msg) >= dataMensagem(atual.ultima)) atual.ultima = msg;
     }
 
     return leads.map(lead => {
@@ -168,11 +181,11 @@ async function listarLeads() {
       if (!info?.ultima) return lead;
 
       const ultimaTexto = previewMensagem(info.ultima);
-      const ultimaHora = info.ultima.criado_em || info.ultima.created_at || lead.atualizado_em;
+      const ultimaHora = dataMensagemIso(info.ultima, lead.atualizado_em);
       return {
         ...lead,
         ultima_mensagem: precisaPreviewAtualizado(lead.ultima_mensagem) ? ultimaTexto : lead.ultima_mensagem,
-        atualizado_em: lead.atualizado_em || ultimaHora,
+        atualizado_em: ultimaHora || lead.atualizado_em,
         total_mensagens: info.total,
       };
     });

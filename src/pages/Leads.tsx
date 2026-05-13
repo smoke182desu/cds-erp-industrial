@@ -805,7 +805,13 @@ function LeadItem({ lead, ativo, naoLido, onClick }: {
   const msgBruta = lead.ultimaMensagem?.trim() || '';
   const ehMidia = /^\[?(Media|image|video|audio|document)\]?$/i.test(msgBruta);
   const temMsg = !!(msgBruta && !ehMidia);
-  const preview = temMsg ? msgBruta : ehMidia ? '📷 Midia' : (lead.empresa || lead.email || 'Sem mensagens ainda');
+  const preview = temMsg
+    ? msgBruta
+    : ehMidia
+      ? '📷 Midia'
+      : (lead.totalMensagens ?? 0) > 0
+        ? 'Conversa iniciada'
+        : (lead.empresa || lead.email || 'Sem mensagens ainda');
   const hora = fmtHora(lead.ultimaHora || '');
 
   // bg: ativo=verde claro, naoLido=verde transparente suave, normal=branco
