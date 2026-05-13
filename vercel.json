@@ -33,6 +33,10 @@
       "destination": "/api/data?resource=extension-posts"
     },
     {
+      "source": "/api/social-publish",
+      "destination": "/api/data?resource=social-publish"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
