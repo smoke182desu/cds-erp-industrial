@@ -9,7 +9,9 @@ import { insert } from '../_lib/supabase.js';
 const CONHECIMENTO_BASE = `CDS Industrial - fabrica metalica em Brasilia/DF. Vendedor: Jean.
 Produtos: chapas dobradas, pecas em metalon/tubo/chapa, pes de mesa, carrinhos, tampas para casas de maquinas, containers de lixo, escadas/rampas (ABNT/NR+ART), bancadas e projetos sob encomenda.
 PIX 7% OFF | cupom 1COMPRA 5% OFF | Entrega Brasil todo + Munck 14t.
-Site: cdsind.com.br | Instagram: @cdsindustrial | WhatsApp: (61) 99308-1396`;
+Site: cdsind.com.br | WhatsApp: (61) 99308-1396
+Facebook: facebook.com/cdsind (5.581 curtidas) | Instagram: @cds.industrial (1.399 seguidores)
+OLX: olx.com.br/perfil/clark-jean-martins-genu-46f3e185`;
 
 function buildSystemPrompt() {
   return `Voce e Narancia Ghirga, Criador de Conteudo e Design IA da CDS Industrial.
