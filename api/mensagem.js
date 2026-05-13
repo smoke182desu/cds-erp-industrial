@@ -20,12 +20,23 @@ function dadosPayload(row) {
   return { data, message };
 }
 
+function normalizarMediaType(valor) {
+  const tipo = String(valor || '').toLowerCase().replace(/message$/, '');
+  if (tipo === 'image' || tipo === 'imagem') return 'image';
+  if (tipo === 'video') return 'video';
+  if (tipo === 'audio') return 'audio';
+  if (tipo === 'document' || tipo === 'documento') return 'document';
+  if (tipo === 'sticker') return 'sticker';
+  return undefined;
+}
+
 // Mapeia campos do Supabase para o formato esperado pelo frontend
 function inferMediaType(row) {
   const { data, message } = dadosPayload(row);
   const texto = String(row.texto || row.conteudo || '').toLowerCase();
   const mediaType = row.media_type || row.mediaType || data?.mediaType || data?.messageType;
-  if (mediaType) return String(mediaType).toLowerCase();
+  const tipoNormalizado = normalizarMediaType(mediaType);
+  if (tipoNormalizado) return tipoNormalizado;
   if (message?.imageMessage || texto.includes('[image]') || texto.includes('imagem')) return 'image';
   if (message?.videoMessage || texto.includes('[video]')) return 'video';
   if (message?.audioMessage || texto.includes('[audio]')) return 'audio';

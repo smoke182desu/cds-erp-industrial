@@ -62,9 +62,25 @@ function textoSomenteMidia(texto?: string): boolean {
     || /^(media|midia|imagem|image|video|audio|document|sticker)$/i.test(valor);
 }
 
+function normalizarTipoMidia(valor?: string): string {
+  const tipo = String(valor || '').toLowerCase().replace(/message$/, '');
+  if (tipo === 'image' || tipo === 'imagem') return 'image';
+  if (tipo === 'video') return 'video';
+  if (tipo === 'audio') return 'audio';
+  if (tipo === 'document' || tipo === 'documento') return 'document';
+  if (tipo === 'sticker') return 'sticker';
+  return '';
+}
+
+function mensagemTemMidiaReal(mensagem: Mensagem): boolean {
+  return !!mensagem.mediaUrl || !!normalizarTipoMidia(mensagem.mediaType) || textoSomenteMidia(mensagem.texto);
+}
+
 function MidiaMensagem({ mensagem }: { mensagem: Mensagem }) {
   const { mediaUrl, mediaType, texto } = mensagem;
-  const tipo = mediaType || (texto ? texto.replace(/[\[\]]/g, '').toLowerCase() : '');
+  const tipo = normalizarTipoMidia(mediaType) || normalizarTipoMidia(texto ? texto.replace(/[\[\]]/g, '') : '');
+
+  if (!mediaUrl && !tipo) return null;
 
   if (mediaUrl && (tipo === 'image' || tipo === 'sticker')) {
     return (
@@ -281,7 +297,7 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange, onUpd
         {msgs.filter(m => m.texto?.trim() || m.mediaUrl || m.mediaType).map(m => (
           <div key={m.id} className={`flex ${m.tipo === 'saida' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[75%] rounded-2xl px-3 py-2 shadow-sm ${m.tipo === 'saida' ? 'bg-[#dcf8c6] text-gray-800 rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm'}`}>
-              {(m.mediaUrl || m.mediaType || textoSomenteMidia(m.texto)) && (
+              {mensagemTemMidiaReal(m) && (
                 <MidiaMensagem mensagem={m} />
               )}
               {/* Midia inline */}
@@ -413,7 +429,7 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
           empresa: lead.empresa,
           etapa: lead.etapa,
           mensagens: msgs.slice(-80).map((m: any) => ({
-            texto: m.texto || m.conteudo || m.body || (m.mediaType ? `[${m.mediaType}]` : ''),
+            texto: m.texto || m.conteudo || m.body || (normalizarTipoMidia(m.mediaType) ? `[${normalizarTipoMidia(m.mediaType)}]` : ''),
             tipo: m.tipo || m.direction || 'entrada',
             criadoEm: m.criadoEm || m.timestamp || m.criado_em || '',
           })),
@@ -1461,7 +1477,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
     try {
       const res = await fetch('/api/proposta-ia', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa, mensagens: (mensagens || []).map((m: any) => ({ texto: m.texto || m.conteudo || m.body || (m.mediaType ? `[${m.mediaType}]` : ''), tipo: m.tipo || m.direction || 'entrada', criadoEm: m.criadoEm || m.timestamp || '' })) }),
+        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa, mensagens: (mensagens || []).map((m: any) => ({ texto: m.texto || m.conteudo || m.body || (normalizarTipoMidia(m.mediaType) ? `[${normalizarTipoMidia(m.mediaType)}]` : ''), tipo: m.tipo || m.direction || 'entrada', criadoEm: m.criadoEm || m.timestamp || '' })) }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro desconhecido');

@@ -79,6 +79,16 @@ function dadosPayload(msg) {
   return { payload, data, message };
 }
 
+function normalizarMediaType(valor) {
+  const tipo = String(valor || '').toLowerCase().replace(/message$/, '');
+  if (tipo === 'image' || tipo === 'imagem') return 'image';
+  if (tipo === 'video') return 'video';
+  if (tipo === 'audio') return 'audio';
+  if (tipo === 'document' || tipo === 'documento') return 'document';
+  if (tipo === 'sticker') return 'sticker';
+  return '';
+}
+
 function textoMensagem(msg) {
   const { data, message } = dadosPayload(msg);
   const reaction = message?.reactionMessage || message?.reaction;
@@ -102,7 +112,8 @@ function tipoMidiaMensagem(msg) {
   const { data, message } = dadosPayload(msg);
   const texto = String(msg?.texto || msg?.conteudo || '').toLowerCase();
   const mediaType = msg?.media_type || msg?.mediaType || data?.mediaType || data?.messageType;
-  if (mediaType) return String(mediaType).toLowerCase();
+  const tipoNormalizado = normalizarMediaType(mediaType);
+  if (tipoNormalizado) return tipoNormalizado;
   if (message?.imageMessage || texto.includes('[image]')) return 'image';
   if (message?.videoMessage || texto.includes('[video]')) return 'video';
   if (message?.audioMessage || texto.includes('[audio]')) return 'audio';

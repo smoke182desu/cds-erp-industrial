@@ -24,13 +24,18 @@ function ordenarMensagens(mensagens: Mensagem[]): Mensagem[] {
   return [...mensagens].sort((a, b) => tempoMensagem(a) - tempoMensagem(b));
 }
 
+function mediaTypeReal(valor?: string): boolean {
+  const tipo = String(valor || '').toLowerCase().replace(/message$/, '');
+  return ['image', 'imagem', 'video', 'audio', 'document', 'documento', 'sticker'].includes(tipo);
+}
+
 // ---------- buscar historico de um telefone ----------
 export async function buscarMensagens(telefone: string): Promise<Mensagem[]> {
   const tel = telefone.replace(/\D/g, '');
   const res = await fetch(`${API_BASE}/mensagem?telefone=${tel}`);
   const data = await res.json();
   return ordenarMensagens(((Array.isArray(data) ? data : []) as Mensagem[])
-    .filter(m => !!(m.texto?.trim() || m.mediaUrl || m.mediaType)));
+    .filter(m => !!(m.texto?.trim() || m.mediaUrl || mediaTypeReal(m.mediaType))));
 }
 
 // ---------- enviar mensagem de texto via WhatsApp ----------
