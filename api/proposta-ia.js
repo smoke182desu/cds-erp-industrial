@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { selectAll } from './_lib/supabase.js';
+import { aplicarPrecoSobMedida } from './_lib/preco-sob-medida.js';
 
 const GROQ_API_KEY     = process.env.GROQ_API_KEY || '';
 const GEMINI_API_KEY   = process.env.GEMINI_API_KEY || '';
@@ -257,7 +258,8 @@ CAPACIDADES E LIMITES DA FABRICA:
 
 REGRAS:
 1. Se o item mencionado pelo cliente corresponde a um produto do catalogo acima, USE o nome e preco exatos do catalogo e preencha "skuCatalogo". Use "nome" para o nome do produto e "valorUnitario" para o preco.
-2. Se nao houver correspondencia, estime preco razoavel e deixe "skuCatalogo" null.
+2. Se nao houver correspondencia, deixe "skuCatalogo" null e preserve medidas, material, espessura, perfil/tubo/chapa e quantidade na descricao. O sistema vai calcular o preco por peso.
+2.1. Para sob medida, use a tabela: aco carbono R$70/kg, inox R$150/kg, aluminio R$120/kg, galvanizado R$100/kg. Se faltar espessura, base inicial chapa 14 / 2mm.
 3. Nomes de produto SEMPRE com specs (capacidade, material, dimensoes). Ex: "Container 1200L Inox 304".
 
 Responda SOMENTE um JSON valido, sem texto antes ou depois, no formato:
@@ -364,13 +366,16 @@ export default async function handler(req, res) {
 
         if (match) {
           const precoCatalogo = Number(match.preco) || Number(match.precoRegular) || 0;
-          // So sobrescreve o preco se a IA nao tinha ou veio zerado
-          if (!item.valorUnitario || Number(item.valorUnitario) === 0) {
-            item.valorUnitario = precoCatalogo;
-          }
+          // Produto cadastrado sempre usa preco do cadastro; o vendedor pode editar depois no modal.
+          item.valorUnitario = precoCatalogo;
           item.produtoId = match.id;
           item.nomeCatalogo = match.nome;
+          item.nome = match.nome || item.nome;
           item.skuCatalogo = item.skuCatalogo || match.sku;
+        }
+
+        if (!match) {
+          aplicarPrecoSobMedida(item, conversaAtual.map(m => m.texto).join(' '), 'valorUnitario');
         }
       }
     }

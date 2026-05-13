@@ -29,6 +29,7 @@ const CONHECIMENTO_EMPRESA = `CDS Industrial - fabrica metalica em Brasilia/DF. 
 Produtos: chapas dobradas, pecas em metalon/tubo/chapa, pes de mesa, carrinhos, tampas para casas de maquinas, containers de lixo, escadas/rampas (ABNT/NR+ART), bancadas e projetos sob encomenda.
 Capacidades: solda MIG e eletrica; dobra de chapas ate 6,35mm; corte reto em guilhotina; dobradeira e guilhotina de 3m; pintura com compressor industrial em tinta epoxi, esmalte sintetico ou PU.
 Limites: nao fazemos plasma, oxicorte ou cortes curvos/recortados; pecas passam de 3m somente com emenda/solda. Materiais: aluminio, aco carbono, aco galvanizado, inox 430 e inox 304. Aco carbono 1010/1020; chapa acima de 14 geralmente A36.
+Precificacao sob medida fora do catalogo: simular por peso quando houver medidas/material. Base: aco carbono R$70/kg, inox R$150/kg, aluminio R$120/kg, galvanizado R$100/kg. Se faltar espessura, usar chapa 14 / 2mm como base inicial.
 PIX 7% OFF | cupom 1COMPRA 5% OFF | Entrega Brasil todo + Munck 14t.`;
 
 const CONHECIMENTO_RAW_URL =
@@ -91,6 +92,17 @@ async function buscarMensagens(telefone) {
   }
 }
 
+function normalizarMensagensBody(lista) {
+  return (Array.isArray(lista) ? lista : [])
+    .map(m => ({
+      tipo: m?.tipo || m?.direction || 'entrada',
+      texto: String(m?.texto || m?.conteudo || m?.body || '').trim(),
+      criadoEm: m?.criadoEm || m?.criado_em || m?.timestamp || m?.created_at || '',
+    }))
+    .filter(m => m.texto)
+    .sort((a, b) => new Date(a.criadoEm || 0) - new Date(b.criadoEm || 0));
+}
+
 
 
 
@@ -110,7 +122,7 @@ function removerSaudacao(texto) {
     .trim();
 }
 
-function encurtarMensagem(texto, maxPalavras = 14) {
+function encurtarMensagem(texto, maxPalavras = 22) {
   const limpo = String(texto || '').replace(/\s+/g, ' ').trim();
   const palavras = limpo.split(' ').filter(Boolean);
   if (palavras.length <= maxPalavras) return limpo;
@@ -142,6 +154,80 @@ function sugestoesDepoisDaRespostaDoJean(ultimaMensagem) {
     { label: 'Próximo passo', mensagem: 'Se fizer sentido, avanço com o orçamento.' },
     { label: 'Confirmar', mensagem: 'Pode me confirmar se ficou claro?' },
   ];
+}
+
+function tecnicaPorEtapa(etapa) {
+  const mapa = {
+    lead_novo: 'SPIN - Situacao: entender produto, uso e urgencia sem pedir tudo de uma vez.',
+    contato_feito: 'SPIN - Problema: confirmar dor, medida, carga, ambiente e impacto do atraso.',
+    qualificado: 'BANT: validar orcamento, autoridade, necessidade e prazo antes da proposta.',
+    proposta_enviada: 'Challenger + fechamento consultivo: defender valor, prazo e proximo passo.',
+    negociacao: 'Negociacao de valor: concessao apenas com contrapartida, evitando desconto facil.',
+    fechado_ganho: 'Pos-venda: alinhar pagamento, producao, entrega e satisfacao.',
+    fechado_perdido: 'Recuperacao: entender motivo da perda e registrar aprendizado.',
+  };
+  return mapa[etapa] || 'SPIN Selling: conduzir pelo proximo dado necessario.';
+}
+
+function selecionarContextoConversa(mensagens) {
+  const lista = (Array.isArray(mensagens) ? mensagens : []).filter(m => String(m?.texto || '').trim());
+  if (lista.length <= 36) return lista;
+  const primeiras = lista.slice(0, 6);
+  const recentes = lista.slice(-30);
+  return [...primeiras, { tipo: 'sistema', texto: '... mensagens intermediarias omitidas para foco operacional ...', criadoEm: '' }, ...recentes];
+}
+
+function montarResumoLeitura(mensagens) {
+  const lista = (Array.isArray(mensagens) ? mensagens : []).filter(m => String(m?.texto || '').trim());
+  const ultima = lista[lista.length - 1];
+  const ultimaCliente = [...lista].reverse().find(m => m.tipo !== 'saida');
+  const ultimaJean = [...lista].reverse().find(m => m.tipo === 'saida');
+  const dadosRelevantes = lista
+    .filter(m => /\b(cnpj|cpf|cep|email|valor|preco|preço|prazo|entrega|aprov|fech|pagamento|pix|boleto|medida|metro|mm|cm|kg|container|carrinho|tampa|chapa|mesa)\b/i.test(m.texto))
+    .slice(-10)
+    .map(m => `[${m.tipo === 'saida' ? 'JEAN' : 'CLIENTE'}] ${m.texto}`)
+    .join('\n');
+
+  return [
+    `Ultima mensagem: ${ultima ? `[${ultima.tipo === 'saida' ? 'JEAN' : 'CLIENTE'}] ${ultima.texto}` : '(nenhuma)'}`,
+    `Ultimo pedido do cliente: ${ultimaCliente?.texto || '(nenhum)'}`,
+    `Ultima resposta do Jean: ${ultimaJean?.texto || '(nenhuma)'}`,
+    `Dados comerciais ja citados:\n${dadosRelevantes || '(nenhum dado comercial claro ainda)'}`,
+  ].join('\n');
+}
+
+const ETAPAS_ORDEM_BACKEND = ['lead_novo', 'contato_feito', 'qualificado', 'proposta_enviada', 'negociacao', 'fechado_ganho', 'fechado_perdido'];
+
+function evidenciasParaEtapa(etapa, mensagens, analise) {
+  const texto = (Array.isArray(mensagens) ? mensagens : []).map(m => m.texto || '').join(' ').toLowerCase();
+  const temSaida = (Array.isArray(mensagens) ? mensagens : []).some(m => m.tipo === 'saida');
+  const produtos = analise?.dadosProposta?.produtos || [];
+  if (etapa === 'contato_feito') return temSaida;
+  if (etapa === 'qualificado') return produtos.length > 0 || /\b(medida|quantidade|qtd|kg|cep|cnpj|orcamento|orçamento|valor|prazo)\b/i.test(texto);
+  if (etapa === 'proposta_enviada') return /\b(proposta|orcamento|orçamento|valor|total|r\$|enviado|enviei|segue)\b/i.test(texto);
+  if (etapa === 'negociacao') return /\b(desconto|pix|condicao|condição|aprov|prazo|frete|fechar|pedido|retorno)\b/i.test(texto);
+  if (etapa === 'fechado_ganho') return /\b(fechado|aprovado|pode fazer|vamos fechar|confirmado|pedido aprovado|pago|pagamento feito)\b/i.test(texto);
+  return false;
+}
+
+function normalizarAvancoFunil(analise, etapaAtual, mensagens) {
+  if (!analise) return analise;
+  const detectada = analise.etapaDetectada;
+  const atualIdx = ETAPAS_ORDEM_BACKEND.indexOf(etapaAtual);
+  const proxIdx = ETAPAS_ORDEM_BACKEND.indexOf(detectada);
+  const confianca = Number(analise.confiancaFunil || analise.confianca || 0);
+  const etapaAvanca = atualIdx >= 0 && proxIdx >= 0 && proxIdx > atualIdx && detectada !== 'fechado_perdido';
+  const temEvidencia = evidenciasParaEtapa(detectada, mensagens, analise);
+
+  analise.confiancaFunil = confianca || (temEvidencia ? 82 : 50);
+  analise.deveAvancarEtapa = !!(etapaAvanca && temEvidencia && analise.confiancaFunil >= 80);
+  if (analise.deveAvancarEtapa && !analise.motivoAvanco) {
+    analise.motivoAvanco = `A conversa tem evidencia suficiente para sair de ${ETAPAS_LABEL[etapaAtual] || etapaAtual} e ir para ${ETAPAS_LABEL[detectada] || detectada}.`;
+  }
+  if (!analise.deveAvancarEtapa && !analise.motivoAvanco) {
+    analise.motivoAvanco = 'Manter etapa atual ate a conversa confirmar o proximo marco comercial.';
+  }
+  return analise;
 }
 
 function minutosDesde(data) {
@@ -591,6 +677,20 @@ async function gerarCheckupGeralVendas() {
       'Produto sob medida precisa de medida, quantidade, material, acabamento e uso/carga quando relevante.',
       'Lead sem movimento precisa ser reativado, qualificado ou descartado.',
     ],
+    cronograma: [
+      { ordem: 1, etapa: 'Resposta inicial', prazo: '0-15 min', responsavel: 'Giorno', objetivo: 'Responder o cliente e entender o produto sem repetir perguntas.' },
+      { ordem: 2, etapa: 'Qualificacao tecnica', prazo: 'ate 2h uteis', responsavel: 'Giorno', objetivo: 'Coletar medida, quantidade, material, acabamento, uso/carga e local quando necessario.' },
+      { ordem: 3, etapa: 'Orcamento', prazo: 'mesmo dia', responsavel: 'Jean/Giorno', objetivo: 'Gerar proposta com produto de catalogo ou simulacao sob medida por peso.' },
+      { ordem: 4, etapa: 'Follow-up', prazo: '24h apos proposta', responsavel: 'Bruno', objetivo: 'Cobrar retorno, ajustar condicao ou marcar perda/ganho.' },
+      { ordem: 5, etapa: 'Fechamento e pos-venda', prazo: 'apos aprovacao', responsavel: 'Bruno', objetivo: 'Confirmar pagamento, producao, entrega e satisfacao.' },
+    ],
+    ordemProcessos: [
+      'Cliente respondeu: Giorno deve responder pelo momento exato da conversa.',
+      'Produto claro: buscar cadastro e usar preco cadastrado antes de estimar.',
+      'Produto sob medida: coletar dados faltantes e calcular por peso.',
+      'Proposta enviada: Bruno cobra follow-up em ate 24h.',
+      'Aprovacao confirmada: mover para ganho e iniciar acompanhamento de entrega.',
+    ],
     metas: [
       metaPercentual('Fila respondida', 100, percentualFilaRespondida, '%', 'Meta: todos os leads ativos sem cliente aguardando resposta.'),
       metaReducao('Pendencias de resposta', 0, respostasPendentes, 'lead(s)', 'Meta: nenhuma conversa com a ultima mensagem do cliente parada.'),
@@ -604,7 +704,7 @@ async function gerarCheckupGeralVendas() {
 
 
 function normalizarSugestoes(analise, saudacao, precisaSaudacao, contexto = {}) {
-  if (contexto.ultimaMensagem?.tipo === 'saida') {
+  if (contexto.ultimaMensagem?.tipo === 'saida' && (!Array.isArray(analise?.sugestoes) || analise.sugestoes.length === 0)) {
     analise.sugestoes = sugestoesDepoisDaRespostaDoJean(contexto.ultimaMensagem);
   }
 
@@ -627,7 +727,7 @@ function normalizarSugestoes(analise, saudacao, precisaSaudacao, contexto = {}) 
   const semSaudacaoAntiga = removerSaudacao(primeira?.mensagem || '');
 
   primeira.label = 'saudacao';
-  primeira.mensagem = encurtarMensagem(semSaudacaoAntiga ? `${saudacao}! ${semSaudacaoAntiga}` : `${saudacao}!`, 16);
+  primeira.mensagem = encurtarMensagem(semSaudacaoAntiga ? `${saudacao}! ${semSaudacaoAntiga}` : `${saudacao}!`, 22);
   return analise;
 }
 
@@ -650,16 +750,18 @@ async function analisarConversa(mensagens, lead) {
   ]);
   const extra = contextoExtra ? `\nEXTRA: ${contextoExtra}` : '';
 
-  const ultimas = mensagens.slice(-10);
-  const conversaStr = ultimas.length > 0
-    ? ultimas.map(m => `[${m.tipo === 'saida' ? 'JEAN' : 'CLIENTE'}]: ${m.texto}`).join('\n')
+  const contextoConversa = selecionarContextoConversa(mensagens);
+  const conversaStr = contextoConversa.length > 0
+    ? contextoConversa.map(m => `[${m.tipo === 'saida' ? 'JEAN' : m.tipo === 'sistema' ? 'SISTEMA' : 'CLIENTE'}]: ${m.texto}`).join('\n')
     : '(sem mensagens ainda)';
+  const resumoLeitura = montarResumoLeitura(mensagens);
+  const tecnicaAtiva = tecnicaPorEtapa(lead.etapa || '');
 
   const saudacao = obterSaudacao();
   const nomeCliente = (lead.nome || '').split(' ')[0] || 'cliente';
-  const ultimaMensagem = ultimas[ultimas.length - 1];
-  const ultimaMensagemCliente = [...ultimas].reverse().find(m => m.tipo !== 'saida');
-  const ultimaMensagemJean = [...ultimas].reverse().find(m => m.tipo === 'saida');
+  const ultimaMensagem = mensagens[mensagens.length - 1];
+  const ultimaMensagemCliente = [...mensagens].reverse().find(m => m.tipo !== 'saida');
+  const ultimaMensagemJean = [...mensagens].reverse().find(m => m.tipo === 'saida');
   const conversaJaIniciadaPeloJean = mensagens.some(m => m.tipo === 'saida');
   const precisaSaudacao = (!ultimaMensagem || ultimaMensagem.tipo !== 'saida') && !conversaJaIniciadaPeloJean;
 
@@ -709,8 +811,9 @@ DIRETRIZES PARA AS MENSAGENS SUGERIDAS (Efeito Doppelgänger):
 - Pode usar linguagem simples de WhatsApp, mas mantenha postura comercial séria.
 - Só use saudação ("Bom dia", "Boa tarde", "Boa noite") se o JEAN ainda não respondeu nenhuma vez nesta conversa.
 - Se a conversa já começou, NUNCA repita saudação; responda direto ao assunto.
-- REGRA DE OURO: frases de WhatsApp real, curtíssimas. Máximo de 8 a 12 palavras por sugestão. Nada de parágrafo.
-- Evite tom de robô/consultor. Pergunte apenas o próximo dado necessário.
+- REGRA DE OURO: frases de WhatsApp real, curtas e uteis. Maximo de 22 palavras por sugestao.
+- Toda sugestao do Giorno deve nascer da etapa atual do funil, da tecnica de venda ativa e da ultima fala real do cliente/Jean.
+- Evite tom de robô/consultor. Pergunte apenas o próximo dado necessário, ou responda valor/prazo se esse for o momento.
 - MANTENHA O CONTROLE: Termine a sugestão com uma pergunta ou diretriz que faça a conversa avançar no sentido estratégico do Avatar ativo.
 
 Analise o momento exato da conversa e retorne APENAS um JSON valido.
@@ -729,8 +832,17 @@ LEAD: nome="${lead.nome || ''}" empresa="${lead.empresa || ''}" etapa=${etapa}
 HORÁRIO: ${saudacao} | NOME CLIENTE: ${nomeCliente}
 SAUDAÇÃO: ${precisaSaudacao ? 'usar "' + saudacao + '!" apenas na sugestão 1' : 'não usar saudação; conversa já iniciada ou Jean acabou de responder'}
 
+FUNIL E TECNICA ATIVA:
+- Etapa atual do CRM: ${etapa}
+- Tecnica obrigatoria para Giorno agora: ${tecnicaAtiva}
+- Giorno sempre desenvolve as respostas a partir da etapa do funil + tecnica ativa + momento exato da conversa.
+- Bruno valida se ha evidencia suficiente para mover o cliente para o proximo nivel do funil.
+
 MEMÓRIA DE LONGO PRAZO DA IA (LTM):
 ${memoriaAtual ? memoriaAtual : '(Nenhuma memória anterior registrada para este contato. Inicie a análise do zero.)'}
+
+LEITURA OPERACIONAL DA CONVERSA:
+${resumoLeitura}
 
 CONVERSA ATUAL:
 ${conversaStr}
@@ -749,6 +861,7 @@ CAPACIDADES E LIMITES DA FABRICA:
 - Materiais trabalhados: aluminio, aco carbono, aco galvanizado, inox 430 e inox 304.
 - Acos usuais: 1010/1020; chapa acima de 14 geralmente A36.
 - Produtos recorrentes: chapas dobradas, estruturas em metalon/tubos/chapa, carrinhos, tampas para casas de maquinas, containers de lixo, pes de mesa e fabricacoes metalicas sob medida.
+- Precificacao sob medida fora do catalogo: calcular por peso. Aco carbono R$70/kg, inox R$150/kg, aluminio R$120/kg, galvanizado R$100/kg. Se faltar espessura, base inicial chapa 14 / 2mm.
 
 QUESTIONARIO IDEAL POR FAMILIA:
 - Carrinho: perguntar o que transporta, peso em kg, piso/ambiente, dimensoes, lateral/grade/berco, manual/eletrico. Uma pergunta por vez.
@@ -773,8 +886,10 @@ Sua tarefa:
 1. Avalie a conversa atual levando em consideração a MEMÓRIA DE LONGO PRAZO (se existir) para não ser repetitivo e entender o contexto histórico.
 2. Formule 4 sugestões TÁTICAS e ORIGINAIS de resposta que façam sentido PARA ESTE EXATO SEGUNDO da conversa.
 2.1. As perguntas precisam ter lógica: não pergunte dado que o cliente já respondeu. Escolha o próximo dado técnico necessário para identificar produto de catálogo ou sob medida.
-3. Gere uma leitura interna do GERENTE DE VENDAS IA para o dono, focada em produto, demanda e próxima decisão.
-4. Gere uma "novaMemoria" que seja um resumo denso de tudo que você aprendeu sobre esse contato até o momento (junte o que já sabia com o que descobriu agora na conversa atual). Foque no perfil psicológico, dores e estágio da negociação.
+2.2. As respostas do Giorno precisam obedecer a etapa atual do funil e a técnica ativa informada acima.
+3. Gere uma leitura interna do GERENTE DE VENDAS IA para o dono, focada em produto, demanda, cobrança, cronograma e próxima decisão.
+4. Decida se o funil deve avançar automaticamente. Só marque "deveAvancarEtapa": true quando houver evidencia explicita na conversa e confiança >= 80.
+5. Gere uma "novaMemoria" que seja um resumo denso de tudo que você aprendeu sobre esse contato até o momento (junte o que já sabia com o que descobriu agora na conversa atual). Foque no perfil psicológico, dores e estágio da negociação.
 
 REGRA PARA PEDIDO DE VALOR/PRAZO:
 - Quando o cliente pedir valor e prazo de um item ja claro, responda nessa direcao.
@@ -793,6 +908,9 @@ Retorne APENAS o JSON:
 {
   "dadosProposta":{"tipoCliente":"empresa|pessoa_fisica|orgao_publico|nao_identificado","nome":"","empresa":"","documento":"","email":"","endereco":"","produtos":["item c/ qtd"],"valorEstimado":"","prazo":"","observacoes":""},
   "etapaDetectada":"lead_novo|contato_feito|qualificado|proposta_enviada|negociacao|fechado_ganho|fechado_perdido|pos_venda|nao_se_aplica|funcionario|fornecedor",
+  "deveAvancarEtapa": false,
+  "confiancaFunil": 0,
+  "motivoAvanco": "Explique em uma frase curta a evidencia para avancar ou manter etapa.",
   "parecer": "Sua análise estratégica focada no perfil (Venda, Funcionário ou Pessoal), tom e próximo passo lógico.",
   "tecnicaRecomendada": "Ex: SPIN (se venda) OU Gestão de Conflitos (se funcionário) OU Rapport (se amigo)",
   "diretorVendas": {
@@ -817,7 +935,7 @@ REGRAS CRÍTICAS DE ESTRUTURA:
 2. FUNCIONÁRIO / PESSOAL: Use etapa "funcionario", "nao_se_aplica" ou "fornecedor". Não aplique SPIN. Fale do assunto que está sendo falado na conversa (ex: dia de trabalho, faltas, etc).
 3. PÓS-VENDA: Se a venda já foi concluída, use "pos_venda" e apenas alinhe a entrega.
 4. SAUDAÇÃO: Só use label "saudacao" quando SAUDAÇÃO acima mandar usar. Caso contrário, nenhuma sugestão pode começar com "oi", "olá", "bom dia", "boa tarde" ou "boa noite".
-5. TAMANHO: Cada "mensagem" deve ter no máximo 12 palavras. Quanto mais curta, melhor.
+5. TAMANHO: Cada "mensagem" deve ter no máximo 22 palavras. Curta, mas com contexto suficiente.
 6. SOB MEDIDA: Se não houver produto padrão claro, conduza como orçamento sob medida em aço, sem dizer que "não temos".
 7. TOM: Profissional e educado. Proibido: "kkk", "blz", "show demais", "top", "meu querido".
 8. GERENTE DE VENDAS IA: O campo "diretorVendas" é interno para o dono. Seja objetivo, como gerente comercial experiente.
@@ -838,6 +956,7 @@ ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conve
   const iaResult = await chamarIA(systemPrompt, userPrompt);
   let analise = parseIAResponse(iaResult.content);
 
+  analise = normalizarAvancoFunil(analise, lead.etapa || '', mensagens);
   analise = normalizarSugestoes(analise, saudacao, precisaSaudacao, { ultimaMensagem });
   analise = aplicarCheckupAtendimento(analise, mensagens);
 
@@ -920,17 +1039,20 @@ export default async function handler(req, res) {
     }
 
     // ── Analise de conversa (modo padrao — Giorno + Bruno) ──
-    const { telefone, nome, empresa, etapa } = body;
+    const { telefone, nome, empresa, etapa, id } = body;
     if (!hasAnyProvider()) return res.status(503).json({ error: 'Nenhuma API KEY configurada.' });
 
-    const mensagens = telefone ? await buscarMensagens(telefone) : [];
+    const mensagensBody = normalizarMensagensBody(body.mensagens);
+    const mensagens = mensagensBody.length > 0
+      ? mensagensBody
+      : telefone ? await buscarMensagens(telefone) : [];
 
     const cached = telefone ? getCache(telefone, mensagens) : null;
     if (cached) {
       return res.status(200).json(cached);
     }
 
-    const { analise, variantId } = await analisarConversa(mensagens, { nome, empresa, etapa, telefone });
+    const { analise, variantId } = await analisarConversa(mensagens, { id, nome, empresa, etapa, telefone });
     const resultado = { analise, variantId, totalMensagens: mensagens.length };
 
     if (telefone) setCache(telefone, mensagens, resultado);

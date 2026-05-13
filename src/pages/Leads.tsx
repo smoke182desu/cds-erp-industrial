@@ -15,6 +15,7 @@ import { useERP } from '../contexts/ERPContext';
 import { Cliente, Proposta } from '../types';
 import ConversaInteligente from '../components/ConversaInteligente';
 import { NovoClienteModal } from '../components/NovoClienteModal';
+import { searchProdutos, fmtPreco, type Produto } from '../services/produtosService';
 
 // ─── cores por etapa ─────────────────────────────────────────────────────────
 const ETAPA_COR: Record<EtapaFunil, string> = {
@@ -31,6 +32,15 @@ const ETAPA_BADGE: Record<EtapaFunil, string> = {
   fechado_ganho:    'bg-emerald-100 text-emerald-700',
   fechado_perdido:  'bg-red-100 text-red-700',
 };
+const ETAPA_ORDEM: EtapaFunil[] = [
+  'lead_novo',
+  'contato_feito',
+  'qualificado',
+  'proposta_enviada',
+  'negociacao',
+  'fechado_ganho',
+  'fechado_perdido',
+];
 
 function fmt(v?: number) {
   return v ? `R$ ${v.toLocaleString('pt-BR')}` : '';
@@ -383,6 +393,7 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analisandoRef = useRef(false);
   const ultimoExperimentoId = useRef<string | null>(null); // id do ultimo experimento registrado
+  const etapaAutoRef = useRef<string>('');
 
   const analisar = useCallback(async () => {
     if (analisandoRef.current) return;
@@ -395,7 +406,18 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
       const res = await fetch('/api/assistente-vendas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, empresa: lead.empresa, etapa: lead.etapa }),
+        body: JSON.stringify({
+          telefone: lead.telefone,
+          id: lead.id,
+          nome: lead.nome,
+          empresa: lead.empresa,
+          etapa: lead.etapa,
+          mensagens: msgs.slice(-80).map((m: any) => ({
+            texto: m.texto || m.conteudo || m.body || (m.mediaType ? `[${m.mediaType}]` : ''),
+            tipo: m.tipo || m.direction || 'entrada',
+            criadoEm: m.criadoEm || m.timestamp || m.criado_em || '',
+          })),
+        }),
         signal: ctrl.signal,
       });
       clearTimeout(timer);
@@ -420,7 +442,7 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
       setCarregando(false);
       analisandoRef.current = false;
     }
-  }, [lead.telefone, lead.nome, lead.empresa, lead.etapa]);
+  }, [lead.telefone, lead.nome, lead.empresa, lead.etapa, msgs]);
 
   useEffect(() => {
     if (lead.id !== lastLeadId.current) {
@@ -443,6 +465,28 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
     const interval = setInterval(() => { if (!analisandoRef.current) analisar(); }, 120000);
     return () => clearInterval(interval);
   }, [analisar]);
+
+  useEffect(() => {
+    const proxima = analise?.etapaDetectada as EtapaFunil | undefined;
+    const confianca = Number(analise?.confiancaFunil || analise?.confianca || 0);
+    const atualIdx = ETAPA_ORDEM.indexOf(lead.etapa);
+    const proxIdx = proxima ? ETAPA_ORDEM.indexOf(proxima) : -1;
+    const podeAutoMover =
+      !!analise?.deveAvancarEtapa &&
+      !!proxima &&
+      atualIdx >= 0 &&
+      proxIdx >= 0 &&
+      proxIdx > atualIdx &&
+      confianca >= 80 &&
+      proxima !== 'fechado_perdido';
+
+    if (!podeAutoMover) return;
+    const key = `${lead.id}:${lead.etapa}->${proxima}:${analise?.motivoAvanco || ''}`;
+    if (etapaAutoRef.current === key) return;
+    etapaAutoRef.current = key;
+    onMudarEtapa(proxima);
+    setAnalise((prev: any) => prev ? { ...prev, funilMovidoAutomaticamente: true } : prev);
+  }, [analise, lead.id, lead.etapa, onMudarEtapa]);
 
   const etapaDetectada = analise?.etapaDetectada as EtapaFunil | undefined;
   const etapaLabel = ETAPAS_FUNIL.find(e => e.id === etapaDetectada)?.label;
@@ -509,6 +553,11 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
                 <p className="text-[10px] text-indigo-600 font-medium">✓ Etapa correta no momento</p>
               )}
             </div>
+            {analise.funilMovidoAutomaticamente && etapaDetectada && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                <p className="text-xs text-emerald-700 font-semibold">Funil atualizado automaticamente pela leitura da conversa.</p>
+              </div>
+            )}
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
               <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">📋 Parecer</p>
               <p className="text-xs text-gray-700 leading-relaxed">{analise.parecer}</p>
@@ -784,6 +833,21 @@ function fmtHora(iso: string): string {
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ` ${hora}`;
   } catch { return iso; }
 }
+function minutosDesdeIso(iso?: string): number {
+  const t = new Date(iso || '').getTime();
+  if (!Number.isFinite(t) || t <= 0) return 0;
+  return Math.max(0, Math.round((Date.now() - t) / 60000));
+}
+function fmtCronometro(min: number): string {
+  if (min <= 1) return 'agora';
+  if (min < 60) return `${min}min`;
+  if (min < 1440) {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return m ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${Math.floor(min / 1440)}d`;
+}
 function avatarCor(nome: string) {
   return WA_COLORS[(nome || ' ').charCodeAt(0) % WA_COLORS.length];
 }
@@ -827,6 +891,15 @@ function LeadItem({ lead, ativo, naoLido, onClick }: {
         ? 'Abrir conversa'
         : (lead.empresa || lead.email || 'Sem mensagens ainda');
   const hora = fmtHora(lead.ultimaHora || lead.atualizadoEm || lead.criadoEm || '');
+  const minutosParado = minutosDesdeIso(lead.ultimaHora || lead.atualizadoEm || lead.criadoEm);
+  const clienteAguardando = lead.ultimaTipo !== 'saida' && (lead.totalMensagens ?? 0) > 0;
+  const tempoClass = clienteAguardando
+    ? minutosParado >= 60
+      ? 'bg-red-100 text-red-700'
+      : minutosParado >= 15
+        ? 'bg-amber-100 text-amber-700'
+        : 'bg-emerald-100 text-emerald-700'
+    : 'bg-slate-100 text-slate-500';
 
   // bg: ativo=verde claro, naoLido=verde transparente suave, normal=branco
   const bgClass = ativo
@@ -859,9 +932,14 @@ function LeadItem({ lead, ativo, naoLido, onClick }: {
         )}
         <div className="flex items-center justify-between gap-1 mt-0.5">
           <p className={`text-xs truncate ${naoLido ? 'text-gray-700 font-medium' : 'text-gray-500'}`}>{preview}</p>
-          {naoLido && !ativo && (
-            <span className="flex-shrink-0 bg-[#25D366] rounded-full w-[10px] h-[10px]" />
-          )}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <span className={`text-[9px] rounded-full px-1.5 py-0.5 font-semibold ${tempoClass}`} title={clienteAguardando ? 'Tempo aguardando resposta' : 'Tempo desde a ultima interacao'}>
+              {fmtCronometro(minutosParado)}
+            </span>
+            {naoLido && !ativo && (
+              <span className="flex-shrink-0 bg-[#25D366] rounded-full w-[10px] h-[10px]" />
+            )}
+          </div>
         </div>
       </div>
     </button>
@@ -905,6 +983,8 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
   const metas: any[] = Array.isArray(checkup?.metas) ? checkup.metas : [];
   const funil: any[] = Array.isArray(checkup?.distribuicaoFunil) ? checkup.distribuicaoFunil : [];
   const processos: any[] = Array.isArray(checkup?.processosQueFaltam) ? checkup.processosQueFaltam : [];
+  const cronograma: any[] = Array.isArray(checkup?.cronograma) ? checkup.cronograma : [];
+  const ordemProcessos: string[] = Array.isArray(checkup?.ordemProcessos) ? checkup.ordemProcessos : [];
   const insights: any[] = Array.isArray(checkup?.insightsAprendidos) ? checkup.insightsAprendidos : [];
   const maxFunil = Math.max(...funil.map((f: any) => f.total || 0), 1);
 
@@ -1031,6 +1111,31 @@ function CheckupBrunoGeral({ onAbrirLead }: { onAbrirLead: (leadId: string) => v
         </div>
       </div>
 
+      {(cronograma.length > 0 || ordemProcessos.length > 0) && (
+        <div className="px-4 pb-2 grid grid-cols-2 gap-2">
+          <div className="rounded-md bg-white/5 border border-white/10 p-2">
+            <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Cronograma Comercial</p>
+            <div className="flex flex-col gap-1">
+              {cronograma.slice(0, 5).map((c: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-[9px]">
+                  <span className="w-4 h-4 rounded-full bg-indigo-500/20 text-indigo-200 flex items-center justify-center font-black">{c.ordem || i + 1}</span>
+                  <span className="text-slate-200 font-semibold truncate">{c.etapa}</span>
+                  <span className="text-slate-500 ml-auto whitespace-nowrap">{c.prazo}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-md bg-white/5 border border-white/10 p-2">
+            <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Ordem dos Processos</p>
+            <div className="flex flex-col gap-1">
+              {ordemProcessos.slice(0, 4).map((p: string, i: number) => (
+                <p key={i} className="text-[9px] text-slate-300 truncate"><span className="text-indigo-300 font-bold">{i + 1}.</span> {p}</p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {processos.length > 0 && (
         <div className="px-4 pb-2">
           <div className="rounded-md bg-red-500/5 border border-red-400/20 px-3 py-1.5">
@@ -1131,6 +1236,150 @@ async function buscarBrasilApiCnpj(cnpj: string) {
   };
 }
 
+function primeiroNumeroPositivo(...valores: any[]): number {
+  for (const valor of valores) {
+    const n = Number(valor);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
+function precoProdutoCadastro(produto?: Partial<Produto> | null): number {
+  return primeiroNumeroPositivo(produto?.preco, produto?.precoRegular, produto?.precoPromocional);
+}
+
+function descricaoProdutoCadastro(produto: Produto, atual?: string): string {
+  if (String(atual || '').trim()) return String(atual).trim();
+  return [
+    produto.sku ? `SKU: ${produto.sku}` : '',
+    produto.descricao || produto.categoria || '',
+  ].filter(Boolean).join(' - ');
+}
+
+function itemComProdutoCadastro(produto: Produto, atual: ItemProposta): ItemProposta {
+  return {
+    ...atual,
+    nome: produto.nome || atual.nome || '',
+    descricao: descricaoProdutoCadastro(produto, atual.descricao),
+    qtd: Number(atual.qtd) || 1,
+    valorUnitario: precoProdutoCadastro(produto),
+    produtoId: produto.id,
+    skuCatalogo: produto.sku,
+    nomeCatalogo: produto.nome,
+  };
+}
+
+function itemPropostaDaAnalise(p: any): ItemProposta {
+  const opcoes = Array.isArray(p?.opcoesSugeridas) ? p.opcoesSugeridas : [];
+  const opcaoEscolhida = opcoes.find((o: any) =>
+    (p.skuCatalogo && o.sku === p.skuCatalogo) ||
+    (p.nomeCatalogo && o.nome === p.nomeCatalogo)
+  );
+  const usarOpcao = p?.produtoPadrao || p?.skuCatalogo || p?.nomeCatalogo;
+  const preco = primeiroNumeroPositivo(
+    p?.valorUnitario,
+    p?.precoUnitario,
+    p?.preco,
+    p?.precoRegular,
+    p?.simulacaoPreco?.precoUnitario,
+    opcaoEscolhida?.precoUnitario,
+    usarOpcao ? opcoes[0]?.precoUnitario : 0,
+  );
+  const sku = p?.skuCatalogo || opcaoEscolhida?.sku || (usarOpcao ? opcoes[0]?.sku : '');
+  return {
+    nome: p?.nomeCatalogo || p?.nome || opcaoEscolhida?.nome || (usarOpcao ? opcoes[0]?.nome : '') || '',
+    descricao: [
+      p?.descricao || '',
+      sku ? `SKU: ${sku}` : '',
+      p?.simulacaoPreco?.observacoes?.length ? p.simulacaoPreco.observacoes.join('; ') : '',
+    ].filter(Boolean).join(' - '),
+    qtd: Number(p?.qtd || p?.quantidade) || 1,
+    valorUnitario: preco,
+    produtoId: p?.produtoId || undefined,
+    skuCatalogo: sku || undefined,
+    nomeCatalogo: p?.nomeCatalogo || opcaoEscolhida?.nome || undefined,
+  };
+}
+
+function ProdutoPropostaInput({ item, onNomeChange, onSelect }: {
+  item: ItemProposta;
+  onNomeChange: (valor: string) => void;
+  onSelect: (produto: Produto) => void;
+}) {
+  const [termo, setTermo] = useState(item.nome || '');
+  const [resultados, setResultados] = useState<Produto[]>([]);
+  const [aberto, setAberto] = useState(false);
+  const [buscando, setBuscando] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setTermo(item.nome || '');
+  }, [item.nome]);
+
+  useEffect(() => {
+    if (!aberto || termo.trim().length < 2) {
+      setResultados([]);
+      return;
+    }
+    let cancelado = false;
+    const timer = setTimeout(async () => {
+      setBuscando(true);
+      try {
+        const lista = await searchProdutos(termo, 8);
+        if (!cancelado) setResultados(lista);
+      } finally {
+        if (!cancelado) setBuscando(false);
+      }
+    }, 250);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [termo, aberto]);
+
+  useEffect(() => {
+    const onDoc = (ev: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(ev.target as Node)) setAberto(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  return (
+    <div ref={boxRef} className="col-span-4 relative">
+      <input
+        placeholder="Nome do item"
+        value={item.nome || ''}
+        onFocus={() => { setAberto(true); setTermo(item.nome || ''); }}
+        onChange={e => { onNomeChange(e.target.value); setTermo(e.target.value); setAberto(true); }}
+        className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
+      />
+      {aberto && (resultados.length > 0 || buscando) && (
+        <div className="absolute z-30 mt-1 w-[360px] max-w-[calc(100vw-2rem)] rounded-lg border border-indigo-100 bg-white shadow-xl overflow-hidden">
+          {buscando && <p className="px-3 py-2 text-[11px] text-gray-400">Buscando no cadastro...</p>}
+          {resultados.map(produto => {
+            const preco = precoProdutoCadastro(produto);
+            return (
+              <button
+                key={produto.id || produto.sku || produto.nome}
+                type="button"
+                onClick={() => { onSelect(produto); setAberto(false); }}
+                className="w-full text-left px-3 py-2 hover:bg-indigo-50 border-t first:border-t-0 border-gray-50"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-gray-800 truncate">{produto.nome}</p>
+                  <span className="text-[11px] font-bold text-emerald-700 whitespace-nowrap">{fmtPreco(preco)}</span>
+                </div>
+                <p className="text-[10px] text-gray-400 truncate">{produto.sku ? `SKU: ${produto.sku}` : produto.categoria || 'Produto cadastrado'}</p>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
   lead: Lead;
   analisePrevia?: any;
@@ -1162,12 +1411,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
       : '',
   } as any;
   const initItens: ItemProposta[] = Array.isArray(analisePrevia?.produtos) && analisePrevia.produtos.length > 0
-    ? analisePrevia.produtos.map((p: any) => ({
-        nome: p.nomeCatalogo || p.nome || '',
-        descricao: p.descricao || '',
-        qtd: Number(p.quantidade) || 1,
-        valorUnitario: Number(p.precoUnitario) || 0,
-      }))
+    ? analisePrevia.produtos.map(itemPropostaDaAnalise)
     : [{ nome: '', descricao: '', qtd: 1, valorUnitario: 0 }];
 
   const [dados, setDados] = useState<Omit<PropostaDados,'itens'>>(initDados);
@@ -1217,7 +1461,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
     try {
       const res = await fetch('/api/proposta-ia', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa, mensagens: (mensagens || []).map((m: any) => ({ texto: m.texto || m.conteudo || m.body || '', tipo: m.tipo || m.direction || 'entrada', criadoEm: m.criadoEm || m.timestamp || '' })) }),
+        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa, mensagens: (mensagens || []).map((m: any) => ({ texto: m.texto || m.conteudo || m.body || (m.mediaType ? `[${m.mediaType}]` : ''), tipo: m.tipo || m.direction || 'entrada', criadoEm: m.criadoEm || m.timestamp || '' })) }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro desconhecido');
@@ -1229,7 +1473,20 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
         frete: p.frete || 'À combinar', validade: p.validade || '7 dias corridos',
         pagamento: p.pagamento || '50% de entrada e 50% na entrega',
         prazoEntrega: p.prazoEntrega || 'A confirmar após aceite formal', intro: p.intro || '' });
-      if (p.itens?.length > 0) setItens(p.itens.map((it: any) => ({ nome: it.nome || it.descricao || 'Item', descricao: it.descricao || '', qtd: Number(it.qtd || it.quantidade) || 1, valorUnitario: Number(it.valorUnitario || it.precoUnitario) || 0 })));
+      if (p.itens?.length > 0) {
+        setItens(p.itens.map((it: any) => ({
+          nome: it.nomeCatalogo || it.nome || it.descricao || 'Item',
+          descricao: [
+            it.descricao || '',
+            it.skuCatalogo ? `SKU: ${it.skuCatalogo}` : '',
+          ].filter(Boolean).join(' - '),
+          qtd: Number(it.qtd || it.quantidade) || 1,
+          valorUnitario: primeiroNumeroPositivo(it.valorUnitario, it.precoUnitario, it.preco, it.precoRegular),
+          produtoId: it.produtoId,
+          skuCatalogo: it.skuCatalogo,
+          nomeCatalogo: it.nomeCatalogo,
+        })));
+      }
       setIaOk(true);
     } catch (e: any) { setErroIA(e.message || 'Erro ao chamar IA'); }
     finally { setGerandoIA(false); }
@@ -1417,7 +1674,11 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
           </div>
           {itens.map((it, i) => (
             <div key={i} className="grid grid-cols-12 gap-1 mb-1.5 items-center">
-              <input placeholder="Nome do item" value={it.nome || ''} onChange={e => setItem(i, 'nome', e.target.value)} className="col-span-4 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300" />
+              <ProdutoPropostaInput
+                item={it}
+                onNomeChange={valor => setItem(i, 'nome', valor)}
+                onSelect={produto => setItens(prev => prev.map((atual, idx) => idx === i ? itemComProdutoCadastro(produto, atual) : atual))}
+              />
               <input placeholder="Especificação técnica" value={it.descricao || ''} onChange={e => setItem(i, 'descricao', e.target.value)} className="col-span-4 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300" />
               <input type="number" min="1" value={it.qtd} onChange={e => setItem(i, 'qtd', +e.target.value)} className="col-span-1 border rounded px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-indigo-300" />
               <input type="number" min="0" step="0.01" placeholder="0,00" value={it.valorUnitario || ''} onChange={e => setItem(i, 'valorUnitario', +e.target.value)} className="col-span-2 border rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-indigo-300" />

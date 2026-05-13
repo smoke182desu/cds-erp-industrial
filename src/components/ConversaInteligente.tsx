@@ -36,7 +36,20 @@ interface ProdutoExtraido {
   skuCatalogo?: string | null;
   produtoId?: string | null;
   nomeCatalogo?: string | null;
-  opcoesSugeridas?: Array<{ nome: string; sku: string; precoUnitario: number; probabilidade: number }>;
+  opcoesSugeridas?: Array<{ nome: string; sku: string; precoUnitario: number; probabilidade: number; produtoId?: string | null }>;
+  simulacaoPreco?: {
+    materialLabel: string;
+    precoKg: number;
+    espessuraMm: number;
+    espessuraAssumida?: boolean;
+    pesoKg: number;
+    quantidade: number;
+    precoUnitario: number;
+    precoTotal: number;
+    metodo: string;
+    dimensoesBase?: string;
+    observacoes?: string[];
+  };
 }
 
 interface AnaliseConversa {
@@ -447,6 +460,20 @@ export default function ConversaInteligente({
                         <span className="text-gray-400">SKU: {p.skuCatalogo}</span>
                       )}
                     </div>
+                    {p.simulacaoPreco && (
+                      <div className="mt-1.5 rounded-md border border-blue-100 bg-blue-50 px-2 py-1.5 text-[10px] text-blue-800">
+                        <p className="font-semibold">
+                          Simulacao por peso: {p.simulacaoPreco.pesoKg} kg x R$ {p.simulacaoPreco.precoKg}/kg
+                        </p>
+                        <p>
+                          {p.simulacaoPreco.materialLabel} | {p.simulacaoPreco.espessuraMm}mm
+                          {p.simulacaoPreco.espessuraAssumida ? ' assumido' : ''} | {p.simulacaoPreco.metodo}
+                        </p>
+                        {p.simulacaoPreco.quantidade > 1 && (
+                          <p>Total estimado: R$ {p.simulacaoPreco.precoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                        )}
+                      </div>
+                    )}
                     {p.opcoesSugeridas && p.opcoesSugeridas.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-amber-200/50">
                         <p className="text-[10px] text-amber-800 font-medium mb-1 flex items-center gap-1">
@@ -466,8 +493,10 @@ export default function ConversaInteligente({
                                     nome: opt.nome,
                                     nomeCatalogo: opt.nome,
                                     skuCatalogo: opt.sku,
+                                    produtoId: opt.produtoId || null,
                                     precoUnitario: opt.precoUnitario || 0,
                                     produtoPadrao: true,
+                                    sobMedida: false,
                                   };
                                   return { ...prev, produtos: novos };
                                 });

@@ -217,6 +217,7 @@ function normalizar(lead) {
     criadoEm: lead.criadoEm ?? lead.criado_em ?? lead.created_at ?? '',
     atualizadoEm: lead.atualizadoEm ?? lead.atualizado_em ?? lead.updated_at ?? '',
     ultima_hora: lead.ultima_hora ?? lead.ultimaHora ?? lead.atualizado_em ?? lead.atualizadoEm ?? lead.criado_em ?? '',
+    ultima_tipo: lead.ultima_tipo || lead.ultimaTipo || '',
     total_mensagens: Number(lead.total_mensagens || lead.totalMensagens) || 0,
   };
 }
@@ -260,6 +261,7 @@ async function listarLeads() {
         ...lead,
         ultima_mensagem: ultimaTexto || (precisaPreviewAtualizado(lead.ultima_mensagem) ? '' : lead.ultima_mensagem),
         ultima_hora: ultimaHora || lead.ultima_hora,
+        ultima_tipo: info.ultima.tipo || '',
         atualizado_em: ultimaHora || lead.atualizado_em,
         total_mensagens: info.total,
         foto_url: lead.foto_url || info.fotoUrl || lead.profile_pic_url,

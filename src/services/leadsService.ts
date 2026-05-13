@@ -46,6 +46,7 @@ export interface Lead {
   totalMensagens?: number;
   ultimaMensagem?: string;
   ultimaHora?: string;
+  ultimaTipo?: 'entrada' | 'saida';
   fotoUrl?: string;
 }
 
@@ -79,6 +80,7 @@ function mapLeadFromDB(row: any): Lead {
     totalMensagens: parseInt(row.total_mensagens || row.totalMensagens) || 0,
     ultimaMensagem: row.ultimaMensagem ?? row.ultima_mensagem ?? undefined,
     ultimaHora: row.ultimaHora ?? row.ultima_hora ?? row.atualizado_em ?? row.atualizadoEm ?? undefined,
+    ultimaTipo: row.ultimaTipo ?? row.ultima_tipo ?? undefined,
     fotoUrl: row.fotoUrl ?? row.foto_url ?? row.profile_pic_url ?? undefined,
   };
 }

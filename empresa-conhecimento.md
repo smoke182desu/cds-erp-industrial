@@ -72,6 +72,7 @@ Do rascunho à entrega técnica:
 - Materiais trabalhados: aluminio, aco carbono, aco galvanizado, inox 430 e inox 304.
 - Acos usuais: 1010/1020; chapa acima de 14 geralmente A36.
 - Produtos fabricados/recorrentes: chapas dobradas, produtos com metalons, tubos e chapas dobradas, carrinhos, tampas para casas de maquinas, containers de lixo, pes de mesa e demais fabricacoes metalicas sob medida.
+- Precificacao inicial para sob medida fora do catalogo: calcular por peso quando houver medidas/material. Base por kg: aco carbono R$70/kg, inox R$150/kg, aluminio R$120/kg, galvanizado R$100/kg. Se a espessura nao vier informada, usar chapa 14 / 2mm como simulacao inicial e revisar antes de fechar.
 - Ao responder clientes, a IA deve ser honesta sobre essas capacidades e perguntar medidas, espessura, material, quantidade, acabamento, carga/uso e ambiente quando faltar informacao.
 
 ---

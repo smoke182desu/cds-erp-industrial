@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { selectAll } from './_lib/supabase.js';
+import { aplicarPrecoSobMedida } from './_lib/preco-sob-medida.js';
 
 const GROQ_API_KEY    = process.env.GROQ_API_KEY || '';
 const GEMINI_API_KEY  = process.env.GEMINI_API_KEY || '';
@@ -28,7 +29,7 @@ let CACHE_PRODUTOS = { data: null, ts: 0 };
 // Cache de resultados da inteligencia para evitar torrar Rate Limit global (30 RPM) da Groq
 const cacheInteligencia = new Map();
 const TTL_INTELIGENCIA = 180000; // 3 minutos
-const PROMPT_VERSION = 'produto-familia-v4';
+const PROMPT_VERSION = 'produto-familia-v5-preco-peso';
 
 // Stopwords PT-BR (nao usadas como keyword de busca)
 const STOPWORDS = new Set([
@@ -267,7 +268,7 @@ function aplicarMatchesCatalogo(analise, catalogo, familiaContexto = null) {
       item.nomeCatalogo = melhor.nome;
       item.skuCatalogo = melhor.sku;
       item.produtoId = melhor.produtoId;
-      item.precoUnitario = item.precoUnitario || melhor.precoUnitario || 0;
+      item.precoUnitario = melhor.precoUnitario || 0;
       item.sobMedida = false;
     } else if (!item.produtoPadrao) {
       item.sobMedida = true;
@@ -502,6 +503,8 @@ REGRAS:
 8. Se dados estao incompletos, liste em "camposFaltando".
 9. Avalie "confianca" global de 0 a 100.
 10. CLIENTE: Prefira o nome que o cliente informou na conversa.
+10.1. PRECO SOB MEDIDA: quando nao for produto exato do catalogo, preserve medidas, material, espessura, perfil/tubo/chapa e quantidade na descricao. O sistema vai calcular preco por peso. Se faltar espessura, considere chapa 14 / 2mm como base inicial.
+10.2. TABELA DE SIMULACAO: aco carbono R$70/kg, inox R$150/kg, aluminio R$120/kg, galvanizado R$100/kg. Nao use preco aleatorio para sob medida.
 11. QUESTIONARIO TECNICO: identifique a familia e marque faltantes coerentes:
 - Carrinho: carga/quilo, o que transporta, piso/ambiente, dimensoes, lateral/grade/berco, manual/eletrico.
 - Vaso/cachepot/jardim/paisagismo: nao classifique como carrinho plataforma, mesmo quando tiver rodas.
@@ -723,11 +726,15 @@ export default async function handler(req, res) {
           return n && (n.includes(nomeItem) || nomeItem.includes(n));
         });
         if (match) {
-          item.precoUnitario = item.precoUnitario || match.preco || match.precoRegular;
+          item.precoUnitario = Number(match.preco || match.precoRegular || 0);
           item.produtoId = match.id;
           item.skuCatalogo = match.sku;
           item.nomeCatalogo = match.nome;
+          item.nome = match.nome || item.nome;
         }
+      }
+      for (const item of analise.produtos) {
+        aplicarPrecoSobMedida(item, textoProdutoConversa, 'precoUnitario');
       }
     }
 

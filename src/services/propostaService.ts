@@ -3,6 +3,9 @@ export interface ItemProposta {
   descricao?: string;
   qtd: number;
   valorUnitario: number;
+  produtoId?: string;
+  skuCatalogo?: string;
+  nomeCatalogo?: string;
 }
 
 export interface PropostaDados {
