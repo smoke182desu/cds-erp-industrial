@@ -1,5 +1,20 @@
-import { useState, useCallback } from 'react';
-import { Loader2, Target, Palette, TrendingUp, BarChart3, Megaphone, RefreshCw, ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, Sparkles, Send } from 'lucide-react';
+import { useState, useCallback, useRef } from 'react';
+import { Loader2, Target, Palette, TrendingUp, BarChart3, Megaphone, RefreshCw, ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, Sparkles, Send, HelpCircle, ArrowRight, Zap } from 'lucide-react';
+
+function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-flex" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      {children}
+      {show && (
+        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-900 text-white text-[11px] rounded-lg whitespace-nowrap shadow-lg pointer-events-none animate-fade-in">
+          {text}
+          <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+        </span>
+      )}
+    </span>
+  );
+}
 
 type Plataforma = 'instagram' | 'facebook' | 'google' | 'tiktok' | 'linkedin';
 const PLATAFORMAS: { id: Plataforma; nome: string; icone: string }[] = [
@@ -74,13 +89,25 @@ export function Marketing() {
       <div className="flex-shrink-0 bg-gradient-to-r from-rose-600 via-pink-600 to-violet-600 text-white px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold flex items-center gap-2"><Megaphone className="w-5 h-5" /> Marketing & Publicidade</h1>
-            <p className="text-xs text-white/60 mt-0.5">Capture leads para alimentar o funil de vendas</p>
+            <h1 className="text-lg font-bold flex items-center gap-2"><Megaphone className="w-5 h-5" /> Centro de Comando — Marketing</h1>
+            <p className="text-xs text-white/60 mt-0.5">Preencha o briefing, gere estrategia e conteudo com IA</p>
           </div>
-          <button onClick={gerarTudo} disabled={abLoading || naLoading}
-            className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">
-            <Sparkles className="w-4 h-4" /> Gerar Estrategia + Conteudo
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Step indicators */}
+            <div className="hidden md:flex items-center gap-1 text-[11px]">
+              <span className={`px-2 py-1 rounded-full ${!abResult && !naResult ? 'bg-white/30 font-bold' : 'bg-white/10'}`}>1. Briefing</span>
+              <ArrowRight className="w-3 h-3 opacity-40" />
+              <span className={`px-2 py-1 rounded-full ${abResult && !naResult ? 'bg-white/30 font-bold' : 'bg-white/10'}`}>2. Estrategia</span>
+              <ArrowRight className="w-3 h-3 opacity-40" />
+              <span className={`px-2 py-1 rounded-full ${naResult ? 'bg-white/30 font-bold' : 'bg-white/10'}`}>3. Conteudo</span>
+            </div>
+            <Tooltip text="Gera estrategia (Abbacchio) + conteudo (Narancia) simultaneamente">
+              <button onClick={gerarTudo} disabled={abLoading || naLoading}
+                className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">
+                <Zap className="w-4 h-4" /> Gerar Tudo
+              </button>
+            </Tooltip>
+          </div>
         </div>
       </div>
 
@@ -88,17 +115,17 @@ export function Marketing() {
       <div className="flex-shrink-0 bg-white border-b px-6 py-3">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase">Produto / Servico</label>
+            <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">Produto / Servico <Tooltip text="Qual produto ou servico voce quer promover? Ex: escadas, bancadas, chapas dobradas"><HelpCircle className="w-3 h-3 text-gray-400 cursor-help" /></Tooltip></label>
             <input value={produto} onChange={e => setProduto(e.target.value)} placeholder="Ex: Escadas metalicas sob medida"
               className="w-full mt-0.5 border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-pink-400 outline-none" />
           </div>
           <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase">Publico-Alvo</label>
+            <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">Publico-Alvo <Tooltip text="Quem voce quer atingir? Empresas, construtoras, engenheiros, pessoas fisicas?"><HelpCircle className="w-3 h-3 text-gray-400 cursor-help" /></Tooltip></label>
             <input value={publicoAlvo} onChange={e => setPublicoAlvo(e.target.value)} placeholder="Ex: Construtoras em Brasilia"
               className="w-full mt-0.5 border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-pink-400 outline-none" />
           </div>
           <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase">Objetivo</label>
+            <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">Objetivo <Tooltip text="O que voce espera: gerar leads, aumentar visibilidade ou recuperar clientes?"><HelpCircle className="w-3 h-3 text-gray-400 cursor-help" /></Tooltip></label>
             <select value={objetivo} onChange={e => setObjetivo(e.target.value)}
               className="w-full mt-0.5 border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-pink-400 outline-none bg-white">
               {OBJETIVOS.map(o => <option key={o}>{o}</option>)}
@@ -106,12 +133,12 @@ export function Marketing() {
           </div>
           <div className="flex gap-2">
             <div className="flex-1">
-              <label className="text-[10px] font-bold text-gray-500 uppercase">Budget/mes</label>
+              <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">Budget/mes <Tooltip text="Quanto voce pode investir por mes em anuncios pagos?"><HelpCircle className="w-3 h-3 text-gray-400 cursor-help" /></Tooltip></label>
               <input value={budget} onChange={e => setBudget(e.target.value)} placeholder="R$ 500"
                 className="w-full mt-0.5 border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-pink-400 outline-none" />
             </div>
             <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase">Plataforma</label>
+              <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">Plataforma <Tooltip text="Escolha onde quer anunciar. A IA sugere o melhor canal se nao souber."><HelpCircle className="w-3 h-3 text-gray-400 cursor-help" /></Tooltip></label>
               <div className="flex gap-1 mt-0.5">
                 {PLATAFORMAS.map(p => (
                   <button key={p.id} onClick={() => setPlataforma(p.id)} title={p.nome}
@@ -136,7 +163,7 @@ export function Marketing() {
           <div className="sticky top-0 z-10 bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-3 flex items-center justify-between">
             <div>
               <p className="font-bold text-sm flex items-center gap-1.5">🎯 Leone Abbacchio</p>
-              <p className="text-[10px] text-white/50">Gestor de Marketing & Trafego · Metas · Cobranca</p>
+              <Tooltip text="Analisa seu mercado, define estrategia de trafego, budgets e KPIs. Pense nele como seu gestor de marketing."><p className="text-[10px] text-white/50 cursor-help underline decoration-dotted">Gestor de Marketing & Trafego · Metas · KPIs</p></Tooltip>
             </div>
             <button onClick={chamarAbbacchio} disabled={abLoading} className="text-xs bg-white/20 hover:bg-white/30 w-8 h-8 rounded-lg flex items-center justify-center">
               {abLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -249,7 +276,7 @@ export function Marketing() {
           <div className="sticky top-0 z-10 bg-gradient-to-r from-orange-500 to-rose-500 text-white px-4 py-3 flex items-center justify-between">
             <div>
               <p className="font-bold text-sm flex items-center gap-1.5">🎨 Narancia Ghirga</p>
-              <p className="text-[10px] text-white/50">Criador de Conteudo & Design · Copys · Anuncios</p>
+              <Tooltip text="Cria copies para anuncios, posts, stories e briefings de design. Ele e seu copywriter e diretor de arte."><p className="text-[10px] text-white/50 cursor-help underline decoration-dotted">Copywriter & Diretor de Arte IA · Copies · Design</p></Tooltip>
             </div>
             <button onClick={chamarNarancia} disabled={naLoading} className="text-xs bg-white/20 hover:bg-white/30 w-8 h-8 rounded-lg flex items-center justify-center">
               {naLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
