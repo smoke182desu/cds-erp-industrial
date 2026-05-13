@@ -1087,6 +1087,50 @@ function NovoLeadModal({ onClose, onSave }: { onClose: () => void; onSave: (l: O
 }
 
 // ─── Modal Criar Proposta ───────────────────────────────────────────────────
+function soDigitosProposta(valor?: string): string {
+  return String(valor || '').replace(/\D/g, '');
+}
+
+function cidadeUfProposta(cliente: any): string {
+  return [cliente?.cidade, cliente?.uf].filter(Boolean).join('/');
+}
+
+function enderecoClienteProposta(cliente: any): string {
+  return [
+    cliente?.logradouro,
+    cliente?.numero,
+    cliente?.bairro,
+    cidadeUfProposta(cliente),
+  ].filter(Boolean).join(', ');
+}
+
+function extrairCnpjProposta(mensagens?: Mensagem[]): string {
+  const texto = (mensagens || []).map((m: any) => m.texto || m.conteudo || '').join(' ');
+  const match = texto.match(/\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/);
+  return match ? soDigitosProposta(match[0]) : '';
+}
+
+async function buscarBrasilApiCnpj(cnpj: string) {
+  const cnpjLimpo = soDigitosProposta(cnpj);
+  if (cnpjLimpo.length !== 14) return null;
+  const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  return {
+    cnpj: cnpjLimpo,
+    empresa: data.nome_fantasia || data.razao_social || '',
+    razaoSocial: data.razao_social || '',
+    nomeFantasia: data.nome_fantasia || '',
+    inscricaoEstadual: data.inscricoes_estaduais?.[0]?.inscricao_estadual || '',
+    cep: data.cep || '',
+    logradouro: data.logradouro || '',
+    numero: data.numero || '',
+    bairro: data.bairro || '',
+    cidade: data.municipio || '',
+    uf: data.uf || '',
+  };
+}
+
 function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
   lead: Lead;
   analisePrevia?: any;
@@ -1095,16 +1139,27 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
 }) {
   // Se recebemos uma analise ja feita pelo painel Inteligencia, pre-populamos
   const clientePrev = analisePrevia?.cliente || {};
+  const enderecoPrev = enderecoClienteProposta(clientePrev);
+  const documentoPrev = clientePrev.cnpj || clientePrev.cpf || (lead as any).cnpj || (lead as any).documento || extrairCnpjProposta(mensagens) || '';
   const initDados: Omit<PropostaDados,'itens'> = {
     empresa: clientePrev.empresa || clientePrev.razaoSocial || clientePrev.nomeFantasia || lead.empresa || lead.nome || '',
     ac: clientePrev.nome || lead.nome || '',
+    cnpj: documentoPrev,
     telefone: clientePrev.telefone || lead.telefone || '',
     email: clientePrev.email || lead.email || '',
-    cidade: [clientePrev.cidade, clientePrev.uf].filter(Boolean).join('/') || '',
+    endereco: enderecoPrev,
+    cidade: cidadeUfProposta(clientePrev) || '',
+    cep: clientePrev.cep || '',
+    local: enderecoPrev || cidadeUfProposta(clientePrev) || '',
+    contato: clientePrev.nome || lead.nome || '',
     vendedor: 'Jean',
     frete: 'À combinar',
     validade: '7 dias corridos',
     pagamento: '50% de entrada e 50% na entrega',
+    prazoEntrega: analisePrevia?.prazoEntrega || 'A confirmar apÃ³s aceite formal',
+    intro: analisePrevia?.resumoConversa
+      ? `Em atendimento ao contato realizado, apresentamos proposta conforme dados coletados na conversa: ${analisePrevia.resumoConversa}`
+      : '',
   } as any;
   const initItens: ItemProposta[] = Array.isArray(analisePrevia?.produtos) && analisePrevia.produtos.length > 0
     ? analisePrevia.produtos.map((p: any) => ({
@@ -1120,6 +1175,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
   const [gerandoIA, setGerandoIA] = useState(false);
   const [erroIA, setErroIA] = useState('');
   const [iaOk, setIaOk] = useState(!!analisePrevia);
+  const cnpjConsultadoRef = useRef('');
   // atualizarCliente e adicionarPropostaDireta podem nao existir em todas versoes do contexto — lemos com fallback
   const erp = useERP() as any;
   const { state, adicionarCliente } = erp;
@@ -1132,6 +1188,29 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
   const addItem = () => setItens(p => [...p, { nome: '', descricao: '', qtd: 1, valorUnitario: 0 }]);
   const remItem = (i: number) => setItens(p => p.filter((_, idx) => idx !== i));
 
+  useEffect(() => {
+    const cnpj = soDigitosProposta((dados as any).cnpj);
+    if (cnpj.length !== 14 || cnpjConsultadoRef.current === cnpj) return;
+    if (dados.empresa && dados.endereco && dados.cep) return;
+
+    cnpjConsultadoRef.current = cnpj;
+    buscarBrasilApiCnpj(cnpj)
+      .then(info => {
+        if (!info) return;
+        const endereco = enderecoClienteProposta(info);
+        setDados(prev => ({
+          ...prev,
+          cnpj: prev.cnpj || info.cnpj,
+          empresa: prev.empresa || info.empresa || info.razaoSocial,
+          endereco: prev.endereco || endereco,
+          cidade: prev.cidade || cidadeUfProposta(info),
+          cep: prev.cep || info.cep,
+          local: prev.local || endereco || cidadeUfProposta(info),
+        }));
+      })
+      .catch(() => {});
+  }, [dados.empresa, dados.endereco, dados.cep, (dados as any).cnpj]);
+
   const gerarComIA = async () => {
     if (!lead.telefone) { setErroIA('Este lead não tem telefone — necessário para buscar a conversa.'); return; }
     setGerandoIA(true); setErroIA(''); setIaOk(false);
@@ -1143,8 +1222,10 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro desconhecido');
       const p = json.proposta;
-      setDados({ empresa: p.empresa || dados.empresa, ac: p.ac || '', telefone: p.telefone || dados.telefone,
-        email: p.email || dados.email, cidade: p.cidade || '', vendedor: p.vendedor || 'Jean',
+      setDados({ empresa: p.empresa || dados.empresa, ac: p.ac || dados.ac || '', telefone: p.telefone || dados.telefone,
+        email: p.email || dados.email, cnpj: p.cnpj || dados.cnpj, endereco: p.endereco || dados.endereco,
+        cep: p.cep || dados.cep, cidade: p.cidade || dados.cidade, local: p.local || dados.local,
+        contato: p.contato || dados.contato || dados.ac, vendedor: p.vendedor || 'Jean',
         frete: p.frete || 'À combinar', validade: p.validade || '7 dias corridos',
         pagamento: p.pagamento || '50% de entrada e 50% na entrega',
         prazoEntrega: p.prazoEntrega || 'A confirmar após aceite formal', intro: p.intro || '' });
@@ -1159,35 +1240,69 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
   useEffect(() => { if (!analisePrevia) gerarComIA(); }, []);
 
   const gerar = async () => {
+    const documento = String((dados as any).cnpj || documentoPrev || '').trim();
+    const documentoDigitos = soDigitosProposta(documento);
+    const tipoCliente: Cliente['tipo'] = documentoDigitos.length === 11 ? 'PF' : 'PJ';
+    const cidadePartes = String((dados as any).cidade || '').split('/');
+    const clientePatch: Partial<Cliente> = {
+      nome: (dados as any).contato || dados.ac || clientePrev.nome || lead.nome || dados.empresa || 'Cliente',
+      email: dados.email || lead.email || clientePrev.email || '',
+      telefone: dados.telefone || lead.telefone || clientePrev.telefone || '',
+      tipo: tipoCliente,
+      documento,
+      cnpj: documentoDigitos.length === 14 ? documentoDigitos : undefined,
+      razaoSocial: clientePrev.razaoSocial || undefined,
+      nomeFantasia: clientePrev.nomeFantasia || undefined,
+      inscricaoEstadual: clientePrev.inscricaoEstadual || undefined,
+      endereco: dados.endereco || enderecoPrev || '',
+      cep: dados.cep || clientePrev.cep || '',
+      logradouro: clientePrev.logradouro || dados.endereco || '',
+      numero: clientePrev.numero || '',
+      bairro: clientePrev.bairro || '',
+      cidade: clientePrev.cidade || cidadePartes[0] || '',
+      uf: clientePrev.uf || cidadePartes[1] || '',
+      funnelStage: 'NegociaÃ§Ã£o',
+      mensagens: [],
+    };
     // Registra ou atualiza cliente no ERP
     const clienteExistente = state.clientes.find(
-      (c: Cliente) => c.telefone === lead.telefone || (lead.email && c.email === lead.email)
+      (c: Cliente) =>
+        c.telefone === lead.telefone ||
+        (lead.email && c.email === lead.email) ||
+        (documentoDigitos && soDigitosProposta(c.documento || c.cnpj) === documentoDigitos)
     );
     const idFinal = `CLI-${Date.now()}`;
     if (clienteExistente) {
       if (atualizarCliente) {
         atualizarCliente(clienteExistente.id, {
-          nome: lead.nome || clienteExistente.nome,
-          email: lead.email || clienteExistente.email,
-          telefone: lead.telefone || clienteExistente.telefone,
-          cidade: dados.cidade || clienteExistente.cidade,
+          ...clientePatch,
+          nome: clientePatch.nome || clienteExistente.nome,
+          email: clientePatch.email || clienteExistente.email,
+          telefone: clientePatch.telefone || clienteExistente.telefone,
         });
       }
       // senao, mantem os dados antigos do cliente — nao bloqueia a geracao da proposta
     } else {
       const novoCliente: Cliente = {
         id: idFinal,
-        nome: lead.nome || dados.empresa || 'Cliente',
-        email: lead.email || dados.email || '',
-        telefone: lead.telefone || dados.telefone || '',
-        tipo: 'PJ',
-        documento: '',
-        endereco: dados.cidade || '',
-        cep: '', logradouro: '', numero: '', bairro: '',
-        cidade: dados.cidade || '',
-        uf: '',
+        nome: clientePatch.nome || dados.empresa || 'Cliente',
+        email: clientePatch.email || '',
+        telefone: clientePatch.telefone || '',
+        tipo: clientePatch.tipo || 'PJ',
+        documento: clientePatch.documento || '',
+        cnpj: clientePatch.cnpj,
+        razaoSocial: clientePatch.razaoSocial,
+        nomeFantasia: clientePatch.nomeFantasia,
+        inscricaoEstadual: clientePatch.inscricaoEstadual,
+        endereco: clientePatch.endereco || '',
+        cep: clientePatch.cep || '',
+        logradouro: clientePatch.logradouro || '',
+        numero: clientePatch.numero || '',
+        bairro: clientePatch.bairro || '',
+        cidade: clientePatch.cidade || '',
+        uf: clientePatch.uf || '',
         funnelStage: 'Negociação',
-        mensagens: [],
+        mensagens: clientePatch.mensagens || [],
       };
       adicionarCliente(novoCliente);
     }
@@ -1196,7 +1311,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
     const proposta: Proposta = {
       id: `PROP-${Date.now()}`,
       clienteId: clienteExistente?.id || idFinal,
-      clienteNome: lead.nome || dados.empresa || 'Cliente',
+      clienteNome: clientePatch.nome || dados.empresa || 'Cliente',
       items: itens.map((it, i) => ({
         id: `it-${i}`,
         name: it.nome || 'Item',
@@ -1221,7 +1336,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           telefone: lead.telefone,
-          nome_cliente: lead.nome || dados.empresa || 'Cliente',
+          nome_cliente: clientePatch.nome || dados.empresa || 'Cliente',
           empresa: dados.empresa || lead.empresa || '',
           itens: itens.map((it, i) => ({
             nome: it.nome || 'Item',
@@ -1231,7 +1346,12 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
           })),
           valor_total: total,
           status: 'enviada',
-          observacoes: (dados as any).observacoes || '',
+          observacoes: [
+            (dados as any).observacoes,
+            documento ? `Documento: ${documento}` : '',
+            dados.endereco ? `Endereco: ${dados.endereco}` : '',
+            dados.cep ? `CEP: ${dados.cep}` : '',
+          ].filter(Boolean).join('\n'),
         }),
       });
       const jsonProp = await resProp.json();
@@ -1273,8 +1393,8 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
         {iaOk && <div className="mx-5 mt-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-3 py-2 rounded-lg">✅ Proposta gerada pela IA com base na conversa do WhatsApp. Revise os itens e valores antes de gerar o PDF.</div>}
         {erroIA && <div className="mx-5 mt-4 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">⚠️ {erroIA}</div>}
         <div className="p-5 grid grid-cols-2 gap-3">
-          {([['empresa','Empresa'],['ac','A/C (contato)'],['telefone','Telefone'],['email','E-mail'],['cidade','Cidade/UF'],['vendedor','Vendedor'],['validade','Validade'],['frete','Frete'],['prazoEntrega','Prazo de Entrega'],['pagamento','Pagamento']] as [string,string][]).map(([k, label]) => (
-            <div key={k} className={k === 'pagamento' || k === 'intro' ? 'col-span-2' : ''}>
+          {([['empresa','Empresa'],['ac','A/C (contato)'],['cnpj','CNPJ/CPF'],['telefone','Telefone'],['email','E-mail'],['endereco','Endereco'],['cidade','Cidade/UF'],['cep','CEP'],['local','Local de entrega'],['contato','Contato'],['vendedor','Vendedor'],['validade','Validade'],['frete','Frete'],['prazoEntrega','Prazo de Entrega'],['pagamento','Pagamento']] as [string,string][]).map(([k, label]) => (
+            <div key={k} className={['pagamento', 'intro', 'endereco', 'local'].includes(k) ? 'col-span-2' : ''}>
               <label className="text-xs text-gray-600 font-medium">{label}</label>
               <input value={(dados as any)[k] || ''} onChange={e => set(k, e.target.value)} className="w-full border rounded-lg px-3 py-1.5 text-sm mt-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
