@@ -623,8 +623,26 @@ async function handleSocialPublish(req, res) {
       });
     }
 
-    const { platform, message, caption, imageUrl, imageUrls } = req.body || {};
+    const { platform, message, caption, imageUrl, imageUrls, extensionPostId } = req.body || {};
     const results = [];
+
+    async function logPublish({ plataforma, ok, postId, url, erro }) {
+      try {
+        await insert('social_publish_log', {
+          extension_post_id: extensionPostId || null,
+          plataforma,
+          status: ok ? 'published' : 'error',
+          platform_post_id: postId || null,
+          platform_url: url || null,
+          erro: erro || null,
+        });
+      } catch (e) {
+        console.warn('[social-publish] falha ao gravar log:', e.message);
+      }
+    }
+
+    const fbUrl = (postId) => postId ? `https://www.facebook.com/${postId}` : null;
+    const igUrl = (postId) => postId ? `https://www.instagram.com/p/${postId}` : null;
 
     if (platform === 'facebook' || platform === 'all') {
       try {
@@ -632,7 +650,9 @@ async function handleSocialPublish(req, res) {
           message: message || caption,
           imageUrl,
         });
-        results.push(fbResult);
+        const url = fbUrl(fbResult.postId);
+        results.push({ ...fbResult, url });
+        await logPublish({ plataforma: 'facebook', ok: true, postId: fbResult.postId, url });
         emitEvent({
           type: 'social.published',
           source: 'api',
@@ -643,6 +663,7 @@ async function handleSocialPublish(req, res) {
         });
       } catch (err) {
         results.push({ platform: 'facebook', error: err.message });
+        await logPublish({ plataforma: 'facebook', ok: false, erro: err.message });
       }
     }
 
@@ -666,7 +687,9 @@ async function handleSocialPublish(req, res) {
           });
         }
 
-        results.push(igResult);
+        const url = igUrl(igResult.postId);
+        results.push({ ...igResult, url });
+        await logPublish({ plataforma: 'instagram', ok: true, postId: igResult.postId, url });
         emitEvent({
           type: 'social.published',
           source: 'api',
@@ -677,6 +700,7 @@ async function handleSocialPublish(req, res) {
         });
       } catch (err) {
         results.push({ platform: 'instagram', error: err.message });
+        await logPublish({ plataforma: 'instagram', ok: false, erro: err.message });
       }
     }
 
