@@ -476,6 +476,100 @@ async function handleTransacoes(req, res) {
   return res.status(405).json({ error: 'Metodo nao permitido' });
 }
 
+async function handleImageProxy(req, res) {
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Metodo nao permitido' });
+  }
+
+  const { produtoId, nome, q } = req.query;
+
+  function formatarProdutoImagem(produto) {
+    const imagens = [];
+    if (produto.foto_url) {
+      imagens.push({ tipo: 'foto_produto', url: produto.foto_url, descricao: `Foto principal: ${produto.nome}`, ordem: 1 });
+    }
+    if (Array.isArray(produto.fotos)) {
+      produto.fotos.forEach((url, i) => {
+        imagens.push({ tipo: 'foto_produto', url, descricao: `Foto ${i + 2}: ${produto.nome}`, ordem: i + 2 });
+      });
+    }
+    return { id: produto.id, nome: produto.nome, imagens, totalFotos: imagens.length };
+  }
+
+  if (produtoId) {
+    const data = await selectAll('produtos', { filters: { id: `eq.${produtoId}` }, limit: 1 });
+    if (!data?.[0]) return res.status(404).json({ error: 'Produto nao encontrado' });
+    const formatado = formatarProdutoImagem(data[0]);
+    if (formatado.imagens.length > 0) res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.status(200).json(formatado);
+  }
+
+  if (nome) {
+    const data = await selectAll('produtos', { orderBy: 'nome', limit: 100 });
+    const filtered = (data || []).filter(p => (p.nome || '').toLowerCase().includes(nome.toLowerCase()));
+    return res.status(200).json({ produtos: filtered.slice(0, 5).map(formatarProdutoImagem) });
+  }
+
+  if (q) {
+    const data = await selectAll('produtos', { orderBy: 'nome', limit: 200 });
+    const ql = q.toLowerCase();
+    const filtered = (data || []).filter(p =>
+      (p.nome || '').toLowerCase().includes(ql) ||
+      (p.categoria || '').toLowerCase().includes(ql) ||
+      (p.sku || '').toLowerCase().includes(ql)
+    );
+    return res.status(200).json({ produtos: filtered.slice(0, 10).map(formatarProdutoImagem) });
+  }
+
+  const data = await selectAll('produtos', { orderBy: 'nome', limit: 200 });
+  const comFoto = (data || []).filter(p => p.foto_url);
+  return res.status(200).json({ produtos: comFoto.slice(0, 50).map(formatarProdutoImagem) });
+}
+
+async function handleExtensionPosts(req, res) {
+  if (req.method === 'GET') {
+    const posts = await selectAll('extension_posts', {
+      filters: { status: 'eq.pending' },
+      orderBy: 'criado_em',
+      limit: 10,
+    });
+    return res.status(200).json({ posts });
+  }
+
+  if (req.method === 'POST') {
+    const body = req.body || {};
+
+    if (body.action === 'update-status') {
+      const { postId, platform, status } = body;
+      if (postId) {
+        await update('extension_posts', 'id', postId, {
+          status,
+          atualizado_em: new Date().toISOString(),
+        });
+      }
+      return res.status(200).json({ ok: true });
+    }
+
+    const { titulo, descricao, preco, categoria, plataformas, copyOriginal, imagens } = body;
+    if (!titulo) return res.status(400).json({ error: 'Titulo obrigatorio' });
+
+    const post = await insert('extension_posts', {
+      titulo,
+      descricao: descricao || '',
+      preco: preco || '',
+      categoria: categoria || 'Servicos',
+      plataformas: plataformas || ['olx', 'marketplace'],
+      copy_original: copyOriginal || null,
+      imagens: Array.isArray(imagens) ? imagens : [],
+      status: 'pending',
+    });
+
+    return res.status(200).json({ ok: true, post });
+  }
+
+  return res.status(405).json({ error: 'Metodo nao permitido' });
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
@@ -492,7 +586,9 @@ export default async function handler(req, res) {
     if (resource === 'config') return await handleConfig(req, res);
     if (resource === 'inventory') return await handleInventory(req, res);
     if (resource === 'transacoes') return await handleTransacoes(req, res);
-    return res.status(400).json({ error: 'resource invalido (use clientes|projects|calculadora|evolution-diag|relink-leads|fotos|config|inventory|transacoes)' });
+    if (resource === 'image-proxy') return await handleImageProxy(req, res);
+    if (resource === 'extension-posts') return await handleExtensionPosts(req, res);
+    return res.status(400).json({ error: 'resource invalido' });
   } catch (err) {
     console.error(`[data] erro (${resource}):`, err.message);
     return res.status(500).json({ error: err.message });

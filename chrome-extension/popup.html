@@ -61,6 +61,17 @@
     .field-group label { font-size: 10px; color: #64748b; }
     .field-group input, .field-group textarea { width: 100%; margin-top: 2px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 6px 10px; color: #e2e8f0; font-size: 11px; outline: none; resize: vertical; }
     .field-group textarea { min-height: 50px; }
+
+    .images-section { margin-top: 8px; }
+    .images-section .section-label { font-size: 10px; font-weight: 600; color: #a78bfa; margin-bottom: 6px; }
+    .images-preview { display: flex; gap: 6px; flex-wrap: wrap; }
+    .img-thumb { width: 60px; height: 60px; border-radius: 8px; border: 1px solid #475569; background: #1e293b; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+    .img-thumb .img-icon { font-size: 18px; }
+    .img-thumb .img-label { font-size: 8px; color: #94a3b8; text-align: center; line-height: 1.1; padding: 0 2px; overflow: hidden; max-height: 18px; }
+    .img-thumb.foto { border-color: #3b82f6; background: #1e3a5f; }
+    .img-thumb.ia { border-color: #8b5cf6; background: #2d1b69; }
+    .img-thumb.arte { border-color: #ec4899; background: #5b1a3a; }
+    .img-thumb.manual { border-color: #f59e0b; background: #4a3500; }
   </style>
 </head>
 <body>
@@ -95,6 +106,12 @@
           <label>Categoria</label>
           <input type="text" id="postCategory" placeholder="Servicos" />
         </div>
+      </div>
+
+      <!-- Imagens do post -->
+      <div class="images-section" id="imagesSection" style="display:none">
+        <div class="section-label">Imagens do Post</div>
+        <div class="images-preview" id="imagesPreview"></div>
       </div>
     </div>
 

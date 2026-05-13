@@ -28,8 +28,33 @@ document.addEventListener('DOMContentLoaded', () => {
     bodyInput.value = content.descricao || content.corpo || content.body || '';
     priceInput.value = content.preco || content.price || '';
     categoryInput.value = content.categoria || content.category || 'Servicos';
+    currentImagens = content.imagens || [];
+    renderImages(currentImagens);
     chrome.storage.local.set({ lastContent: content });
   }
+
+  function renderImages(imagens) {
+    const section = document.getElementById('imagesSection');
+    const preview = document.getElementById('imagesPreview');
+    if (!Array.isArray(imagens) || imagens.length === 0) {
+      section.style.display = 'none';
+      preview.innerHTML = '';
+      return;
+    }
+    section.style.display = 'block';
+    preview.innerHTML = '';
+    for (const img of imagens) {
+      const thumb = document.createElement('div');
+      const typeClass = img.tipo === 'foto_produto' ? 'foto' : img.tipo === 'ia_gerada' ? 'ia' : img.tipo === 'propaganda' ? 'arte' : 'manual';
+      const icon = img.tipo === 'foto_produto' ? '\ud83d\udcf7' : img.tipo === 'ia_gerada' ? '\ud83e\udd16' : img.tipo === 'propaganda' ? '\ud83c\udfa8' : '\ud83d\udcf8';
+      thumb.className = 'img-thumb ' + typeClass;
+      thumb.title = img.descricao || img.tipo;
+      thumb.innerHTML = `<span class="img-icon">${icon}</span><span class="img-label">${(img.descricao || img.tipo || '').slice(0, 20)}</span>`;
+      preview.appendChild(thumb);
+    }
+  }
+
+  let currentImagens = [];
 
   function getContent() {
     return {
@@ -37,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
       descricao: bodyInput.value,
       preco: priceInput.value,
       categoria: categoryInput.value,
+      imagens: currentImagens || [],
     };
   }
 

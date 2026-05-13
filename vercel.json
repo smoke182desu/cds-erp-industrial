@@ -25,6 +25,14 @@
       "destination": "/api/fotos"
     },
     {
+      "source": "/api/image-proxy",
+      "destination": "/api/data?resource=image-proxy"
+    },
+    {
+      "source": "/api/extension-posts",
+      "destination": "/api/data?resource=extension-posts"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

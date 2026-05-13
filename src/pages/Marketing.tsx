@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react';
-import { Loader2, Target, Palette, TrendingUp, BarChart3, Megaphone, RefreshCw, ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, Sparkles, Send, HelpCircle, ArrowRight, Zap, Upload } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { Loader2, Target, Palette, TrendingUp, BarChart3, Megaphone, RefreshCw, ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, Sparkles, Send, HelpCircle, ArrowRight, Zap, Upload, Image, Trash2, ExternalLink, Clock, Eye } from 'lucide-react';
 
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false);
@@ -52,6 +52,24 @@ export function Marketing() {
   const [copied, setCopied] = useState('');
   const [sending, setSending] = useState('');
 
+  // Fila de publicacoes
+  const [filaExpand, setFilaExpand] = useState(true);
+  const [filaPosts, setFilaPosts] = useState<any[]>([]);
+  const [filaLoading, setFilaLoading] = useState(false);
+  const [previewPost, setPreviewPost] = useState<any>(null);
+
+  const fetchFilaPosts = useCallback(async () => {
+    setFilaLoading(true);
+    try {
+      const res = await fetch('/api/extension-posts');
+      const json = await res.json();
+      setFilaPosts(Array.isArray(json.posts) ? json.posts : []);
+    } catch { setFilaPosts([]); }
+    finally { setFilaLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchFilaPosts(); }, [fetchFilaPosts]);
+
   const copyText = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopied(id);
@@ -61,6 +79,16 @@ export function Marketing() {
   const sendToExtension = async (copy: any, id: string) => {
     setSending(id);
     try {
+      // Montar lista de imagens a partir das imagensRecomendadas do Narancia
+      const imagensDoPost = (naResult?.imagensRecomendadas || []).map((img: any) => ({
+        tipo: img.tipo,
+        descricao: img.descricao,
+        formato: img.formato,
+        url: img.produtoRef || '',
+        promptIA: img.promptIA || '',
+        instrucaoFoto: img.instrucaoFoto || '',
+      }));
+
       const res = await fetch('/api/extension-posts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -71,10 +99,12 @@ export function Marketing() {
           categoria: 'Servicos',
           plataformas: ['olx', 'marketplace'],
           copyOriginal: copy,
+          imagens: imagensDoPost,
         }),
       });
       if (res.ok) {
         setSending(id + '-ok');
+        fetchFilaPosts();
         setTimeout(() => setSending(''), 3000);
       } else {
         setSending('');
@@ -482,6 +512,140 @@ export function Marketing() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Fila de Publicacoes */}
+      <div className="flex-shrink-0 border-t bg-white">
+        <button onClick={() => setFilaExpand(e => !e)}
+          className="w-full flex items-center justify-between px-6 py-2 hover:bg-gray-50 transition-colors">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-teal-600" />
+            <span className="text-sm font-bold text-gray-800">Fila de Publicações</span>
+            {filaPosts.length > 0 && (
+              <span className="bg-teal-100 text-teal-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{filaPosts.length} pendente{filaPosts.length > 1 ? 's' : ''}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={(e) => { e.stopPropagation(); fetchFilaPosts(); }}
+              className="text-gray-400 hover:text-teal-500 transition-colors">
+              <RefreshCw className={`w-3.5 h-3.5 ${filaLoading ? 'animate-spin' : ''}`} />
+            </button>
+            {filaExpand ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
+          </div>
+        </button>
+
+        {filaExpand && (
+          <div className="px-6 pb-4 max-h-64 overflow-y-auto">
+            {filaLoading && filaPosts.length === 0 && (
+              <div className="text-center py-6">
+                <Loader2 className="w-5 h-5 animate-spin text-teal-400 mx-auto" />
+                <p className="text-[11px] text-gray-400 mt-1">Carregando fila...</p>
+              </div>
+            )}
+            {!filaLoading && filaPosts.length === 0 && (
+              <div className="text-center py-6 text-gray-400">
+                <Image className="w-8 h-8 mx-auto mb-1 opacity-30" />
+                <p className="text-xs">Nenhum post pendente na fila</p>
+                <p className="text-[10px] mt-0.5">Gere conteudo com Narancia e envie para a extensao</p>
+              </div>
+            )}
+            {filaPosts.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {filaPosts.map((post: any, i: number) => {
+                  const statusColor = post.status === 'posted' ? 'bg-green-100 text-green-700' :
+                    post.status === 'posting' ? 'bg-amber-100 text-amber-700' :
+                    post.status === 'failed' ? 'bg-red-100 text-red-700' :
+                    'bg-teal-100 text-teal-700';
+                  const statusLabel = post.status === 'posted' ? 'Publicado' :
+                    post.status === 'posting' ? 'Publicando...' :
+                    post.status === 'failed' ? 'Falhou' : 'Pendente';
+                  const imagens = Array.isArray(post.imagens) ? post.imagens : [];
+
+                  return (
+                    <div key={post.id || i} className="bg-gray-50 border rounded-xl p-3 group hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <p className="text-xs font-bold text-gray-800 truncate flex-1">{post.titulo}</p>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${statusColor}`}>{statusLabel}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-600 line-clamp-2 leading-relaxed">{post.descricao?.slice(0, 120)}{post.descricao?.length > 120 ? '...' : ''}</p>
+
+                      {/* Imagens preview */}
+                      {imagens.length > 0 && (
+                        <div className="flex gap-1 mt-2">
+                          {imagens.slice(0, 4).map((img: any, j: number) => (
+                            <div key={j} className="w-10 h-10 rounded bg-purple-50 border border-purple-200 flex items-center justify-center flex-shrink-0" title={img.descricao}>
+                              <span className="text-[8px] text-purple-600 font-medium text-center leading-tight px-0.5">
+                                {img.tipo === 'foto_produto' ? '📷' : img.tipo === 'ia_gerada' ? '🤖' : img.tipo === 'propaganda' ? '🎨' : '📸'}
+                              </span>
+                            </div>
+                          ))}
+                          {imagens.length > 4 && <span className="text-[10px] text-gray-400 self-center">+{imagens.length - 4}</span>}
+                        </div>
+                      )}
+
+                      {/* Plataformas */}
+                      <div className="flex items-center justify-between mt-2">
+                        <div className="flex gap-1">
+                          {(post.plataformas || []).map((p: string, j: number) => (
+                            <span key={j} className="text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded">
+                              {p === 'olx' ? '🟢 OLX' : p === 'marketplace' ? '🛍️ MKP' : p}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => setPreviewPost(previewPost?.id === post.id ? null : post)}
+                            className="text-gray-400 hover:text-blue-500" title="Preview">
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => copyText(`${post.titulo}\n\n${post.descricao}`, `fila-${i}`)}
+                            className="text-gray-400 hover:text-orange-500" title="Copiar">
+                            {copied === `fila-${i}` ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Timestamp */}
+                      {post.criado_em && (
+                        <p className="text-[9px] text-gray-400 mt-1.5">
+                          {new Date(post.criado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Preview modal inline */}
+            {previewPost && (
+              <div className="mt-3 bg-gradient-to-r from-teal-50 to-blue-50 border-2 border-teal-300 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold text-teal-800 flex items-center gap-1"><Eye className="w-3.5 h-3.5" /> Preview do Post</p>
+                  <button onClick={() => setPreviewPost(null)} className="text-gray-400 hover:text-red-500 text-xs">Fechar</button>
+                </div>
+                <p className="text-sm font-bold text-gray-900 mb-1">{previewPost.titulo}</p>
+                <p className="text-xs text-gray-700 whitespace-pre-line leading-relaxed">{previewPost.descricao}</p>
+                {Array.isArray(previewPost.imagens) && previewPost.imagens.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[10px] font-bold text-purple-600 mb-1">Imagens ({previewPost.imagens.length})</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {previewPost.imagens.map((img: any, j: number) => (
+                        <div key={j} className="bg-white border border-purple-200 rounded-lg p-2">
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className="text-[9px] bg-purple-100 text-purple-700 px-1 py-0.5 rounded">{img.tipo}</span>
+                            {img.formato && <span className="text-[9px] text-gray-400">{img.formato}</span>}
+                          </div>
+                          <p className="text-[10px] text-gray-700">{img.descricao}</p>
+                          {img.url && <p className="text-[9px] text-blue-500 truncate mt-0.5">{img.url}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
