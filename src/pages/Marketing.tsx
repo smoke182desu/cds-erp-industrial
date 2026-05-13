@@ -51,6 +51,8 @@ export function Marketing() {
 
   const [copied, setCopied] = useState('');
   const [sending, setSending] = useState('');
+  const [publishingNow, setPublishingNow] = useState('');
+  const [publishResult, setPublishResult] = useState<Record<string, { ok: boolean; url?: string; error?: string }>>({});
 
   // Fila de publicacoes
   const [filaExpand, setFilaExpand] = useState(true);
@@ -111,6 +113,40 @@ export function Marketing() {
       }
     } catch {
       setSending('');
+    }
+  };
+
+  const publishNow = async (copy: any, id: string, platform: 'facebook' | 'instagram' | 'all') => {
+    setPublishingNow(`${id}-${platform}`);
+    try {
+      const imagensRecomendadas = naResult?.imagensRecomendadas || [];
+      const imageUrls: string[] = imagensRecomendadas
+        .map((img: any) => img.produtoRef || img.url || '')
+        .filter(Boolean);
+      const texto = `${copy.headline}\n\n${copy.corpo}${copy.cta ? '\n\n' + copy.cta : ''}${copy.hashtags?.length ? '\n\n' + copy.hashtags.join(' ') : ''}`;
+      const body: any = {
+        platform,
+        message: texto,
+        caption: texto,
+        imageUrl: imageUrls[0] || undefined,
+        imageUrls: imageUrls.length > 1 ? imageUrls : undefined,
+      };
+      const res = await fetch('/api/data?resource=social-publish', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'Falha na publicacao');
+      const next: Record<string, { ok: boolean; url?: string; error?: string }> = { ...publishResult };
+      (json.results || []).forEach((r: any) => {
+        const key = `${id}-${r.platform}`;
+        next[key] = r.error ? { ok: false, error: r.error } : { ok: true, url: r.url };
+      });
+      setPublishResult(next);
+    } catch (e: any) {
+      setPublishResult(prev => ({ ...prev, [`${id}-${platform}`]: { ok: false, error: e.message } }));
+    } finally {
+      setPublishingNow('');
     }
   };
 
@@ -365,6 +401,18 @@ export function Marketing() {
                             <span className="text-[10px] text-gray-400">{c.plataforma}</span>
                           </div>
                           <div className="flex items-center gap-1">
+                            <Tooltip text="Publicar agora no Facebook">
+                              <button onClick={() => publishNow(c, `pub-${i}`, 'facebook')} disabled={publishingNow !== ''}
+                                className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-30" title="Publicar no Facebook">
+                                {publishingNow === `pub-${i}-facebook` ? <Loader2 className="w-4 h-4 animate-spin text-blue-500" /> : publishResult[`pub-${i}-facebook`]?.ok ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <span className="text-sm leading-none">📘</span>}
+                              </button>
+                            </Tooltip>
+                            <Tooltip text="Publicar agora no Instagram">
+                              <button onClick={() => publishNow(c, `pub-${i}`, 'instagram')} disabled={publishingNow !== ''}
+                                className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-pink-600 transition-all disabled:opacity-30" title="Publicar no Instagram">
+                                {publishingNow === `pub-${i}-instagram` ? <Loader2 className="w-4 h-4 animate-spin text-pink-500" /> : publishResult[`pub-${i}-instagram`]?.ok ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <span className="text-sm leading-none">📸</span>}
+                              </button>
+                            </Tooltip>
                             <Tooltip text="Enviar para a extensao Chrome publicar automaticamente">
                               <button onClick={() => sendToExtension(c, `ext-${i}`)}
                                 className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-teal-500 transition-all" title="Enviar para Extensao">
@@ -382,6 +430,20 @@ export function Marketing() {
                         {c.cta && <p className="text-xs font-semibold text-orange-600 mt-1.5 flex items-center gap-1"><Send className="w-3 h-3" />{c.cta}</p>}
                         {c.hashtags?.length > 0 && <p className="text-[10px] text-blue-500 mt-1.5">{c.hashtags.join(' ')}</p>}
                         {c.observacao && <p className="text-[10px] text-gray-400 mt-1 italic">{c.observacao}</p>}
+                        {(publishResult[`pub-${i}-facebook`] || publishResult[`pub-${i}-instagram`]) && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {publishResult[`pub-${i}-facebook`] && (
+                              <div className={`text-[10px] px-2 py-1 rounded flex items-center gap-1 ${publishResult[`pub-${i}-facebook`].ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                                📘 {publishResult[`pub-${i}-facebook`].ok ? <a href={publishResult[`pub-${i}-facebook`].url} target="_blank" rel="noreferrer" className="underline">publicado</a> : publishResult[`pub-${i}-facebook`].error}
+                              </div>
+                            )}
+                            {publishResult[`pub-${i}-instagram`] && (
+                              <div className={`text-[10px] px-2 py-1 rounded flex items-center gap-1 ${publishResult[`pub-${i}-instagram`].ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                                📸 {publishResult[`pub-${i}-instagram`].ok ? <a href={publishResult[`pub-${i}-instagram`].url} target="_blank" rel="noreferrer" className="underline">publicado</a> : publishResult[`pub-${i}-instagram`].error}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
