@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Loader2, Target, Palette, TrendingUp, BarChart3, Megaphone, RefreshCw, ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, Sparkles, Send, HelpCircle, ArrowRight, Zap, Upload, Image, Trash2, ExternalLink, Clock, Eye } from 'lucide-react';
+import { Loader2, Target, Palette, TrendingUp, BarChart3, Megaphone, RefreshCw, ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, Sparkles, Send, HelpCircle, ArrowRight, Zap, Upload, Image, Trash2, ExternalLink, Clock, Eye, Facebook, Instagram, Globe } from 'lucide-react';
 
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false);
@@ -59,6 +59,8 @@ export function Marketing() {
   const [filaPosts, setFilaPosts] = useState<any[]>([]);
   const [filaLoading, setFilaLoading] = useState(false);
   const [previewPost, setPreviewPost] = useState<any>(null);
+  const [publishing, setPublishing] = useState('');
+  const [publishResult, setPublishResult] = useState<any>(null);
 
   const fetchFilaPosts = useCallback(async () => {
     setFilaLoading(true);
@@ -71,6 +73,33 @@ export function Marketing() {
   }, []);
 
   useEffect(() => { fetchFilaPosts(); }, [fetchFilaPosts]);
+
+  const publishToSocial = async (post: any, platform: 'publish-facebook' | 'publish-instagram' | 'publish-all') => {
+    const pubKey = `${post.id}-${platform}`;
+    setPublishing(pubKey);
+    setPublishResult(null);
+    try {
+      const firstImgUrl = (post.imagens || []).find((img: any) => img.url)?.url || '';
+      const res = await fetch('/api/data?resource=social-publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: platform,
+          message: `${post.titulo}\n\n${post.descricao}`,
+          caption: `${post.titulo}\n\n${post.descricao}`,
+          imageUrl: firstImgUrl || undefined,
+          postId: post.id,
+        }),
+      });
+      const json = await res.json();
+      setPublishResult({ key: pubKey, ...json });
+      if (json.ok || json.results) fetchFilaPosts();
+      setTimeout(() => { setPublishing(''); setPublishResult(null); }, 5000);
+    } catch (e) {
+      setPublishResult({ key: pubKey, ok: false, error: 'Erro de conexao' });
+      setPublishing('');
+    }
+  };
 
   const copyText = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -655,6 +684,31 @@ export function Marketing() {
                           ))}
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {post.status !== 'posted' && (
+                            <>
+                              <button onClick={() => publishToSocial(post, 'publish-facebook')}
+                                disabled={publishing.startsWith(post.id)}
+                                className="text-blue-500 hover:text-blue-700 disabled:opacity-30" title="Publicar no Facebook">
+                                {publishing === `${post.id}-publish-facebook`
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <Facebook className="w-3.5 h-3.5" />}
+                              </button>
+                              <button onClick={() => publishToSocial(post, 'publish-instagram')}
+                                disabled={publishing.startsWith(post.id)}
+                                className="text-pink-500 hover:text-pink-700 disabled:opacity-30" title="Publicar no Instagram">
+                                {publishing === `${post.id}-publish-instagram`
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <Instagram className="w-3.5 h-3.5" />}
+                              </button>
+                              <button onClick={() => publishToSocial(post, 'publish-all')}
+                                disabled={publishing.startsWith(post.id)}
+                                className="text-teal-500 hover:text-teal-700 disabled:opacity-30" title="Publicar em Todas">
+                                {publishing === `${post.id}-publish-all`
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : <Globe className="w-3.5 h-3.5" />}
+                              </button>
+                            </>
+                          )}
                           <button onClick={() => setPreviewPost(previewPost?.id === post.id ? null : post)}
                             className="text-gray-400 hover:text-blue-500" title="Preview">
                             <Eye className="w-3.5 h-3.5" />
@@ -665,6 +719,13 @@ export function Marketing() {
                           </button>
                         </div>
                       </div>
+
+                      {/* Publish result feedback */}
+                      {publishResult?.key?.startsWith(post.id) && (
+                        <div className={`mt-1.5 text-[9px] px-2 py-1 rounded ${publishResult.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {publishResult.ok ? 'Publicado com sucesso!' : publishResult.error?.slice(0, 80)}
+                        </div>
+                      )}
 
                       {/* Timestamp */}
                       {post.criado_em && (
