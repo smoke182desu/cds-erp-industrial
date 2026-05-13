@@ -27,9 +27,16 @@ SUAS COMPETENCIAS:
 - Plataformas: Instagram, Facebook, Facebook Marketplace, OLX, Google Ads, LinkedIn, TikTok
 - Classificados: OLX e Marketplace tem regras proprias (titulo curto, preco visivel, fotos reais)
 - Design thinking: briefing para designers, paleta de cores, tipografia, composicao
+- Estrategia de imagens: definir quantas imagens (1-5), tipo e fonte para cada post
 - Tom de voz: industrial profissional mas acessivel, sem ser generico
 - A/B testing: gerar variacoes de copy para testar performance
 - SEO: meta titles, descriptions, alt texts
+
+FONTES DE IMAGENS DISPONIVEIS:
+- "foto_produto": fotos reais ja cadastradas no e-commerce (usar quando o produto existe)
+- "ia_gerada": imagem gerada por IA (criar prompt detalhado em ingles)
+- "propaganda": banner/arte com texto sobreposto (gerar briefing para designer ou ferramenta)
+- "upload_manual": foto tirada pelo funcionario (instruir como tirar boa foto industrial)
 
 REGRAS:
 - Copies curtas e impactantes. Industria nao precisa de texto de influencer.
@@ -37,6 +44,9 @@ REGRAS:
 - Destaque diferenciais reais: fabricacao propria, sob medida, Brasilia/DF
 - Briefings de design devem ser claros e executaveis por qualquer designer
 - SEMPRE inclua guiaPostagem com passo-a-passo detalhado para cada plataforma
+- SEMPRE inclua imagensRecomendadas com 1 a 5 imagens por post
+- Para OLX/Marketplace: priorize fotos reais do produto (minimo 3)
+- Para Instagram: priorize propaganda ou ia_gerada com visual premium
 - O guia deve ser tao claro que um funcionario novo consiga executar sozinho
 - Retorne APENAS JSON valido`;
 }
@@ -65,6 +75,18 @@ Retorne APENAS este JSON:
       "cta": "Call to action",
       "hashtags": ["#tag1", "#tag2"],
       "observacao": "Nota sobre tom ou variacao"
+    }
+  ],
+  "imagensRecomendadas": [
+    {
+      "ordem": 1,
+      "tipo": "foto_produto|ia_gerada|propaganda|upload_manual",
+      "descricao": "Descricao clara do que a imagem deve mostrar",
+      "formato": "1080x1080",
+      "plataformaAlvo": "Instagram/OLX/Marketplace",
+      "promptIA": "Se tipo=ia_gerada: prompt em ingles para gerar a imagem. Ex: Professional photo of a custom metal staircase in a modern building...",
+      "instrucaoFoto": "Se tipo=upload_manual: como tirar a foto. Ex: Tire foto da escada montada, de frente, com boa iluminacao...",
+      "produtoRef": "Se tipo=foto_produto: nome ou ID do produto no catalogo"
     }
   ],
   "guiaPostagem": [

@@ -356,6 +356,43 @@ export function Marketing() {
                     ))}
                   </div>
                 )}
+                {naResult.imagensRecomendadas?.length > 0 && (
+                  <div className="bg-white border-2 border-purple-300 rounded-xl p-3">
+                    <p className="text-[10px] font-bold text-purple-600 uppercase tracking-wider mb-2 flex items-center gap-1">📸 Imagens Recomendadas ({naResult.imagensRecomendadas.length})</p>
+                    <div className="space-y-2">
+                      {naResult.imagensRecomendadas.map((img: any, i: number) => (
+                        <div key={i} className="bg-purple-50 border border-purple-200 rounded-lg p-2.5">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="bg-purple-500 text-white text-[9px] font-bold w-5 h-5 rounded-full flex items-center justify-center">{img.ordem || i+1}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                              img.tipo === 'foto_produto' ? 'bg-blue-100 text-blue-700' :
+                              img.tipo === 'ia_gerada' ? 'bg-violet-100 text-violet-700' :
+                              img.tipo === 'propaganda' ? 'bg-pink-100 text-pink-700' :
+                              'bg-amber-100 text-amber-700'
+                            }`}>{img.tipo === 'foto_produto' ? 'Foto Real' : img.tipo === 'ia_gerada' ? 'IA' : img.tipo === 'propaganda' ? 'Arte' : 'Tirar Foto'}</span>
+                            <span className="text-[10px] text-gray-400">{img.formato}</span>
+                          </div>
+                          <p className="text-xs text-purple-800">{img.descricao}</p>
+                          {img.promptIA && img.tipo === 'ia_gerada' && (
+                            <div className="mt-1 bg-violet-100 rounded px-2 py-1">
+                              <p className="text-[10px] text-violet-600 font-medium">Prompt IA:</p>
+                              <p className="text-[10px] text-violet-800 italic">{img.promptIA}</p>
+                            </div>
+                          )}
+                          {img.instrucaoFoto && img.tipo === 'upload_manual' && (
+                            <div className="mt-1 bg-amber-100 rounded px-2 py-1">
+                              <p className="text-[10px] text-amber-600 font-medium">Como tirar a foto:</p>
+                              <p className="text-[10px] text-amber-800">{img.instrucaoFoto}</p>
+                            </div>
+                          )}
+                          {img.produtoRef && img.tipo === 'foto_produto' && (
+                            <p className="text-[10px] text-blue-600 mt-1">Produto: {img.produtoRef}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {naResult.guiaPostagem?.length > 0 && (
                   <div className="bg-white border-2 border-teal-300 rounded-xl p-3">
                     <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider mb-2 flex items-center gap-1">📋 Guia Passo-a-Passo de Postagem <Tooltip text="Siga esse guia para publicar. Feito para quem nunca postou antes."><HelpCircle className="w-3 h-3 cursor-help" /></Tooltip></p>
