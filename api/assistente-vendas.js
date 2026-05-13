@@ -825,7 +825,7 @@ async function gerarCheckupGeralVendas() {
   const taxaRespostaRapida = totalRespostas > 0 ? Math.round((respostasRapidas / totalRespostas) * 100) : 100;
   const notaMediaAtendimento = mediaNumerica(atendimentosAvaliados, 'notaAtendimento');
   const indiceSatisfacao = mediaNumerica(atendimentosAvaliados, 'indiceSatisfacao');
-  const pipelineEstimado = todosLeads.reduce((s, lead) => s + (Number(lead.valor || 0) || 0), 0);
+  const pipelineEstimado = atendimentosAvaliados.reduce((s, item) => s + (Number(item.valorPotencial || 0) || 0), 0);
   const ordemAtendimento = [...atendimentosAvaliados]
     .sort((a, b) => {
       const p = prioridadePeso(a.prioridade) - prioridadePeso(b.prioridade);
@@ -835,13 +835,21 @@ async function gerarCheckupGeralVendas() {
       return (b.valorPotencial || 0) - (a.valorPotencial || 0);
     })
     .slice(0, 40);
+  const conversaoScore = totalComFechamento > 0
+    ? Math.min(100, metaConversao > 0 ? (taxaConversao / metaConversao) * 100 : 100)
+    : 50;
+  const penalidadeUrgencia = Math.min(22, altaPrioridade * 0.45);
+  const penalidadeEsquecidos = Math.min(12, leadsEsquecidos * 0.08);
+  const penalidadeEspera = Math.min(10, Math.floor(tempoMedioEspera / 240));
   const notaSaudeFunil = clampNota(
     (notaMediaAtendimento * 0.30)
     + (indiceSatisfacao * 0.20)
     + (percentualFilaRespondida * 0.20)
-    + (Math.min(100, metaConversao > 0 ? (taxaConversao / metaConversao) * 100 : 100) * 0.20)
-    + (taxaRespostaRapida * 0.10)
-    - (altaPrioridade * 2)
+    + (conversaoScore * 0.15)
+    + (taxaRespostaRapida * 0.15)
+    - penalidadeUrgencia
+    - penalidadeEsquecidos
+    - penalidadeEspera
   );
   const saudeFunil = {
     notaGeral: notaSaudeFunil,
