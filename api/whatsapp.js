@@ -88,8 +88,17 @@ async function normalizarPayload(body) {
     const numero = extrairNumeroReal(key, data, body);
     const remoteJid = key.remoteJid || data.remoteJid || '';
     const pushName = data.pushName || data.notifyName || body.pushName || '';
+    const fotoUrl = data.profilePictureUrl
+      || data.profilePicUrl
+      || data.profile_picture_url
+      || data.senderProfilePicture
+      || data.senderPicture
+      || data.contact?.profilePictureUrl
+      || body.profilePictureUrl
+      || '';
 
     // Texto da mensagem (suporta varios formatos da Evolution API)
+    const reaction = message.reactionMessage || message.reaction;
     const texto = message.conversation
       || message.extendedTextMessage?.text
       || message.imageMessage?.caption
@@ -97,6 +106,7 @@ async function normalizarPayload(body) {
       || message.documentMessage?.caption
       || data.content
       || data.text
+      || (reaction?.text ? `Voce reagiu com ${reaction.text}` : '')
       || '';
 
     // Midia: extrai URL e tipo se presente
@@ -132,6 +142,8 @@ async function normalizarPayload(body) {
       mediaUrl = data.mediaUrl;
       if (!mediaType) mediaType = data.mediaType || 'image';
     }
+    if (!mediaType && data.mediaType) mediaType = data.mediaType;
+    if (!mediaType && data.messageType && String(data.messageType).toLowerCase().includes('image')) mediaType = 'image';
 
     // Se não veio o base64 no webhook, mas é uma mídia e não temos um URL válido publicamente, vamos tentar buscar da Evolution API
     if (mediaType && !base64Payload && data.message && EVOLUTION_API_URL && (!mediaUrl || mediaUrl.includes('mmg.whatsapp.net'))) {
@@ -173,6 +185,7 @@ async function normalizarPayload(body) {
       ehLid: jidEhInvalido(remoteJid),
       mediaUrl,
       mediaType,
+      fotoUrl,
     };
   } catch (e) {
     return null;
@@ -193,6 +206,9 @@ export default async function handler(req, res) {
 
     if (!norm) {
       return res.status(200).json({ ok: true, skipped: 'payload invalido' });
+    }
+    if (!norm.texto && !norm.mediaUrl && !norm.mediaType) {
+      return res.status(200).json({ ok: true, skipped: 'sem conteudo visivel' });
     }
 
     // Sem número real (só LID): salvamos só a mensagem com o LID,
@@ -245,13 +261,15 @@ export default async function handler(req, res) {
 
     // 2. Se for mensagem de entrada, garante que o lead existe (Upsert)
     if (!norm.fromMe) {
-      await upsertLeadPorTelefone({
+      const leadPayload = {
         telefone: norm.numero,
         nome: norm.pushName || norm.numero,
         etapa: 'lead_novo',
         ultima_mensagem: norm.texto,
         atualizado_em: mensagemCriadaEm
-      }, 'telefone');
+      };
+      if (norm.fotoUrl) leadPayload.foto_url = norm.fotoUrl;
+      await upsertLeadPorTelefone(leadPayload, 'telefone');
     }
 
     return res.status(200).json({ ok: true, numero: norm.numero });

@@ -13,49 +13,59 @@ export const config = {
   api: { bodyParser: { sizeLimit: '5mb' } },
 };
 
+function dadosPayload(row) {
+  const payload = row?.payload_bruto || row?.payload || {};
+  const data = payload?.data || payload || {};
+  const message = data?.message || payload?.message || {};
+  return { data, message };
+}
+
 // Mapeia campos do Supabase para o formato esperado pelo frontend
 function inferMediaType(row) {
-  // 1. Coluna explícita
-  if (row.media_type) return row.media_type;
-
-  // 2. Texto contém marcador de mídia
-  const texto = String(row.texto || row.conteudo || '').toLowerCase().trim();
-  if (/^\[?(image|video|audio|document|sticker|media)\]?$/i.test(texto)) {
-    const match = texto.replace(/[\[\]]/g, '');
-    if (match === 'media' || match === 'sticker') return 'image';
-    return match;
-  }
-  if (texto.includes('[image]') || texto.includes('imagem')) return 'image';
-  if (texto.includes('[video]')) return 'video';
-  if (texto.includes('[audio]')) return 'audio';
-  if (texto.includes('[document]')) return 'document';
-
-  // 3. payload_bruto contém mensagem de mídia do WhatsApp/Evolution
-  const payload = row.payload_bruto;
-  if (payload && typeof payload === 'object') {
-    const data = payload.data || payload;
-    const message = data?.message || payload?.message || {};
-    if (message.imageMessage) return 'image';
-    if (message.videoMessage) return 'video';
-    if (message.audioMessage) return 'audio';
-    if (message.documentMessage) return 'document';
-    if (message.stickerMessage) return 'image';
-    // Evolution API v2 pode ter mediaType direto
-    if (data.mediaType) return data.mediaType;
-  }
-
-  // 4. media_url presente é sinal de mídia
-  if (row.media_url) return 'image';
-
+  const { data, message } = dadosPayload(row);
+  const texto = String(row.texto || row.conteudo || '').toLowerCase();
+  const mediaType = row.media_type || row.mediaType || data?.mediaType || data?.messageType;
+  if (mediaType) return String(mediaType).toLowerCase();
+  if (message?.imageMessage || texto.includes('[image]') || texto.includes('imagem')) return 'image';
+  if (message?.videoMessage || texto.includes('[video]')) return 'video';
+  if (message?.audioMessage || texto.includes('[audio]')) return 'audio';
+  if (message?.documentMessage || texto.includes('[document]')) return 'document';
+  if (message?.stickerMessage || texto.includes('[sticker]')) return 'sticker';
+  if (row.media_url || data?.mediaUrl || data?.media) return 'image';
   return undefined;
+}
+
+function textoMensagem(row) {
+  const { data, message } = dadosPayload(row);
+  const reaction = message?.reactionMessage || message?.reaction;
+  const candidatos = [
+    row?.texto,
+    row?.conteudo,
+    message?.conversation,
+    message?.extendedTextMessage?.text,
+    message?.imageMessage?.caption,
+    message?.videoMessage?.caption,
+    message?.documentMessage?.caption,
+    data?.content,
+    data?.text,
+    reaction?.text ? `Voce reagiu com ${reaction.text}` : '',
+  ];
+  return String(candidatos.find(v => String(v || '').trim()) || '').trim().replace(/\s+/g, ' ');
+}
+
+function mensagemTemConteudo(row) {
+  const texto = textoMensagem(row);
+  if (texto && texto.toLowerCase() !== 'sem mensagens ainda') return true;
+  return !!inferMediaType(row);
 }
 
 function mapMensagem(row) {
   const mediaType = inferMediaType(row);
+  const texto = textoMensagem(row);
   return {
     id: String(row.id),
     telefone: (row.telefone || row.remote_jid || '').replace('@s.whatsapp.net', ''),
-    texto: row.texto || row.conteudo || '',
+    texto,
     tipo: row.tipo || 'entrada',
     origem: row.origem || 'whatsapp',
     leadId: row.lead_id || row.leadId || '',
@@ -242,7 +252,7 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Erro ao buscar mensagens' });
       }
       const rows = Array.isArray(r.body) ? r.body : [];
-      return res.status(200).json(ordenarMensagens(rows).map(mapMensagem));
+      return res.status(200).json(ordenarMensagens(rows).filter(mensagemTemConteudo).map(mapMensagem));
     }
 
     if (req.method === 'POST') {

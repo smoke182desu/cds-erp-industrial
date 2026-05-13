@@ -47,8 +47,9 @@ function horaMsg(iso: string) {
 
 // ─── helpers de mídia ─────────────────────────────────────────────────────────
 function textoSomenteMidia(texto?: string): boolean {
-  if (!texto) return false;
-  return /^\[?(Media|image|video|audio|document|sticker)\]?$/i.test(texto.trim());
+  const valor = String(texto || '').trim();
+  return /^\[(image|video|audio|document|media|midia|imagem|sticker)\](?:\s+.*)?$/i.test(valor)
+    || /^(media|midia|imagem|image|video|audio|document|sticker)$/i.test(valor);
 }
 
 function MidiaMensagem({ mensagem }: { mensagem: Mensagem }) {
@@ -794,6 +795,19 @@ function fmtTel(tel?: string): string {
   return tel;
 }
 
+function previewMidia(texto?: string): string {
+  const valor = String(texto || '').trim();
+  const match = valor.match(/^\[?(image|video|audio|document|media|midia|imagem|sticker)\]?(?:\s+.*)?$/i);
+  const tipo = match?.[1]?.toLowerCase();
+  if (tipo === 'image' || tipo === 'imagem') return 'Foto';
+  if (tipo === 'video') return 'Video';
+  if (tipo === 'audio') return 'Audio';
+  if (tipo === 'document') return 'Documento';
+  if (tipo === 'sticker') return 'Figurinha';
+  if (tipo === 'media' || tipo === 'midia') return 'Midia';
+  return '';
+}
+
 function LeadItem({ lead, ativo, naoLido, onClick }: {
   lead: Lead & { ultimaMensagem?: string; ultimaHora?: string };
   ativo: boolean;
@@ -803,16 +817,16 @@ function LeadItem({ lead, ativo, naoLido, onClick }: {
   const nome = (lead.nome || lead.telefone || 'Lead').trim();
   const inicial = nome[0].toUpperCase();
   const msgBruta = lead.ultimaMensagem?.trim() || '';
-  const ehMidia = /^\[?(Media|image|video|audio|document)\]?$/i.test(msgBruta);
-  const temMsg = !!(msgBruta && !ehMidia);
+  const midiaPreview = previewMidia(msgBruta);
+  const temMsg = !!(msgBruta && !midiaPreview && msgBruta.toLowerCase() !== 'sem mensagens ainda');
   const preview = temMsg
     ? msgBruta
-    : ehMidia
-      ? '📷 Midia'
+    : midiaPreview
+      ? midiaPreview
       : (lead.totalMensagens ?? 0) > 0
-        ? 'Conversa iniciada'
+        ? 'Abrir conversa'
         : (lead.empresa || lead.email || 'Sem mensagens ainda');
-  const hora = fmtHora(lead.ultimaHora || '');
+  const hora = fmtHora(lead.ultimaHora || lead.atualizadoEm || lead.criadoEm || '');
 
   // bg: ativo=verde claro, naoLido=verde transparente suave, normal=branco
   const bgClass = ativo

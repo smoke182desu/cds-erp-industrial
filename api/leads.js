@@ -1,6 +1,6 @@
 // api/leads.js
 // CRUD de leads para o funil CRM
-import { selectAll, insert, update, remove, sb } from './_lib/supabase.js';
+import { selectAll, insert, update, remove } from './_lib/supabase.js';
 
 const TABLE = 'leads';
 const WEBHOOK_SECRET = process.env.LEADS_WEBHOOK_SECRET || 'cds-leads-secret';
@@ -64,11 +64,84 @@ function variantesTelefone(valor) {
   return [...variantes];
 }
 
+const ROTULOS_MIDIA = {
+  image: 'Foto',
+  video: 'Video',
+  audio: 'Audio',
+  document: 'Documento',
+  sticker: 'Figurinha',
+};
+
+function dadosPayload(msg) {
+  const payload = msg?.payload_bruto || msg?.payload || {};
+  const data = payload?.data || payload || {};
+  const message = data?.message || payload?.message || {};
+  return { payload, data, message };
+}
+
+function textoMensagem(msg) {
+  const { data, message } = dadosPayload(msg);
+  const reaction = message?.reactionMessage || message?.reaction;
+  const candidatos = [
+    msg?.texto,
+    msg?.conteudo,
+    message?.conversation,
+    message?.extendedTextMessage?.text,
+    message?.imageMessage?.caption,
+    message?.videoMessage?.caption,
+    message?.documentMessage?.caption,
+    data?.content,
+    data?.text,
+    reaction?.text ? `Voce reagiu com ${reaction.text}` : '',
+  ];
+
+  return String(candidatos.find(v => String(v || '').trim()) || '').trim().replace(/\s+/g, ' ');
+}
+
+function tipoMidiaMensagem(msg) {
+  const { data, message } = dadosPayload(msg);
+  const texto = String(msg?.texto || msg?.conteudo || '').toLowerCase();
+  const mediaType = msg?.media_type || msg?.mediaType || data?.mediaType || data?.messageType;
+  if (mediaType) return String(mediaType).toLowerCase();
+  if (message?.imageMessage || texto.includes('[image]')) return 'image';
+  if (message?.videoMessage || texto.includes('[video]')) return 'video';
+  if (message?.audioMessage || texto.includes('[audio]')) return 'audio';
+  if (message?.documentMessage || texto.includes('[document]')) return 'document';
+  if (message?.stickerMessage || texto.includes('[sticker]')) return 'sticker';
+  if (msg?.media_url || data?.mediaUrl || data?.media) return 'image';
+  return '';
+}
+
+function rotuloMidia(tipo) {
+  const normalizado = String(tipo || '').toLowerCase().replace(/message$/, '');
+  return ROTULOS_MIDIA[normalizado] || (normalizado ? 'Midia' : '');
+}
+
+function fotoMensagem(msg) {
+  const { payload, data } = dadosPayload(msg);
+  const candidatos = [
+    msg?.foto_url,
+    msg?.profile_pic_url,
+    msg?.profilePicUrl,
+    data?.profilePictureUrl,
+    data?.profilePicUrl,
+    data?.profile_picture_url,
+    data?.senderProfilePicture,
+    data?.senderPicture,
+    data?.contact?.profilePictureUrl,
+    payload?.profilePictureUrl,
+  ];
+  return String(candidatos.find(v => /^https?:\/\//i.test(String(v || '').trim())) || '').trim();
+}
+
 function previewMensagem(msg) {
-  const texto = String(msg?.texto || msg?.conteudo || '').trim();
-  if (texto) return texto;
-  const mediaType = msg?.media_type || msg?.mediaType;
-  return mediaType ? `[${mediaType}]` : '';
+  const texto = textoMensagem(msg);
+  const mediaType = tipoMidiaMensagem(msg);
+  if (/^\[(image|video|audio|document|sticker|media)\](?:\s+.*)?$/i.test(texto)) {
+    return rotuloMidia(mediaType) || 'Midia';
+  }
+  if (texto && texto.toLowerCase() !== 'sem mensagens ainda') return texto;
+  return rotuloMidia(mediaType);
 }
 
 function mensagemTemConteudo(msg) {
@@ -143,8 +216,8 @@ function normalizar(lead) {
     contato_nome: lead.contato_nome || lead.push_name || lead.pushName || '',
     criadoEm: lead.criadoEm ?? lead.criado_em ?? lead.created_at ?? '',
     atualizadoEm: lead.atualizadoEm ?? lead.atualizado_em ?? lead.updated_at ?? '',
-    ultima_hora: lead.atualizado_em ?? lead.atualizadoEm ?? lead.criado_em ?? '',
-    total_mensagens: parseInt(lead.total_mensagens || lead.totalMensagens) || 0,
+    ultima_hora: lead.ultima_hora ?? lead.ultimaHora ?? lead.atualizado_em ?? lead.atualizadoEm ?? lead.criado_em ?? '',
+    total_mensagens: Number(lead.total_mensagens || lead.totalMensagens) || 0,
   };
 }
 
@@ -167,12 +240,13 @@ async function listarLeads() {
       const chavePrincipal = chaveExistente || chaves[0] || tel;
       const atual = mensagensPorTelefone.get(chavePrincipal);
       if (!atual) {
-        const info = { total: 1, ultima: msg };
+        const info = { total: 1, ultima: msg, fotoUrl: fotoMensagem(msg) };
         chaves.forEach(chave => mensagensPorTelefone.set(chave, info));
         continue;
       }
 
       atual.total += 1;
+      atual.fotoUrl ||= fotoMensagem(msg);
       if (dataMensagem(msg) >= dataMensagem(atual.ultima)) atual.ultima = msg;
     }
 
@@ -184,10 +258,16 @@ async function listarLeads() {
       const ultimaHora = dataMensagemIso(info.ultima, lead.atualizado_em);
       return {
         ...lead,
-        ultima_mensagem: precisaPreviewAtualizado(lead.ultima_mensagem) ? ultimaTexto : lead.ultima_mensagem,
+        ultima_mensagem: ultimaTexto || (precisaPreviewAtualizado(lead.ultima_mensagem) ? '' : lead.ultima_mensagem),
+        ultima_hora: ultimaHora || lead.ultima_hora,
         atualizado_em: ultimaHora || lead.atualizado_em,
         total_mensagens: info.total,
+        foto_url: lead.foto_url || info.fotoUrl || lead.profile_pic_url,
       };
+    }).sort((a, b) => {
+      const dataA = new Date(a.ultima_hora || a.atualizado_em || a.criado_em || 0).getTime();
+      const dataB = new Date(b.ultima_hora || b.atualizado_em || b.criado_em || 0).getTime();
+      return (Number.isFinite(dataB) ? dataB : 0) - (Number.isFinite(dataA) ? dataA : 0);
     });
   } catch (err) {
     console.warn('[leads] select falhou:', err.message);
@@ -245,34 +325,6 @@ async function deletarLead(id) {
   return id;
 }
 
-// ── Leads Leitura (consolidado de leads-leitura.js) ──────────────────────────
-async function handleLeitura(req, res) {
-  if (req.method === 'GET') {
-    const id = req.query.id;
-    if (id) {
-      const rows = await selectAll('leads_leitura', { filters: { lead_id: `eq.${id}` }, limit: 1 });
-      return res.status(200).json(rows[0] || { lead_id: id, ultima_leitura_em: null });
-    }
-    const rows = await selectAll('leads_leitura', { limit: 5000 });
-    const lidos = {};
-    for (const row of rows) lidos[row.lead_id] = row.ultima_leitura_em;
-    return res.status(200).json({ lidos });
-  }
-  if (req.method === 'POST') {
-    const { lead_id, ultima_hora } = req.body || {};
-    if (!lead_id) return res.status(400).json({ error: 'lead_id obrigatorio' });
-    const agora = ultima_hora || new Date().toISOString();
-    const r = await sb('/leads_leitura?on_conflict=lead_id', {
-      method: 'POST',
-      body: { lead_id, ultima_leitura_em: agora, atualizado_em: new Date().toISOString() },
-      prefer: 'resolution=merge-duplicates,return=representation',
-    });
-    if (!r.ok) throw new Error('upsert leitura falhou');
-    return res.status(200).json({ ok: true, lead_id, ultima_leitura_em: agora });
-  }
-  return res.status(405).json({ error: 'Method not allowed' });
-}
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -280,11 +332,6 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') return res.status(200).end();
   try {
-    // Recurso leitura (consolidado de leads-leitura.js)
-    if (req.query.recurso === 'leitura') {
-      return await handleLeitura(req, res);
-    }
-
     if (req.method === 'GET') {
       const raw = await listarLeads();
       const incluirOcultos = req.query.incluirOcultos === '1';

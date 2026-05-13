@@ -78,7 +78,7 @@ function mapLeadFromDB(row: any): Lead {
     atualizadoEm: row.atualizadoEm ?? row.atualizado_em ?? undefined,
     totalMensagens: parseInt(row.total_mensagens || row.totalMensagens) || 0,
     ultimaMensagem: row.ultimaMensagem ?? row.ultima_mensagem ?? undefined,
-    ultimaHora: row.ultimaHora ?? row.ultima_hora ?? undefined,
+    ultimaHora: row.ultimaHora ?? row.ultima_hora ?? row.atualizado_em ?? row.atualizadoEm ?? undefined,
     fotoUrl: row.fotoUrl ?? row.foto_url ?? row.profile_pic_url ?? undefined,
   };
 }
