@@ -16,10 +16,12 @@ function Tooltip({ text, children }: { text: string; children: React.ReactNode }
   );
 }
 
-type Plataforma = 'instagram' | 'facebook' | 'google' | 'tiktok' | 'linkedin';
+type Plataforma = 'instagram' | 'facebook' | 'facebook_marketplace' | 'google' | 'tiktok' | 'linkedin' | 'olx';
 const PLATAFORMAS: { id: Plataforma; nome: string; icone: string }[] = [
   { id: 'instagram', nome: 'Instagram', icone: '📸' },
   { id: 'facebook', nome: 'Facebook', icone: '📘' },
+  { id: 'facebook_marketplace', nome: 'Marketplace', icone: '🛍️' },
+  { id: 'olx', nome: 'OLX', icone: '🟢' },
   { id: 'google', nome: 'Google Ads', icone: '🔍' },
   { id: 'tiktok', nome: 'TikTok', icone: '🎵' },
   { id: 'linkedin', nome: 'LinkedIn', icone: '💼' },
@@ -315,6 +317,36 @@ export function Marketing() {
                         {c.cta && <p className="text-xs font-semibold text-orange-600 mt-1.5 flex items-center gap-1"><Send className="w-3 h-3" />{c.cta}</p>}
                         {c.hashtags?.length > 0 && <p className="text-[10px] text-blue-500 mt-1.5">{c.hashtags.join(' ')}</p>}
                         {c.observacao && <p className="text-[10px] text-gray-400 mt-1 italic">{c.observacao}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {naResult.guiaPostagem?.length > 0 && (
+                  <div className="bg-white border-2 border-teal-300 rounded-xl p-3">
+                    <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider mb-2 flex items-center gap-1">📋 Guia Passo-a-Passo de Postagem <Tooltip text="Siga esse guia para publicar. Feito para quem nunca postou antes."><HelpCircle className="w-3 h-3 cursor-help" /></Tooltip></p>
+                    {naResult.guiaPostagem.map((g: any, i: number) => (
+                      <div key={i} className="mb-3 last:mb-0">
+                        <p className="text-xs font-bold text-teal-800 bg-teal-50 px-2 py-1 rounded-lg mb-1.5">{g.plataforma}</p>
+                        <ol className="space-y-1 ml-1">
+                          {g.passos?.map((p: string, j: number) => (
+                            <li key={j} className="text-xs text-gray-700 flex items-start gap-2">
+                              <span className="bg-teal-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">{j+1}</span>
+                              <span>{p}</span>
+                            </li>
+                          ))}
+                        </ol>
+                        {g.dicasImportantes?.length > 0 && (
+                          <div className="mt-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                            <p className="text-[10px] font-bold text-amber-600">💡 Dicas</p>
+                            {g.dicasImportantes.map((d: string, j: number) => <p key={j} className="text-[11px] text-amber-700">• {d}</p>)}
+                          </div>
+                        )}
+                        {g.errosComuns?.length > 0 && (
+                          <div className="mt-1 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">
+                            <p className="text-[10px] font-bold text-red-500">⚠️ Evite</p>
+                            {g.errosComuns.map((e: string, j: number) => <p key={j} className="text-[11px] text-red-600">• {e}</p>)}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
