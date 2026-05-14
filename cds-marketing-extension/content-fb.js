@@ -39,41 +39,55 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return null;
       }
 
-      // Nova abordagem: Simular clique e "colar" o texto (bypass infalível para React)
+      // Simular clique e "colar" o texto (bypass para React)
       async function simulateTyping(element, value) {
         if (!element || !value) return;
         
-        // Simula o clique do usuário para "acordar" o componente
         element.focus();
         element.click();
-        
-        // Limpa o campo de forma nativa primeiro
         element.value = '';
-        
-        // Usa a API de Clipboard/ExecCommand para colar o texto como se fosse um humano
         document.execCommand('insertText', false, value);
-        
-        // Dispara os eventos de alteração de estado just in case
         element.dispatchEvent(new Event('input', { bubbles: true }));
         element.dispatchEvent(new Event('change', { bubbles: true }));
-        
-        // Pequena pausa para o React processar
         await new Promise(r => setTimeout(r, 200));
       }
 
+      // Encontrar e clicar em botoes por texto (com polling/timeout)
+      async function clickByText(selector, textSnippets, timeout = 8000) {
+        return new Promise(resolve => {
+          const startTime = Date.now();
+          const interval = setInterval(() => {
+            const elements = Array.from(document.querySelectorAll(selector));
+            for (const el of elements) {
+              const text = (el.textContent || el.value || '').toLowerCase().trim();
+              if (textSnippets.some(snippet => text === snippet || text.includes(snippet))) {
+                clearInterval(interval);
+                el.click();
+                resolve(true);
+                return;
+              }
+            }
+            if (Date.now() - startTime > timeout) {
+              clearInterval(interval);
+              resolve(false);
+            }
+          }, 500);
+        });
+      }
+
       async function runAutomation() {
-        // 1. Título
+        // 1. Titulo
         const titleInput = findInputByLabelText(['título', 'titulo', 'title']);
         await simulateTyping(titleInput, data.titulo || '');
 
-        // 2. Preço
+        // 2. Preco
         const priceInput = findInputByLabelText(['preço', 'preco', 'price']);
         if (priceInput) {
           let numericPrice = data.preco ? String(data.preco).replace(/\D/g, '') : '';
           await simulateTyping(priceInput, numericPrice);
         }
 
-        // 3. Descrição
+        // 3. Descricao
         const descInput = findInputByLabelText(['descrição', 'descricao', 'description']);
         await simulateTyping(descInput, data.descricao || '');
 
@@ -110,12 +124,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             console.error("Erro ao injetar imagens no Facebook:", imgError);
           }
         }
+
+        // 5. Clicar em Avancar/Publicar
+        await new Promise(r => setTimeout(r, 1000));
+        await clickByText('button, div[role="button"]', ['next', 'avançar', 'avancar', 'publicar', 'publish', 'post']);
+
+        // 6. Aguardar e confirmar listagem gratuita se aparecer
+        await new Promise(r => setTimeout(r, 1500));
+        await clickByText('button, div[role="button"], label, span', ['grátis', 'gratis', 'free', 'gratuito']);
+
+        // 7. Confirmar publicacao final
+        await new Promise(r => setTimeout(r, 1000));
+        await clickByText('button, div[role="button"]', ['publicar', 'publish', 'post', 'list item', 'confirmar', 'concluir']);
         
         sendResponse({ success: true });
       }
 
       runAutomation();
-      return true; // Mantém a porta de mensagem aberta para resposta assíncrona
+      return true;
     } catch (e) {
       console.error("Erro ao preencher Facebook:", e);
       sendResponse({ success: false, error: e.message });

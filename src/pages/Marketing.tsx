@@ -110,15 +110,40 @@ export function Marketing() {
   const sendToExtension = async (copy: any, id: string) => {
     setSending(id);
     try {
-      // Montar lista de imagens a partir das imagensRecomendadas do Narancia
-      const imagensDoPost = (naResult?.imagensRecomendadas || []).map((img: any) => ({
-        tipo: img.tipo,
-        descricao: img.descricao,
-        formato: img.formato,
-        url: img.produtoRef || '',
-        promptIA: img.promptIA || '',
-        instrucaoFoto: img.instrucaoFoto || '',
-      }));
+      // 1. Buscar fotos REAIS do produto no Supabase via image-proxy
+      let fotosReais: { tipo: string; url: string; descricao: string; ordem: number }[] = [];
+      if (produto) {
+        try {
+          const imgRes = await fetch(`/api/data?resource=image-proxy&q=${encodeURIComponent(produto)}`);
+          if (imgRes.ok) {
+            const imgData = await imgRes.json();
+            const primeiroProduto = imgData.produtos?.[0];
+            if (primeiroProduto?.imagens?.length > 0) {
+              fotosReais = primeiroProduto.imagens.filter((img: any) => img.url);
+            }
+          }
+        } catch { /* silently fallback to AI images */ }
+      }
+
+      // 2. Fallback: imagensRecomendadas do Narancia (apenas as que tiverem URL real)
+      const imagensIA = (naResult?.imagensRecomendadas || [])
+        .filter((img: any) => img.produtoRef && /^https?:\/\//.test(img.produtoRef))
+        .map((img: any) => ({
+          tipo: img.tipo,
+          url: img.produtoRef,
+          descricao: img.descricao,
+          ordem: 99,
+        }));
+
+      // 3. Mesclar: fotos reais primeiro, depois IA (sem duplicar URLs)
+      const urlsVistas = new Set<string>();
+      const imagensFinal: any[] = [];
+      for (const img of [...fotosReais, ...imagensIA]) {
+        if (img.url && !urlsVistas.has(img.url)) {
+          urlsVistas.add(img.url);
+          imagensFinal.push(img);
+        }
+      }
 
       const res = await fetch('/api/extension-posts', {
         method: 'POST',
@@ -130,7 +155,7 @@ export function Marketing() {
           categoria: 'Servicos',
           plataformas: ['olx', 'marketplace'],
           copyOriginal: copy,
-          imagens: imagensDoPost,
+          imagens: imagensFinal,
         }),
       });
       if (res.ok) {
