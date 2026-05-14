@@ -71,9 +71,10 @@ export function Marketing() {
     
     setAutopilotRunning(true);
     try {
-      const resInv = await fetch('/api/data?resource=inventory');
+      const resInv = await fetch('/api/produtos');
       if (!resInv.ok) throw new Error('Erro ao buscar inventario');
-      const inventory = await resInv.json();
+      const jsonInv = await resInv.json();
+      const inventory = jsonInv.produtos || [];
       
       const total = inventory.length;
       if (total === 0) {
@@ -94,7 +95,7 @@ export function Marketing() {
               publicoAlvo: 'Público geral', 
               objetivo: 'Venda direta', 
               plataforma: PLATAFORMAS.find(p => p.id === plataforma)?.nome || 'Multiplataforma', 
-              contextoExtra: `Preço: R$ ${item.precoVenda}. Categoria: ${item.categoria}.` 
+              contextoExtra: `Preço: R$ ${item.preco}. Categoria: ${item.categoria}.` 
             }),
           });
           
@@ -122,7 +123,7 @@ export function Marketing() {
               body: JSON.stringify({
                 titulo: bestCopy.headline,
                 descricao: `${bestCopy.corpo}${bestCopy.cta ? '\n\n' + bestCopy.cta : ''}${bestCopy.hashtags?.length ? '\n\n' + bestCopy.hashtags.join(' ') : ''}`,
-                preco: item.precoVenda || '',
+                preco: item.preco || '',
                 categoria: item.categoria || 'Produtos',
                 plataformas: ['olx', 'marketplace'],
                 copyOriginal: bestCopy,
