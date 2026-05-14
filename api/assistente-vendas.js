@@ -318,8 +318,10 @@ function removerRepeticoesDeDados(analise, mensagens, dadosColetados, contexto =
   analise.sugestoes = analise.sugestoes.map((sugestao, index) => {
     const campo = campoSolicitadoNoTexto(sugestao?.mensagem || '');
     const repetiuDado = campo && dadoColetado(dadosColetados, campo);
+    const repetiuProximaPergunta = campo && !repetiuDado && camposSugeridos.has(campo);
+    const precisaSubstituir = repetiuDado || repetiuProximaPergunta;
     const deveFechar = momentoVenda === 'fechamento' && campo && ['medida', 'espessura', 'uso', 'material'].includes(campo) && faltantesAtualizados.length === 0;
-    const mensagem = repetiuDado
+    const mensagem = precisaSubstituir
       ? proximaPerguntaEducada(dadosColetados, faltantesAtualizados, [...camposSugeridos])
       : deveFechar
         ? fraseFechamentoEducada(index)
@@ -329,7 +331,7 @@ function removerRepeticoesDeDados(analise, mensagens, dadosColetados, contexto =
     const tipoAcao = tipoAcaoPorMensagem(mensagem, momentoVenda);
     return {
       ...sugestao,
-      label: repetiuDado ? `Proximo dado ${index + 1}` : sugestao.label,
+      label: precisaSubstituir ? `Proximo dado ${index + 1}` : sugestao.label,
       mensagem,
       momentoVenda: sugestao.momentoVenda || momentoVenda,
       tipoAcao: sugestao.tipoAcao || tipoAcao,
