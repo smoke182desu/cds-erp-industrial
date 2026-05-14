@@ -63,11 +63,16 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const imgContainer = clone.querySelector('.post-images');
       if (post.imagens && post.imagens.length > 0) {
-        post.imagens.forEach(url => {
+        post.imagens.forEach(item => {
+          const imgUrl = typeof item === 'string' ? item : (item.url || '');
+          if (!imgUrl || !/^https?:\/\//.test(imgUrl)) return;
           const img = document.createElement('img');
-          img.src = url;
+          img.src = imgUrl;
+          img.alt = item.descricao || 'Foto do produto';
+          img.style.objectFit = 'cover';
           imgContainer.appendChild(img);
         });
+        if (!imgContainer.children.length) imgContainer.style.display = 'none';
       } else {
         imgContainer.style.display = 'none';
       }

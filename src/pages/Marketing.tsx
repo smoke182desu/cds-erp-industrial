@@ -173,10 +173,24 @@ export function Marketing() {
   const publishNow = async (copy: any, id: string, platform: 'facebook' | 'instagram' | 'all') => {
     setPublishingNow(`${id}-${platform}`);
     try {
-      const imagensRecomendadas = naResult?.imagensRecomendadas || [];
-      const imageUrls: string[] = imagensRecomendadas
-        .map((img: any) => img.produtoRef || img.url || '')
-        .filter(Boolean);
+      // Buscar fotos reais do produto via image-proxy
+      let imageUrls: string[] = [];
+      if (produto) {
+        try {
+          const imgRes = await fetch(`/api/data?resource=image-proxy&q=${encodeURIComponent(produto)}`);
+          if (imgRes.ok) {
+            const imgData = await imgRes.json();
+            const fotos = imgData.produtos?.[0]?.imagens || [];
+            imageUrls = fotos.map((img: any) => img.url).filter(Boolean);
+          }
+        } catch { /* fallback abaixo */ }
+      }
+      // Fallback: imagensRecomendadas do Narancia
+      if (imageUrls.length === 0) {
+        imageUrls = (naResult?.imagensRecomendadas || [])
+          .map((img: any) => img.produtoRef || img.url || '')
+          .filter((u: string) => /^https?:\/\//.test(u));
+      }
       const texto = `${copy.headline}\n\n${copy.corpo}${copy.cta ? '\n\n' + copy.cta : ''}${copy.hashtags?.length ? '\n\n' + copy.hashtags.join(' ') : ''}`;
       const body: any = {
         platform,
@@ -688,13 +702,19 @@ export function Marketing() {
                       {/* Imagens preview */}
                       {imagens.length > 0 && (
                         <div className="flex gap-1 mt-2">
-                          {imagens.slice(0, 4).map((img: any, j: number) => (
-                            <div key={j} className="w-10 h-10 rounded bg-purple-50 border border-purple-200 flex items-center justify-center flex-shrink-0" title={img.descricao}>
-                              <span className="text-[8px] text-purple-600 font-medium text-center leading-tight px-0.5">
-                                {img.tipo === 'foto_produto' ? '📷' : img.tipo === 'ia_gerada' ? '🤖' : img.tipo === 'propaganda' ? '🎨' : '📸'}
-                              </span>
-                            </div>
-                          ))}
+                          {imagens.slice(0, 4).map((img: any, j: number) => {
+                            const imgUrl = typeof img === 'string' ? img : img.url;
+                            return imgUrl && /^https?:\/\//.test(imgUrl) ? (
+                              <img key={j} src={imgUrl} alt={img.descricao || `Foto ${j+1}`} title={img.descricao || ''}
+                                className="w-10 h-10 rounded border border-purple-200 object-cover flex-shrink-0" />
+                            ) : (
+                              <div key={j} className="w-10 h-10 rounded bg-purple-50 border border-purple-200 flex items-center justify-center flex-shrink-0" title={img.descricao}>
+                                <span className="text-[8px] text-purple-600 font-medium">
+                                  {img.tipo === 'foto_produto' ? '📷' : img.tipo === 'ia_gerada' ? '🤖' : '📸'}
+                                </span>
+                              </div>
+                            );
+                          })}
                           {imagens.length > 4 && <span className="text-[10px] text-gray-400 self-center">+{imagens.length - 4}</span>}
                         </div>
                       )}
