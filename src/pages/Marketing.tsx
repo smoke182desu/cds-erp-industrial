@@ -65,13 +65,20 @@ export function Marketing() {
   // Autopilot
   const [autopilotRunning, setAutopilotRunning] = useState(false);
   const [autopilotProgress, setAutopilotProgress] = useState<{ current: number, total: number, itemName: string } | null>(null);
+  const [showAutopilotModal, setShowAutopilotModal] = useState(false);
+  const [autopilotCategory, setAutopilotCategory] = useState('');
+  const [autopilotLimit, setAutopilotLimit] = useState(10);
 
-  const runAutopilot = async () => {
-    if (!confirm('Isto irá gerar e enviar posts para a fila de todos os produtos do inventário automaticamente. Deseja continuar?')) return;
+  const startAutopilot = async () => {
+    setShowAutopilotModal(false);
     
     setAutopilotRunning(true);
     try {
-      const resInv = await fetch('/api/produtos');
+      const url = new URL('/api/produtos', window.location.origin);
+      if (autopilotCategory) url.searchParams.set('q', autopilotCategory);
+      if (autopilotLimit) url.searchParams.set('limit', autopilotLimit.toString());
+
+      const resInv = await fetch(url.toString());
       if (!resInv.ok) throw new Error('Erro ao buscar inventario');
       const jsonInv = await resInv.json();
       const inventory = jsonInv.produtos || [];
@@ -354,7 +361,7 @@ export function Marketing() {
               </button>
             </Tooltip>
             <Tooltip text="Piloto Automático: varre o estoque e gera posts em lote para a fila">
-              <button onClick={runAutopilot} disabled={abLoading || naLoading || autopilotRunning}
+              <button onClick={() => setShowAutopilotModal(true)} disabled={abLoading || naLoading || autopilotRunning}
                 className="flex items-center gap-2 bg-pink-500 hover:bg-pink-400 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-md disabled:opacity-50 border border-pink-400">
                 {autopilotRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
                 {autopilotRunning && autopilotProgress ? `Gerando (${autopilotProgress.current}/${autopilotProgress.total})` : 'Piloto Automático'}
@@ -912,6 +919,48 @@ export function Marketing() {
           </div>
         )}
       </div>
+
+      {/* Autopilot Config Modal */}
+      {showAutopilotModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col">
+            <div className="px-6 py-4 border-b bg-gradient-to-r from-pink-500 to-rose-500 text-white">
+              <h3 className="font-bold flex items-center gap-2"><Bot className="w-5 h-5" /> Configurar Autopilot</h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Categoria ou Busca</label>
+                <input 
+                  value={autopilotCategory} 
+                  onChange={e => setAutopilotCategory(e.target.value)} 
+                  placeholder="Ex: Escada, Bancada, Metálica..."
+                  className="w-full mt-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-pink-400 outline-none" 
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">Quantidade Máxima de Anúncios</label>
+                <input 
+                  type="number"
+                  value={autopilotLimit} 
+                  onChange={e => setAutopilotLimit(parseInt(e.target.value) || 1)} 
+                  min={1} max={100}
+                  className="w-full mt-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-pink-400 outline-none" 
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Evita sobrecarregar a fila de uma só vez.</p>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t bg-slate-50 flex justify-end gap-2">
+              <button onClick={() => setShowAutopilotModal(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
+                Cancelar
+              </button>
+              <button onClick={startAutopilot} className="px-4 py-2 text-sm font-semibold text-white bg-pink-500 hover:bg-pink-600 rounded-lg transition-colors shadow-md flex items-center gap-2">
+                <Zap className="w-4 h-4" /> Iniciar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
