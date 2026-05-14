@@ -5,7 +5,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     try {
       function findInputByLabelText(textSnippets) {
-        // Busca em todos os labels
         const labels = Array.from(document.querySelectorAll('label'));
         for (const label of labels) {
           const text = (label.textContent || label.getAttribute('aria-label') || '').toLowerCase();
@@ -20,19 +19,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         }
         
-        // Fallback: buscar inputs diretamente pelos placeholders ou aria-labels
         const inputs = Array.from(document.querySelectorAll('input, textarea'));
         for (const input of inputs) {
           const attrText = (input.getAttribute('aria-label') || input.getAttribute('placeholder') || '').toLowerCase();
           if (textSnippets.some(snippet => attrText.includes(snippet))) return input;
         }
 
-        // Fallback agressivo: procurar divs que contém o texto e pegar o input mais próximo dentro
         const divs = Array.from(document.querySelectorAll('div'));
         for(const div of divs) {
             const text = div.textContent.toLowerCase();
             if(textSnippets.some(snippet => text === snippet)) {
-                // Sobe um nível e procura input
                 const parent = div.parentElement;
                 if(parent) {
                     const input = parent.querySelector('input, textarea');
@@ -43,41 +39,52 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return null;
       }
 
-      function setNativeValue(element, value) {
-        if (!element) return;
+      // Nova abordagem: Simular clique e "colar" o texto (bypass infalível para React)
+      async function simulateTyping(element, value) {
+        if (!element || !value) return;
+        
+        // Simula o clique do usuário para "acordar" o componente
         element.focus();
-        const prototype = Object.getPrototypeOf(element);
-        const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value') || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
-        if (descriptor && descriptor.set) {
-          descriptor.set.call(element, value);
-        } else {
-          element.value = value;
-        }
+        element.click();
+        
+        // Limpa o campo de forma nativa primeiro
+        element.value = '';
+        
+        // Usa a API de Clipboard/ExecCommand para colar o texto como se fosse um humano
+        document.execCommand('insertText', false, value);
+        
+        // Dispara os eventos de alteração de estado just in case
         element.dispatchEvent(new Event('input', { bubbles: true }));
         element.dispatchEvent(new Event('change', { bubbles: true }));
+        
+        // Pequena pausa para o React processar
+        await new Promise(r => setTimeout(r, 200));
       }
 
-      // 1. Título
-      const titleInput = findInputByLabelText(['título', 'titulo', 'title']);
-      if (titleInput) setNativeValue(titleInput, data.titulo || '');
+      async function runAutomation() {
+        // 1. Título
+        const titleInput = findInputByLabelText(['título', 'titulo', 'title']);
+        await simulateTyping(titleInput, data.titulo || '');
 
-      // 2. Preço
-      const priceInput = findInputByLabelText(['preço', 'preco', 'price']);
-      if (priceInput) {
-        let numericPrice = data.preco ? String(data.preco).replace(/\D/g, '') : '';
-        setNativeValue(priceInput, numericPrice);
+        // 2. Preço
+        const priceInput = findInputByLabelText(['preço', 'preco', 'price']);
+        if (priceInput) {
+          let numericPrice = data.preco ? String(data.preco).replace(/\D/g, '') : '';
+          await simulateTyping(priceInput, numericPrice);
+        }
+
+        // 3. Descrição
+        const descInput = findInputByLabelText(['descrição', 'descricao', 'description']);
+        await simulateTyping(descInput, data.descricao || '');
+        
+        sendResponse({ success: true });
       }
 
-      // 3. Descrição
-      const descInput = findInputByLabelText(['descrição', 'descricao', 'description']);
-      if (descInput) setNativeValue(descInput, data.descricao || '');
-
-      success = true;
+      runAutomation();
+      return true; // Mantém a porta de mensagem aberta para resposta assíncrona
     } catch (e) {
       console.error("Erro ao preencher Facebook:", e);
+      sendResponse({ success: false, error: e.message });
     }
-
-    sendResponse({ success });
   }
-  return true;
 });
