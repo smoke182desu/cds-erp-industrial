@@ -454,10 +454,11 @@ export function Marketing() {
                           </div>
                         ))}
                         {abResult.estrategia.funil && (
-                          <div className="grid grid-cols-3 gap-1.5 text-[10px]">
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2"><p className="font-bold text-blue-600">TOFU</p><p className="text-blue-700 mt-0.5">{abResult.estrategia.funil.tofu}</p></div>
-                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2"><p className="font-bold text-amber-600">MOFU</p><p className="text-amber-700 mt-0.5">{abResult.estrategia.funil.mofu}</p></div>
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-2"><p className="font-bold text-green-600">BOFU</p><p className="text-green-700 mt-0.5">{abResult.estrategia.funil.bofu}</p></div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 text-[10px]">
+                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100"><p className="font-bold text-slate-800 mb-0.5">TOFU (Atração)</p><p className="text-slate-600 line-clamp-3">{abResult.estrategia.funil.tofu}</p></div>
+                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100"><p className="font-bold text-slate-800 mb-0.5">MOFU (Consideração)</p><p className="text-slate-600 line-clamp-3">{abResult.estrategia.funil.mofu}</p></div>
+                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100"><p className="font-bold text-slate-800 mb-0.5">BOFU (Conversão)</p><p className="text-slate-600 line-clamp-3">{abResult.estrategia.funil.bofu}</p></div>
+                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100"><p className="font-bold text-slate-800 mb-0.5">Retenção (LTV)</p><p className="text-slate-600 line-clamp-3">{abResult.estrategia.funil.remarketing || 'Focar no pos-venda'}</p></div>
                           </div>
                         )}
                       </div>
@@ -551,11 +552,17 @@ export function Marketing() {
                   <div className="space-y-2">
                     <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wider">✍️ Copies Geradas</p>
                     {naResult.copies.map((c: any, i: number) => (
-                      <div key={i} className="bg-white border rounded-xl p-3 group relative">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium">{c.tipo}</span>
-                            <span className="text-[10px] text-gray-400">{c.plataforma}</span>
+                      <div key={i} className="bg-pink-50/50 border border-pink-100 rounded-xl p-3 hover:shadow-md transition-shadow relative group">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-pink-600 bg-pink-100 px-2 py-0.5 rounded-full uppercase tracking-wider">{c.tipo}</span>
+                            {c.plataforma && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">{PLATAFORMAS.find(p => p.nome.toLowerCase().includes(c.plataforma?.toLowerCase()))?.icone || '🌐'} {c.plataforma}</span>}
+                            {c.framework && <span className="text-[10px] font-bold text-violet-600 bg-violet-100 px-2 py-0.5 rounded-full uppercase tracking-wider">{c.framework}</span>}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {c.gatilhos && c.gatilhos.map((g: string, idx: number) => (
+                              <span key={idx} className="text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-md uppercase" title="Gatilho Mental">{g}</span>
+                            ))}
                           </div>
                           <div className="flex items-center gap-1">
                             <Tooltip text="Publicar agora no Facebook">
@@ -582,8 +589,8 @@ export function Marketing() {
                             </button>
                           </div>
                         </div>
-                        <p className="text-sm font-bold text-gray-900 mb-1">{c.headline}</p>
-                        <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">{c.corpo}</p>
+                        <h4 className="text-sm font-bold text-slate-800 mb-1.5 leading-tight">{c.headline}</h4>
+                        <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">{c.corpo}</p>
                         {c.cta && <p className="text-xs font-semibold text-orange-600 mt-1.5 flex items-center gap-1"><Send className="w-3 h-3" />{c.cta}</p>}
                         {c.hashtags?.length > 0 && <p className="text-[10px] text-blue-500 mt-1.5">{c.hashtags.join(' ')}</p>}
                         {c.observacao && <p className="text-[10px] text-gray-400 mt-1 italic">{c.observacao}</p>}
