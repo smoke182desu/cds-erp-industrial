@@ -256,17 +256,37 @@ async function handleFotos(req, res) {
   if (!EVO_KEY) return res.status(500).json({ error: 'EVOLUTION_API_KEY nao configurada' });
   
   const headers = { apikey: EVO_KEY, 'Content-Type': 'application/json' };
+
+  function extrairFotoPerfil(data) {
+    const candidatos = [
+      data?.profilePictureUrl,
+      data?.profile_picture_url,
+      data?.profilePicUrl,
+      data?.picture,
+      data?.url,
+      data?.data?.profilePictureUrl,
+      data?.data?.profile_picture_url,
+      data?.data?.profilePicUrl,
+      data?.data?.picture,
+      data?.data?.url,
+    ];
+    return String(candidatos.find(v => /^https?:\/\//i.test(String(v || '').trim())) || '').trim();
+  }
   
   async function fetchPic(telefone) {
     const number = String(telefone).replace(/\D/g, '');
     if (!number) return null;
     try {
-      const r = await fetch(`${EVO_URL}/chat/fetchProfilePictureUrl/${EVO_INSTANCE}`, {
-        method: 'POST', headers, body: JSON.stringify({ number })
-      });
-      if (!r.ok) return null;
-      const data = await r.json();
-      return data?.profilePictureUrl || data?.profile_picture_url || null;
+      for (const payload of [{ number }, { number: `${number}@s.whatsapp.net` }]) {
+        const r = await fetch(`${EVO_URL}/chat/fetchProfilePictureUrl/${EVO_INSTANCE}`, {
+          method: 'POST', headers, body: JSON.stringify(payload)
+        });
+        if (!r.ok) continue;
+        const data = await r.json();
+        const foto = extrairFotoPerfil(data);
+        if (foto) return foto;
+      }
+      return null;
     } catch (e) { return null; }
   }
 

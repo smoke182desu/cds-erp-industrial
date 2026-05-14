@@ -42,6 +42,65 @@ async function upsertLeadPorTelefone(payload) {
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-903e.up.railway.app';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
+const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE_NAME || 'cdsind';
+
+function evolutionBaseUrl() {
+  return String(EVOLUTION_API_URL || '').trim().replace(/\/$/, '');
+}
+
+function fotoUrlValida(valor) {
+  const url = String(valor || '').trim();
+  return /^https?:\/\//i.test(url) ? url : '';
+}
+
+function extrairFotoPerfil(data) {
+  return fotoUrlValida(
+    data?.profilePictureUrl
+    || data?.profile_picture_url
+    || data?.profilePicUrl
+    || data?.picture
+    || data?.url
+    || data?.data?.profilePictureUrl
+    || data?.data?.profile_picture_url
+    || data?.data?.profilePicUrl
+    || data?.data?.picture
+    || data?.data?.url
+  );
+}
+
+async function buscarFotoPerfilWhatsApp(telefone, instance) {
+  const number = soDigitos(telefone);
+  if (!number || !EVOLUTION_API_KEY || !evolutionBaseUrl()) return '';
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
+  const instanceToUse = String(instance || EVOLUTION_INSTANCE || 'cdsind').trim();
+  const headers = { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' };
+  const payloads = [
+    { number },
+    { number: `${number}@s.whatsapp.net` },
+  ];
+
+  try {
+    for (const payload of payloads) {
+      const r = await fetch(`${evolutionBaseUrl()}/chat/fetchProfilePictureUrl/${instanceToUse}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      if (!r.ok) continue;
+      const data = await r.json().catch(() => null);
+      const foto = extrairFotoPerfil(data);
+      if (foto) return foto;
+    }
+  } catch (err) {
+    if (err?.name !== 'AbortError') console.warn('[whatsapp] foto perfil falhou:', err.message);
+  } finally {
+    clearTimeout(timeout);
+  }
+  return '';
+}
 
 // Identifica se um JID é um LID (Linked ID anônimo) ou outro tipo não-pessoal
 function jidEhInvalido(jid) {
@@ -261,6 +320,7 @@ export default async function handler(req, res) {
 
     // 2. Se for mensagem de entrada, garante que o lead existe (Upsert)
     if (!norm.fromMe) {
+      const fotoPerfil = fotoUrlValida(norm.fotoUrl) || await buscarFotoPerfilWhatsApp(norm.numero, norm.instance);
       const leadPayload = {
         telefone: norm.numero,
         nome: norm.pushName || norm.numero,
@@ -268,7 +328,7 @@ export default async function handler(req, res) {
         ultima_mensagem: norm.texto,
         atualizado_em: mensagemCriadaEm
       };
-      if (norm.fotoUrl) leadPayload.foto_url = norm.fotoUrl;
+      if (fotoPerfil) leadPayload.foto_url = fotoPerfil;
       await upsertLeadPorTelefone(leadPayload, 'telefone');
     }
 
