@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Loader2, Target, Palette, TrendingUp, BarChart3, Megaphone, RefreshCw, ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, Sparkles, Send, HelpCircle, ArrowRight, Zap, Upload, Image, Trash2, ExternalLink, Clock, Eye, Facebook, Instagram, Globe } from 'lucide-react';
+import { Loader2, Target, Palette, TrendingUp, BarChart3, Megaphone, RefreshCw, ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, Sparkles, Send, HelpCircle, ArrowRight, Zap, Upload, Image, Trash2, ExternalLink, Clock, Eye, Facebook, Instagram, Globe, Bot } from 'lucide-react';
 
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false);
@@ -61,6 +61,88 @@ export function Marketing() {
   const [previewPost, setPreviewPost] = useState<any>(null);
   const [publishing, setPublishing] = useState('');
   const [filaPublishResult, setFilaPublishResult] = useState<any>(null);
+
+  // Autopilot
+  const [autopilotRunning, setAutopilotRunning] = useState(false);
+  const [autopilotProgress, setAutopilotProgress] = useState<{ current: number, total: number, itemName: string } | null>(null);
+
+  const runAutopilot = async () => {
+    if (!confirm('Isto irá gerar e enviar posts para a fila de todos os produtos do inventário automaticamente. Deseja continuar?')) return;
+    
+    setAutopilotRunning(true);
+    try {
+      const resInv = await fetch('/api/data?resource=inventory');
+      if (!resInv.ok) throw new Error('Erro ao buscar inventario');
+      const inventory = await resInv.json();
+      
+      const total = inventory.length;
+      if (total === 0) {
+        alert('Nenhum produto encontrado no inventário.');
+        return;
+      }
+
+      for (let i = 0; i < total; i++) {
+        const item = inventory[i];
+        setAutopilotProgress({ current: i + 1, total, itemName: item.nome });
+
+        try {
+          const resNa = await fetch('/api/assistente-vendas', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              modo: 'marketing-narancia', 
+              produto: item.nome, 
+              publicoAlvo: 'Público geral', 
+              objetivo: 'Venda direta', 
+              plataforma: PLATAFORMAS.find(p => p.id === plataforma)?.nome || 'Multiplataforma', 
+              contextoExtra: `Preço: R$ ${item.precoVenda}. Categoria: ${item.categoria}.` 
+            }),
+          });
+          
+          if (!resNa.ok) continue;
+          const jsonNa = await resNa.json();
+          const copies = jsonNa.resultado?.copies || [];
+          const bestCopy = copies[0];
+          
+          if (bestCopy) {
+            let imageUrls: string[] = [];
+            try {
+              const imgRes = await fetch(`/api/data?resource=image-proxy&q=${encodeURIComponent(item.nome)}`);
+              if (imgRes.ok) {
+                const imgData = await imgRes.json();
+                const fotos = imgData.produtos?.[0]?.imagens || [];
+                imageUrls = fotos.map((img: any) => img.url).filter(Boolean);
+              }
+            } catch { /* ignore */ }
+
+            const imagensFinal = imageUrls.map((url, idx) => ({ tipo: 'foto_produto', url, descricao: `Foto ${idx+1}`, ordem: idx+1 }));
+
+            await fetch('/api/data?resource=extension-posts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                titulo: bestCopy.headline,
+                descricao: `${bestCopy.corpo}${bestCopy.cta ? '\n\n' + bestCopy.cta : ''}${bestCopy.hashtags?.length ? '\n\n' + bestCopy.hashtags.join(' ') : ''}`,
+                preco: item.precoVenda || '',
+                categoria: item.categoria || 'Produtos',
+                plataformas: ['olx', 'marketplace'],
+                copyOriginal: bestCopy,
+                imagens: imagensFinal,
+              }),
+            });
+          }
+        } catch (e) {
+          console.warn('Erro ao processar item', item.nome, e);
+        }
+      }
+      fetchFilaPosts();
+      alert('Piloto automático concluído!');
+    } catch (e: any) {
+      alert('Erro no piloto automático: ' + e.message);
+    } finally {
+      setAutopilotRunning(false);
+      setAutopilotProgress(null);
+    }
+  };
 
   const fetchFilaPosts = useCallback(async () => {
     setFilaLoading(true);
@@ -265,9 +347,16 @@ export function Marketing() {
               <span className={`px-2 py-1 rounded-full ${naResult ? 'bg-white/30 font-bold' : 'bg-white/10'}`}>3. Conteudo</span>
             </div>
             <Tooltip text="Gera estrategia (Abbacchio) + conteudo (Narancia) simultaneamente">
-              <button onClick={gerarTudo} disabled={abLoading || naLoading}
+              <button onClick={gerarTudo} disabled={abLoading || naLoading || autopilotRunning}
                 className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">
                 <Zap className="w-4 h-4" /> Gerar Tudo
+              </button>
+            </Tooltip>
+            <Tooltip text="Piloto Automático: varre o estoque e gera posts em lote para a fila">
+              <button onClick={runAutopilot} disabled={abLoading || naLoading || autopilotRunning}
+                className="flex items-center gap-2 bg-pink-500 hover:bg-pink-400 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-md disabled:opacity-50 border border-pink-400">
+                {autopilotRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+                {autopilotRunning && autopilotProgress ? `Gerando (${autopilotProgress.current}/${autopilotProgress.total})` : 'Piloto Automático'}
               </button>
             </Tooltip>
           </div>
