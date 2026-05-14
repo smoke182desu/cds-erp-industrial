@@ -19,3 +19,4 @@ msg*.txt
 deploy_*.txt  
 groq_*.txt  
 fb_*.txt 
+.env*.local

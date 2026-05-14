@@ -1,8 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/pncp-api/:path*",
-      "destination": "/api/pncp?path=:path*"
+      "source": "/pncp-api/(.*)",
+      "destination": "/api/pncp?path=$1"
     },
     {
       "source": "/api/clientes",
@@ -35,10 +35,6 @@
     {
       "source": "/api/social-publish",
       "destination": "/api/data?resource=social-publish"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
     }
   ]
 }

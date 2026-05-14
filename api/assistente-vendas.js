@@ -8,10 +8,9 @@ import { getCache, setCache, getCacheByKey, setCacheByKey } from './_lib/cache.j
 import { executar as executarAbbacchio } from './agents/abbacchio.js';
 import { executar as executarNarancia } from './agents/narancia.js';
 
-const supabaseClient = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
-);
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bgwnbsuzvmmulafiodrm.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy';
+const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
 
 
