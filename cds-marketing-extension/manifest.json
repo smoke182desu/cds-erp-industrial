@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "CDS Industrial - Marketing Automator",
+  "version": "1.0.0",
+  "description": "Automatiza o preenchimento de anuncios na OLX e Facebook Marketplace usando IA do ERP.",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://erp.cdsind.com.br/*",
+    "http://localhost:3000/*",
+    "https://*.olx.com.br/*",
+    "https://*.facebook.com/*"
+  ]
+}

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CDS Marketing Automator</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <div class="header-title">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+      </svg>
+      CDS Marketing
+    </div>
+    <div class="env-toggle">
+      <select id="env-select">
+        <option value="https://erp.cdsind.com.br">Produção</option>
+        <option value="http://localhost:3000">Local (Dev)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="container">
+    <div id="loader" class="loader">Carregando posts...</div>
+    <div id="error-message" class="error hidden"></div>
+    <div id="posts-list" class="posts-list"></div>
+    <div id="empty-state" class="empty-state hidden">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <p>Nenhum post pendente na fila.</p>
+    </div>
+  </div>
+
+  <template id="post-template">
+    <div class="post-card">
+      <div class="post-header">
+        <h3 class="post-title"></h3>
+        <span class="post-price"></span>
+      </div>
+      <p class="post-desc"></p>
+      
+      <div class="post-images"></div>
+
+      <div class="post-actions">
+        <button class="btn btn-olx" data-platform="olx">
+          Preencher OLX
+        </button>
+        <button class="btn btn-fb" data-platform="marketplace">
+          Preencher FB Market
+        </button>
+        <button class="btn btn-outline btn-done">
+          Marcar Concluído
+        </button>
+      </div>
+    </div>
+  </template>
+
+  <script src="popup.js"></script>
+</body>
+</html>
