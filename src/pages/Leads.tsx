@@ -692,8 +692,14 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
                       tecnica: { texto: 'Técnico', icone: '🔧', cor: 'text-violet-600' },
                       urgencia: { texto: 'Oportunidade', icone: '⚡', cor: 'text-amber-600' },
                       curto: { texto: 'Curto', icone: '💬', cor: 'text-indigo-600' },
+                      coleta_dado: { texto: 'Coletar dado', icone: '📋', cor: 'text-violet-600' },
+                      orcamento: { texto: 'Orçamento', icone: '🧮', cor: 'text-emerald-600' },
+                      fechamento: { texto: 'Fechamento', icone: '🤝', cor: 'text-green-600' },
+                      follow_up: { texto: 'Follow-up', icone: '⏱️', cor: 'text-amber-600' },
+                      prazo_frete: { texto: 'Prazo/Frete', icone: '🚚', cor: 'text-blue-600' },
+                      resposta_contextual: { texto: 'Contexto', icone: '💬', cor: 'text-indigo-600' },
                     };
-                    const info = labelMap[s.label] || { texto: s.label, icone: '💬', cor: 'text-indigo-600' };
+                    const info = labelMap[s.tipoAcao] || labelMap[s.label] || { texto: s.label, icone: '💬', cor: 'text-indigo-600' };
                     return (
                     <button key={i} onClick={() => {
                       onUsarSugestao(s.mensagem);
