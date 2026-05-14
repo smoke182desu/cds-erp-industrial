@@ -26,6 +26,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         await new Promise(r => setTimeout(r, 200));
       }
 
+      // Função auxiliar para encontrar e clicar em botões por texto
+      async function clickByText(selector, textSnippets, timeout = 8000) {
+        return new Promise(resolve => {
+          const startTime = Date.now();
+          const interval = setInterval(() => {
+            const elements = Array.from(document.querySelectorAll(selector));
+            for (const el of elements) {
+              const text = (el.textContent || el.value || '').toLowerCase().trim();
+              if (textSnippets.some(snippet => text === snippet || text.includes(snippet))) {
+                clearInterval(interval);
+                el.click();
+                resolve(true);
+                return;
+              }
+            }
+            if (Date.now() - startTime > timeout) {
+              clearInterval(interval);
+              resolve(false);
+            }
+          }, 500);
+        });
+      }
+
       async function runAutomation() {
         // 1. Preencher Título
         const titleInput = document.querySelector('input[name="subject"], input[id="subject"], input[placeholder*="título" i]');
@@ -77,6 +100,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             console.error("Erro ao injetar imagens na OLX:", imgError);
           }
         }
+
+        // 5. Clicar em Enviar/Avançar
+        console.log("Avançando formulário...");
+        await clickByText('button', ['enviar anúncio', 'enviar anuncio', 'avançar', 'continuar']);
+        
+        // 6. Aguardar e selecionar plano "Gratuito"
+        console.log("Buscando plano gratuito...");
+        await clickByText('button, div[role="button"], label', ['grátis', 'gratis', 'gratuito', 'anúncio grátis', 'padrão', 'padrao']);
+        
+        // 7. Clicar em Publicar (confirmar)
+        console.log("Confirmando publicação...");
+        await clickByText('button', ['publicar', 'confirmar', 'ir para meus anúncios', 'concluir']);
 
         sendResponse({ success: true });
       }
