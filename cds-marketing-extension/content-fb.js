@@ -76,6 +76,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // 3. Descrição
         const descInput = findInputByLabelText(['descrição', 'descricao', 'description']);
         await simulateTyping(descInput, data.descricao || '');
+
+        // 4. Injetar Imagens
+        if (data.imagens && data.imagens.length > 0) {
+          try {
+            const fileInput = document.querySelector('input[type="file"][accept*="image"], input[type="file"]');
+            if (fileInput) {
+              const dataTransfer = new DataTransfer();
+              
+              for (let i = 0; i < data.imagens.length; i++) {
+                const imgUrl = typeof data.imagens[i] === 'string' ? data.imagens[i] : data.imagens[i].url;
+                if (!imgUrl) continue;
+                
+                const res = await fetch(imgUrl);
+                const blob = await res.blob();
+                
+                let ext = 'jpg';
+                if (blob.type === 'image/png') ext = 'png';
+                if (blob.type === 'image/webp') ext = 'webp';
+                if (blob.type === 'image/jpeg') ext = 'jpg';
+                
+                const file = new File([blob], `foto_${i + 1}.${ext}`, { type: blob.type });
+                dataTransfer.items.add(file);
+              }
+              
+              if (dataTransfer.files.length > 0) {
+                fileInput.files = dataTransfer.files;
+                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+            }
+          } catch (imgError) {
+            console.error("Erro ao injetar imagens no Facebook:", imgError);
+          }
+        }
         
         sendResponse({ success: true });
       }
