@@ -47,6 +47,24 @@ function normalizarTexto(s) {
     .trim();
 }
 
+function imagemPrincipalProduto(p) {
+  const vistos = new Set();
+  const urls = [
+    p?.foto_url,
+    p?.imagem,
+    ...(Array.isArray(p?.imagens) ? p.imagens : []),
+    ...(Array.isArray(p?.fotos) ? p.fotos : []),
+  ]
+    .map(url => String(url || '').trim())
+    .filter(url => /^(https?:|data:image\/)/i.test(url))
+    .filter(url => {
+      if (vistos.has(url)) return false;
+      vistos.add(url);
+      return true;
+    });
+  return urls[0] || '';
+}
+
 function extrairPalavrasChave(texto) {
   const norm = normalizarTexto(texto);
   const palavras = norm.split(' ').filter(p => p.length >= 3 && !STOPWORDS.has(p));
@@ -67,6 +85,7 @@ async function carregarCatalogoCompleto() {
       precoRegular: Number(p.preco_regular || p.precoRegular || 0),
       categoria: p.categoria || '',
       descricao: p.descricao || '',
+      imagem: imagemPrincipalProduto(p),
     }));
     CACHE_PRODUTOS = { data: produtos, ts: agora };
     return produtos;
@@ -372,6 +391,7 @@ export default async function handler(req, res) {
           item.nomeCatalogo = match.nome;
           item.nome = match.nome || item.nome;
           item.skuCatalogo = item.skuCatalogo || match.sku;
+          item.imagem = match.imagem || item.imagem || '';
         }
 
         if (!match) {
@@ -389,6 +409,7 @@ export default async function handler(req, res) {
           nome: it.nome || it.descricao || 'Item',
           qtd: Number(it.qtd || it.quantidade) || 1,
           valorUnitario: Number(it.valorUnitario || it.precoUnitario) || 0,
+          imagem: it.imagem || '',
         }));
       }
     }

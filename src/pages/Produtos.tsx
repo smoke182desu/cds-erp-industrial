@@ -388,6 +388,7 @@ export function Produtos() {
                       <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-3">
                         {p.sku && <span>SKU: <span className="font-mono">{p.sku}</span></span>}
                         {p.ncm && <span>NCM: <span className="font-mono">{fmtNcm(p.ncm)}</span></span>}
+                        {Array.isArray(p.fotos) && p.fotos.length > 1 && <span>{p.fotos.length} fotos</span>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-sm">
@@ -566,9 +567,24 @@ export function Produtos() {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5">URL da Imagem</label>
-                    <input value={form.imagem} onChange={e=>set('imagem',e.target.value)}
-                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="https://..."/>
+                    <div className="flex gap-3">
+                      <div className="w-16 h-16 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                        {form.imagem
+                          ? <img key={form.imagem} src={form.imagem} alt={form.nome || 'Produto'} className="w-full h-full object-cover"
+                              onError={e => { (e.currentTarget as HTMLImageElement).style.display='none'; }}/>
+                          : <Package size={20} className="text-gray-300"/>}
+                      </div>
+                      <div className="flex-1">
+                        <input value={form.imagem} onChange={e=>set('imagem',e.target.value)}
+                          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="https://..."/>
+                        {Array.isArray(form.fotos) && form.fotos.length > 1 && (
+                          <p className="text-[11px] text-gray-400 mt-1">
+                            {form.fotos.length} imagens sincronizadas do WooCommerce
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

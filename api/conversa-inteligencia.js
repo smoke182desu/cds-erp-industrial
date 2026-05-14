@@ -104,6 +104,27 @@ function normalizarTexto(s) {
     .trim();
 }
 
+function imagensProduto(p) {
+  const vistos = new Set();
+  return [
+    p?.foto_url,
+    p?.imagem,
+    ...(Array.isArray(p?.imagens) ? p.imagens : []),
+    ...(Array.isArray(p?.fotos) ? p.fotos : []),
+  ]
+    .map(url => String(url || '').trim())
+    .filter(url => /^(https?:|data:image\/)/i.test(url))
+    .filter(url => {
+      if (vistos.has(url)) return false;
+      vistos.add(url);
+      return true;
+    });
+}
+
+function imagemPrincipalProduto(p) {
+  return imagensProduto(p)[0] || '';
+}
+
 // Extrai palavras-chave relevantes da conversa (min 3 chars, nao stopword)
 function extrairPalavrasChave(texto) {
   const norm = normalizarTexto(texto);
@@ -126,6 +147,7 @@ async function carregarCatalogoCompleto() {
       precoRegular: Number(p.preco_regular || p.precoRegular || 0),
       categoria:    p.categoria || '',
       descricao:    p.descricao || '',
+      imagem:       imagemPrincipalProduto(p),
     }));
     CACHE_PRODUTOS = { data: produtos, ts: agora };
     return produtos;
@@ -231,6 +253,7 @@ function buscarOpcoesCatalogo(produtoDetectado, catalogo, limite = 5, familiaCon
       precoUnitario: Number(p.preco || p.precoRegular || 0),
       probabilidade: Math.max(35, Math.min(98, Math.round(score))),
       produtoId: p.id,
+      imagem: p.imagem || '',
     }));
 }
 
@@ -269,6 +292,7 @@ function aplicarMatchesCatalogo(analise, catalogo, familiaContexto = null) {
       item.skuCatalogo = melhor.sku;
       item.produtoId = melhor.produtoId;
       item.precoUnitario = melhor.precoUnitario || 0;
+      item.imagem = melhor.imagem || item.imagem || '';
       item.sobMedida = false;
     } else if (!item.produtoPadrao) {
       item.sobMedida = true;
@@ -731,6 +755,7 @@ export default async function handler(req, res) {
           item.skuCatalogo = match.sku;
           item.nomeCatalogo = match.nome;
           item.nome = match.nome || item.nome;
+          item.imagem = match.imagem || item.imagem || '';
         }
       }
       for (const item of analise.produtos) {

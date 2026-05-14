@@ -514,16 +514,30 @@ async function handleImageProxy(req, res) {
 
   const { produtoId, nome, q } = req.query;
 
-  function formatarProdutoImagem(produto) {
-    const imagens = [];
-    if (produto.foto_url) {
-      imagens.push({ tipo: 'foto_produto', url: produto.foto_url, descricao: `Foto principal: ${produto.nome}`, ordem: 1 });
-    }
-    if (Array.isArray(produto.fotos)) {
-      produto.fotos.forEach((url, i) => {
-        imagens.push({ tipo: 'foto_produto', url, descricao: `Foto ${i + 2}: ${produto.nome}`, ordem: i + 2 });
+  function urlsProduto(produto) {
+    const vistos = new Set();
+    return [
+      produto.foto_url,
+      produto.imagem,
+      ...(Array.isArray(produto.imagens) ? produto.imagens : []),
+      ...(Array.isArray(produto.fotos) ? produto.fotos : []),
+    ]
+      .map(url => String(url || '').trim())
+      .filter(url => /^(https?:|data:image\/)/i.test(url))
+      .filter(url => {
+        if (vistos.has(url)) return false;
+        vistos.add(url);
+        return true;
       });
-    }
+  }
+
+  function formatarProdutoImagem(produto) {
+    const imagens = urlsProduto(produto).map((url, i) => ({
+      tipo: 'foto_produto',
+      url,
+      descricao: i === 0 ? `Foto principal: ${produto.nome}` : `Foto ${i + 1}: ${produto.nome}`,
+      ordem: i + 1,
+    }));
     return { id: produto.id, nome: produto.nome, imagens, totalFotos: imagens.length };
   }
 
@@ -553,7 +567,7 @@ async function handleImageProxy(req, res) {
   }
 
   const data = await selectAll('produtos', { orderBy: 'nome', limit: 200 });
-  const comFoto = (data || []).filter(p => p.foto_url);
+  const comFoto = (data || []).filter(p => urlsProduto(p).length > 0);
   return res.status(200).json({ produtos: comFoto.slice(0, 50).map(formatarProdutoImagem) });
 }
 

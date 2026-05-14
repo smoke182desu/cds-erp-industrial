@@ -36,7 +36,8 @@ interface ProdutoExtraido {
   skuCatalogo?: string | null;
   produtoId?: string | null;
   nomeCatalogo?: string | null;
-  opcoesSugeridas?: Array<{ nome: string; sku: string; precoUnitario: number; probabilidade: number; produtoId?: string | null }>;
+  imagem?: string | null;
+  opcoesSugeridas?: Array<{ nome: string; sku: string; precoUnitario: number; probabilidade: number; produtoId?: string | null; imagem?: string | null }>;
   simulacaoPreco?: {
     materialLabel: string;
     precoKg: number;
@@ -189,6 +190,7 @@ export default function ConversaInteligente({
         produtoPadrao: true,
         skuCatalogo: prod.sku,
         produtoId: prod.id,
+        imagem: prod.imagem || prod.fotoUrl || prod.fotos?.[0] || null,
       };
       return { ...prev, produtos: [...(prev.produtos || []), novo] };
     });
@@ -419,46 +421,57 @@ export default function ConversaInteligente({
                     >
                       <X className="w-3 h-3" />
                     </button>
-                    <div className="flex items-start justify-between pr-5">
-                      <div className="flex items-center gap-1">
-                        {p.produtoPadrao ? (
-                          <BadgeCheck className="w-3.5 h-3.5 text-green-600" />
-                        ) : (
-                          <BadgePlus className="w-3.5 h-3.5 text-amber-600" />
+                    <div className="flex items-start gap-2 pr-5">
+                      {p.imagem && (
+                        <img
+                          src={p.imagem}
+                          alt={p.nomeCatalogo || p.nome}
+                          className="w-10 h-10 rounded-md object-cover border border-white/80 bg-white shrink-0"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-1 min-w-0">
+                            {p.produtoPadrao ? (
+                              <BadgeCheck className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                            ) : (
+                              <BadgePlus className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            )}
+                            <span className="font-medium text-gray-800 truncate">
+                              {p.nomeCatalogo || p.nome}
+                            </span>
+                          </div>
+                          {!p.produtoPadrao && !p.sobMedida && onCadastrarProduto && (
+                            <button
+                              onClick={() => onCadastrarProduto(p)}
+                              className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-200 flex items-center gap-0.5 shrink-0"
+                            >
+                              <Plus className="w-2.5 h-2.5" />
+                              Cadastrar
+                            </button>
+                          )}
+                          {!p.produtoPadrao && p.sobMedida && (
+                            <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium shrink-0">
+                              Sob medida
+                            </span>
+                          )}
+                        </div>
+                        {p.descricao && (
+                          <p className="text-gray-500 mt-0.5 line-clamp-2">{p.descricao}</p>
                         )}
-                        <span className="font-medium text-gray-800">
-                          {p.nomeCatalogo || p.nome}
-                        </span>
+                        <div className="flex items-center gap-3 mt-1 text-gray-600">
+                          <span>{p.quantidade} {p.unidade}</span>
+                          {p.precoUnitario > 0 && (
+                            <span className="flex items-center gap-0.5 font-medium text-green-700">
+                              <DollarSign className="w-3 h-3" />
+                              R$ {p.precoUnitario.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </span>
+                          )}
+                          {p.skuCatalogo && (
+                            <span className="text-gray-400 truncate">SKU: {p.skuCatalogo}</span>
+                          )}
+                        </div>
                       </div>
-                      {!p.produtoPadrao && !p.sobMedida && onCadastrarProduto && (
-                        <button
-                          onClick={() => onCadastrarProduto(p)}
-                          className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded hover:bg-amber-200 flex items-center gap-0.5"
-                        >
-                          <Plus className="w-2.5 h-2.5" />
-                          Cadastrar
-                        </button>
-                      )}
-                      {!p.produtoPadrao && p.sobMedida && (
-                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
-                          Sob medida
-                        </span>
-                      )}
-                    </div>
-                    {p.descricao && (
-                      <p className="text-gray-500 mt-0.5">{p.descricao}</p>
-                    )}
-                    <div className="flex items-center gap-3 mt-1 text-gray-600">
-                      <span>{p.quantidade} {p.unidade}</span>
-                      {p.precoUnitario > 0 && (
-                        <span className="flex items-center gap-0.5 font-medium text-green-700">
-                          <DollarSign className="w-3 h-3" />
-                          R$ {p.precoUnitario.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </span>
-                      )}
-                      {p.skuCatalogo && (
-                        <span className="text-gray-400">SKU: {p.skuCatalogo}</span>
-                      )}
                     </div>
                     {p.simulacaoPreco && (
                       <div className="mt-1.5 rounded-md border border-blue-100 bg-blue-50 px-2 py-1.5 text-[10px] text-blue-800">
@@ -495,6 +508,7 @@ export default function ConversaInteligente({
                                     skuCatalogo: opt.sku,
                                     produtoId: opt.produtoId || null,
                                     precoUnitario: opt.precoUnitario || 0,
+                                    imagem: opt.imagem || novos[i].imagem || null,
                                     produtoPadrao: true,
                                     sobMedida: false,
                                   };
@@ -780,6 +794,9 @@ function BuscaProduto({ onSelect }: { onSelect: (p: Produto) => void }) {
               className="w-full text-left px-2 py-1.5 hover:bg-indigo-50 border-b border-gray-50 last:border-b-0"
             >
               <div className="flex items-start justify-between gap-2">
+                {p.imagem && (
+                  <img src={p.imagem} alt={p.nome} className="w-8 h-8 rounded object-cover border border-gray-100 bg-gray-50 shrink-0" />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-medium text-gray-800 truncate">{p.nome}</div>
                   <div className="text-[10px] text-gray-400 truncate">

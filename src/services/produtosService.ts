@@ -14,6 +14,8 @@ export interface Produto {
     status: string;
     categoria: string;
     imagem: string;
+    fotoUrl?: string;
+    fotos?: string[];
     descricao: string;
     permalink: string;
     tipo: string;

@@ -6,6 +6,7 @@ export interface ItemProposta {
   produtoId?: string;
   skuCatalogo?: string;
   nomeCatalogo?: string;
+  imagem?: string;
 }
 
 export interface PropostaDados {

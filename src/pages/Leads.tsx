@@ -1436,6 +1436,7 @@ function itemComProdutoCadastro(produto: Produto, atual: ItemProposta): ItemProp
     produtoId: produto.id,
     skuCatalogo: produto.sku,
     nomeCatalogo: produto.nome,
+    imagem: produto.imagem || produto.fotoUrl || produto.fotos?.[0] || undefined,
   };
 }
 
@@ -1468,6 +1469,7 @@ function itemPropostaDaAnalise(p: any): ItemProposta {
     produtoId: p?.produtoId || undefined,
     skuCatalogo: sku || undefined,
     nomeCatalogo: p?.nomeCatalogo || opcaoEscolhida?.nome || undefined,
+    imagem: p?.imagem || opcaoEscolhida?.imagem || undefined,
   };
 }
 
@@ -1537,7 +1539,10 @@ function ProdutoPropostaInput({ item, onNomeChange, onSelect }: {
                 className="w-full text-left px-3 py-2 hover:bg-indigo-50 border-t first:border-t-0 border-gray-50"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-gray-800 truncate">{produto.nome}</p>
+                  {produto.imagem && (
+                    <img src={produto.imagem} alt={produto.nome} className="w-8 h-8 rounded object-cover border border-gray-100 bg-gray-50 shrink-0" />
+                  )}
+                  <p className="text-xs font-semibold text-gray-800 truncate flex-1">{produto.nome}</p>
                   <span className="text-[11px] font-bold text-emerald-700 whitespace-nowrap">{fmtPreco(preco)}</span>
                 </div>
                 <p className="text-[10px] text-gray-400 truncate">{produto.sku ? `SKU: ${produto.sku}` : produto.categoria || 'Produto cadastrado'}</p>
@@ -1655,6 +1660,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
           produtoId: it.produtoId,
           skuCatalogo: it.skuCatalogo,
           nomeCatalogo: it.nomeCatalogo,
+          imagem: it.imagem,
         })));
       }
       setIaOk(true);
