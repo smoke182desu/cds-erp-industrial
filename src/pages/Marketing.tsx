@@ -68,6 +68,35 @@ export function Marketing() {
   const [showAutopilotModal, setShowAutopilotModal] = useState(false);
   const [autopilotCategory, setAutopilotCategory] = useState('');
   const [autopilotLimit, setAutopilotLimit] = useState(10);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+
+  const openAutopilotModal = async () => {
+    setShowAutopilotModal(true);
+    if (availableCategories.length === 0) {
+      setLoadingCategories(true);
+      try {
+        const res = await fetch('/api/produtos');
+        if (res.ok) {
+          const json = await res.json();
+          const cats = new Set<string>();
+          (json.produtos || []).forEach((p: any) => {
+            if (p.categoria) {
+              p.categoria.split(',').forEach((c: string) => {
+                const catTrimmed = c.trim();
+                if (catTrimmed) cats.add(catTrimmed);
+              });
+            }
+          });
+          setAvailableCategories(Array.from(cats).sort());
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoadingCategories(false);
+      }
+    }
+  };
 
   const startAutopilot = async () => {
     setShowAutopilotModal(false);
@@ -361,7 +390,7 @@ export function Marketing() {
               </button>
             </Tooltip>
             <Tooltip text="Piloto Automático: varre o estoque e gera posts em lote para a fila">
-              <button onClick={() => setShowAutopilotModal(true)} disabled={abLoading || naLoading || autopilotRunning}
+              <button onClick={openAutopilotModal} disabled={abLoading || naLoading || autopilotRunning}
                 className="flex items-center gap-2 bg-pink-500 hover:bg-pink-400 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-md disabled:opacity-50 border border-pink-400">
                 {autopilotRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
                 {autopilotRunning && autopilotProgress ? `Gerando (${autopilotProgress.current}/${autopilotProgress.total})` : 'Piloto Automático'}
@@ -930,12 +959,18 @@ export function Marketing() {
             <div className="p-6 space-y-4">
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase">Categoria ou Busca</label>
-                <input 
-                  value={autopilotCategory} 
-                  onChange={e => setAutopilotCategory(e.target.value)} 
-                  placeholder="Ex: Escada, Bancada, Metálica..."
-                  className="w-full mt-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-pink-400 outline-none" 
-                />
+                <div className="relative">
+                  <input 
+                    list="categorias-list"
+                    value={autopilotCategory} 
+                    onChange={e => setAutopilotCategory(e.target.value)} 
+                    placeholder={loadingCategories ? "Carregando categorias..." : "Ex: Escada, Bancada..."}
+                    className="w-full mt-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-pink-400 outline-none" 
+                  />
+                  <datalist id="categorias-list">
+                    {availableCategories.map(c => <option key={c} value={c} />)}
+                  </datalist>
+                </div>
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase">Quantidade Máxima de Anúncios</label>
