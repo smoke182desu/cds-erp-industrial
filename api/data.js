@@ -274,17 +274,19 @@ async function handleFotos(req, res) {
   }
   
   async function fetchPic(telefone) {
-    const number = String(telefone).replace(/\D/g, '');
-    if (!number) return null;
+    const numbers = variantesTelefone(telefone);
+    if (!numbers.length) return null;
     try {
-      for (const payload of [{ number }, { number: `${number}@s.whatsapp.net` }]) {
-        const r = await fetch(`${EVO_URL}/chat/fetchProfilePictureUrl/${EVO_INSTANCE}`, {
-          method: 'POST', headers, body: JSON.stringify(payload)
-        });
-        if (!r.ok) continue;
-        const data = await r.json();
-        const foto = extrairFotoPerfil(data);
-        if (foto) return foto;
+      for (const number of numbers) {
+        for (const payload of [{ number }, { number: `${number}@s.whatsapp.net` }]) {
+          const r = await fetch(`${EVO_URL}/chat/fetchProfilePictureUrl/${EVO_INSTANCE}`, {
+            method: 'POST', headers, body: JSON.stringify(payload)
+          });
+          if (!r.ok) continue;
+          const data = await r.json();
+          const foto = extrairFotoPerfil(data);
+          if (foto) return foto;
+        }
       }
       return null;
     } catch (e) { return null; }

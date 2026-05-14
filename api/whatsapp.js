@@ -69,30 +69,28 @@ function extrairFotoPerfil(data) {
 }
 
 async function buscarFotoPerfilWhatsApp(telefone, instance) {
-  const number = soDigitos(telefone);
-  if (!number || !EVOLUTION_API_KEY || !evolutionBaseUrl()) return '';
+  const numbers = variantesTelefone(telefone);
+  if (!numbers.length || !EVOLUTION_API_KEY || !evolutionBaseUrl()) return '';
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6000);
   const instanceToUse = String(instance || EVOLUTION_INSTANCE || 'cdsind').trim();
   const headers = { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' };
-  const payloads = [
-    { number },
-    { number: `${number}@s.whatsapp.net` },
-  ];
 
   try {
-    for (const payload of payloads) {
-      const r = await fetch(`${evolutionBaseUrl()}/chat/fetchProfilePictureUrl/${instanceToUse}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      if (!r.ok) continue;
-      const data = await r.json().catch(() => null);
-      const foto = extrairFotoPerfil(data);
-      if (foto) return foto;
+    for (const number of numbers) {
+      for (const payload of [{ number }, { number: `${number}@s.whatsapp.net` }]) {
+        const r = await fetch(`${evolutionBaseUrl()}/chat/fetchProfilePictureUrl/${instanceToUse}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        if (!r.ok) continue;
+        const data = await r.json().catch(() => null);
+        const foto = extrairFotoPerfil(data);
+        if (foto) return foto;
+      }
     }
   } catch (err) {
     if (err?.name !== 'AbortError') console.warn('[whatsapp] foto perfil falhou:', err.message);

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Lead, EtapaFunil,
   ETAPAS_FUNIL, ORIGEM_LABELS,
-  subscribeLeads, adicionarLead, atualizarLead,
+  subscribeLeads, buscarLeads, adicionarLead, atualizarLead,
 } from '../services/leadsService';
 import {
   Mensagem, buscarMensagens, enviarMensagem, enviarMidia,
@@ -905,6 +905,7 @@ function LeadItem({ lead, ativo, naoLido, onClick }: {
   naoLido: boolean;
   onClick: () => void;
 }) {
+  const [fotoFalhou, setFotoFalhou] = useState(false);
   const nome = (lead.nome || lead.telefone || 'Lead').trim();
   const inicial = nome[0].toUpperCase();
   const msgBruta = lead.ultimaMensagem?.trim() || '';
@@ -935,14 +936,16 @@ function LeadItem({ lead, ativo, naoLido, onClick }: {
       ? 'bg-[#dcf8c6]/40'
       : 'bg-white';
 
+  useEffect(() => { setFotoFalhou(false); }, [lead.fotoUrl]);
+
   return (
     <button onClick={onClick}
       className={`w-full text-left px-3 py-2.5 border-b flex gap-3 items-center hover:bg-gray-50 transition-colors ${bgClass}`}>
       {/* Avatar estilo WhatsApp - foto real ou inicial */}
-      {lead.fotoUrl ? (
+      {lead.fotoUrl && !fotoFalhou ? (
         <img src={lead.fotoUrl} alt={nome}
           className="w-12 h-12 rounded-full object-cover flex-shrink-0 shadow-sm select-none"
-          onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} />
+          onError={() => setFotoFalhou(true)} />
       ) : (
         <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-xl flex-shrink-0 shadow-sm select-none"
           style={{ backgroundColor: avatarCor(nome) }}>
@@ -2102,6 +2105,7 @@ export function Leads() {
   const [tabPainel, setTabPainel] = useState<'detalhes' | 'inteligencia'>('inteligencia');
   const [produtoCadastrar, setProdutoCadastrar] = useState<any>(null);
   const [painelExpandido, setPainelExpandido] = useState(false);
+  const fotosBackfillRef = useRef({ lastRun: 0, running: false });
 
   // Rastreia quais leads foram lidos — persiste em localStorage (cache) + Supabase (permanente)
   const [lidos, setLidos] = useState<Record<string, string>>(() => {
@@ -2150,6 +2154,27 @@ export function Leads() {
   }, [lidos]);
 
   useEffect(() => { return subscribeLeads(data => { setLeads(data); setLoading(false); }); }, []);
+  useEffect(() => {
+    const temFotoFaltando = leads.some(l => !l.fotoUrl && !!l.telefone);
+    if (!temFotoFaltando) return;
+
+    const agora = Date.now();
+    const controle = fotosBackfillRef.current;
+    if (controle.running || agora - controle.lastRun < 120000) return;
+
+    controle.running = true;
+    controle.lastRun = agora;
+    fetch('/api/data?resource=fotos&limit=30')
+      .then(r => r.ok ? r.json() : null)
+      .then(async data => {
+        if (data?.atualizados > 0) {
+          const atualizados = await buscarLeads();
+          setLeads(atualizados);
+        }
+      })
+      .catch(() => {})
+      .finally(() => { fotosBackfillRef.current.running = false; });
+  }, [leads]);
   useEffect(() => {
     if (leadAtivo) { const a = leads.find(l => l.id === leadAtivo.id); if (a) setLeadAtivo(a); }
   }, [leads]);
