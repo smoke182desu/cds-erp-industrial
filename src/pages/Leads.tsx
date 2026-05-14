@@ -706,10 +706,15 @@ function AssistenteVendas({ lead, msgs, onUsarSugestao, onMudarEtapa }: {
                           lead_id: lead.id,
                           telefone: lead.telefone,
                           variant_id: variantId,
-                          label: s.label,
+                          label: s.tipoAcao ? `${s.tipoAcao}:${s.label}` : s.label,
                           mensagem: s.mensagem,
                           etapa: lead.etapa,
-                          tecnica: analise?.tecnicaRecomendada || '',
+                          tecnica: [
+                            analise?.tecnicaRecomendada || '',
+                            analise?.perfilCliente ? `perfil:${analise.perfilCliente}` : '',
+                            s.momentoVenda ? `momento:${s.momentoVenda}` : '',
+                            s.tipoAcao ? `acao:${s.tipoAcao}` : '',
+                          ].filter(Boolean).join(' | '),
                         }),
                       })
                         .then(r => r.json())

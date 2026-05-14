@@ -2,7 +2,7 @@
 // Cache em memoria para serverless (warm instances ~5-15min).
 // Extraido de assistente-vendas.js para reuso.
 
-const PROMPT_VERSION = 'momento-conversa-v5-checkup';
+const PROMPT_VERSION = 'momento-conversa-v7-funil-perfil';
 
 const cache = new Map();
 const CACHE_TTL = 180000; // 3 minutos

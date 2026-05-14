@@ -15,14 +15,18 @@ const TAXA_SUCESSO_NEGATIVO = 0.25;
 export async function registrarUso(body) {
   const { lead_id, telefone, variant_id = 'A', label, mensagem, etapa, tecnica } = body;
   if (!lead_id || !label) return { ok: false, erro: 'lead_id e label obrigatorios' };
+  const contextoEtapa = [etapa || '', ...(String(tecnica || '').match(/\b(?:perfil|momento|acao):[^|]+/g) || [])]
+    .map(v => String(v).trim())
+    .filter(Boolean)
+    .join(';');
   const { data, error } = await supabaseClient.from('ia_experimentos').insert({
     lead_id, telefone: telefone || '', variant_id,
     label_sugestao: label, mensagem_sugestao: mensagem || '',
-    etapa_no_momento: etapa || '', tecnica_usada: tecnica || '',
+    etapa_no_momento: contextoEtapa || etapa || '', tecnica_usada: tecnica || '',
     usada: true, resultado: 'pendente',
   }).select('id').single();
   if (error) throw error;
-  consolidarLazy(label, etapa).catch(() => {});
+  consolidarLazy(label, contextoEtapa || etapa).catch(() => {});
   return { ok: true, experimento_id: data?.id };
 }
 

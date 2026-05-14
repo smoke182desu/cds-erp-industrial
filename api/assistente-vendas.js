@@ -132,6 +132,214 @@ function encurtarMensagem(texto, maxPalavras = 22) {
   return limpo.includes('?') ? `${curta}?` : curta;
 }
 
+function normalizarTextoIA(texto) {
+  return String(texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function detectarDadosColetados(mensagens, analise = null) {
+  const mensagensCliente = (Array.isArray(mensagens) ? mensagens : []).filter(m => m?.tipo !== 'saida');
+  const texto = normalizarTextoIA([
+    ...mensagensCliente.map(m => m?.texto || ''),
+    ...(Array.isArray(analise?.dadosProposta?.produtos) ? analise.dadosProposta.produtos : []),
+    analise?.dadosProposta?.observacoes || '',
+  ].join(' '));
+
+  const tem = campo => ({
+    campo,
+    coletado: true,
+  });
+  const dados = [];
+
+  if (/\b\d+(?:[,.]\d+)?\s*(?:m|metro|metros|cm|centimetro|centimetros)\b/.test(texto)
+    || /\b\d+(?:[,.]\d+)?\s*[xX]\s*\d+(?:[,.]\d+)?\b/.test(texto)
+    || /\b(largura|comprimento|altura|medida|dimensao|dimensoes|tamanho)\b/.test(texto)) {
+    dados.push(tem('medida'));
+  }
+
+  if (/\b(?:espessura|grossura)\b/.test(texto)
+    || /\b\d+(?:[,.]\d+)?\s*mm\b/.test(texto)
+    || /\bchapa\s*(?:n[ºo]\s*)?\d{1,2}\b/.test(texto)) {
+    dados.push(tem('espessura'));
+  }
+
+  if (/\b(aco carbono|aco galvanizado|galvanizado|inox|aluminio|metalon|ferro|chapa de aco|chapa galvanizada|chapa inox)\b/.test(texto)) {
+    dados.push(tem('material'));
+  }
+
+  if (/\b(?:quantidade|qtd|qtde)\D{0,12}\d+\b/.test(texto)
+    || /\b\d+\s*(?:un|und|unidade|unidades|peca|pecas|pç|pcs|chapas|carrinhos|containers)\b/.test(texto)) {
+    dados.push(tem('quantidade'));
+  }
+
+  if (/\b(?:acabamento|pintura|pintado|epoxi|pu|esmalte|galvanizado|sem pintura|natural)\b/.test(texto)) {
+    dados.push(tem('acabamento'));
+  }
+
+  if (/\b(?:carga|peso|kg|quilo|quilos|suporta|transporta)\b/.test(texto)) {
+    dados.push(tem('carga'));
+  }
+
+  if (/\b(?:uso|usar|passagem|cadeira de roda|ambiente|piso|interno|externo|obra|local)\b/.test(texto)) {
+    dados.push(tem('uso'));
+  }
+
+  if (/\b\d{5}-?\d{3}\b|\bcep\b/.test(texto)) {
+    dados.push(tem('cep'));
+  }
+
+  if (/\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b|\bcnpj\b/.test(texto)) {
+    dados.push(tem('cnpj'));
+  }
+
+  return [...new Map(dados.map(d => [d.campo, d])).values()];
+}
+
+function dadoColetado(dadosColetados, campo) {
+  const alvo = normalizarTextoIA(campo);
+  return (dadosColetados || []).some(d => normalizarTextoIA(d.campo) === alvo);
+}
+
+function campoSolicitadoNoTexto(texto) {
+  const t = normalizarTextoIA(texto);
+  const campos = [
+    ['espessura', /\b(espessura|grossura|chapa\s*(?:n|numero)?|mm)\b/],
+    ['material', /\b(material|aco|inox|aluminio|galvanizado|metalon|ferro)\b/],
+    ['quantidade', /\b(quantidade|qtd|qtde|quantas|quantos|unidades|chapas)\b/],
+    ['medida', /\b(medida|dimensao|dimensoes|largura|comprimento|altura|tamanho)\b/],
+    ['acabamento', /\b(acabamento|pintura|pintado|epoxi|pu|esmalte)\b/],
+    ['carga', /\b(carga|peso|kg|quilo|transporta|suporta)\b/],
+    ['uso', /\b(uso|usar|ambiente|piso|local|finalidade)\b/],
+    ['cep', /\b(cep|entrega|frete|cidade|endereco)\b/],
+  ];
+  return campos.find(([, regex]) => regex.test(t))?.[0] || '';
+}
+
+function proximoCampoPendente(dadosColetados, faltantes = [], ignorar = []) {
+  const ignorados = new Set((Array.isArray(ignorar) ? ignorar : []).map(c => normalizarTextoIA(c)));
+  const fila = (Array.isArray(faltantes) && faltantes.length ? faltantes : ['material', 'quantidade', 'acabamento', 'cep'])
+    .map(c => normalizarTextoIA(c))
+    .filter(c => c && !ignorados.has(c) && !dadoColetado(dadosColetados, c));
+  return fila[0] || '';
+}
+
+function proximaPerguntaEducada(dadosColetados, faltantes = [], ignorar = []) {
+  const campo = proximoCampoPendente(dadosColetados, faltantes, ignorar);
+
+  const mensagens = {
+    material: 'Perfeito, obrigado. Qual material voce prefere para essa chapa?',
+    quantidade: 'Perfeito, obrigado. Quantas chapas voce precisa para eu calcular certinho?',
+    acabamento: 'Perfeito, obrigado. Qual acabamento voce prefere: sem pintura, galvanizado ou pintura?',
+    carga: 'Perfeito, obrigado. Ela vai receber alguma carga ou apenas passagem?',
+    uso: 'Perfeito, obrigado. Ela sera usada em qual tipo de passagem?',
+    cep: 'Perfeito, obrigado. Pode me passar o CEP para calcular frete e prazo?',
+    medida: 'Perfeito, obrigado. Pode confirmar a medida final da peca?',
+    espessura: 'Perfeito, obrigado. Qual espessura voce prefere para a chapa?',
+  };
+  return mensagens[campo] || 'Perfeito, obrigado. Com esses dados vou calcular valor e prazo para voce.';
+}
+
+function momentoVendaPorEtapa(etapa, analise, mensagens) {
+  const atual = String(etapa || '').toLowerCase();
+  const detectada = String(analise?.etapaDetectada || '').toLowerCase();
+  const etapaFinal = detectada && detectada !== 'nao_se_aplica' ? detectada : atual;
+  const texto = (Array.isArray(mensagens) ? mensagens : []).map(m => m?.texto || '').join(' ');
+  const faltantes = analise?.diretorVendas?.dadosFaltantesProduto || [];
+
+  if (['fechado_ganho', 'pos_venda'].includes(etapaFinal)) return 'pos_venda';
+  if (['proposta_enviada', 'negociacao'].includes(etapaFinal)) return 'fechamento';
+  if (/\b(desconto|pix|fechar|fechado|aprov|pedido|condi[cç][aã]o)\b/i.test(texto)) return 'fechamento';
+  if (/\b(valor|pre[cç]o|prazo|orcamento|or[cç]amento|quanto fica|quanto custa)\b/i.test(texto)) return faltantes.length ? 'orcamento_com_dado_faltante' : 'orcamento';
+  if (faltantes.length) return 'qualificacao_tecnica';
+  return 'resposta_inicial';
+}
+
+function tipoAcaoPorMensagem(texto, momentoVenda) {
+  const t = normalizarTextoIA(texto);
+  if (momentoVenda === 'fechamento' || /\b(fechar|aprovar|pix|pedido|sinal|confirmar|proposta)\b/.test(t)) return 'fechamento';
+  if (/\b(cep|frete|entrega|prazo)\b/.test(t)) return 'prazo_frete';
+  if (/\b(valor|preco|orcamento|calcular)\b/.test(t)) return 'orcamento';
+  if (campoSolicitadoNoTexto(texto)) return 'coleta_dado';
+  if (/\b(acompanho|aguardo|retorno)\b/.test(t)) return 'follow_up';
+  return 'resposta_contextual';
+}
+
+function fraseFechamentoEducada(index = 0) {
+  const opcoes = [
+    'Perfeito. Posso calcular a condicao final e te passar valor e prazo agora?',
+    'Com esses dados eu ja consigo encaminhar o orcamento. Posso seguir?',
+    'Se estiver tudo certo, deixo a proposta pronta para sua aprovacao.',
+    'Consigo validar a melhor condicao para fechar. Pode ser no PIX?',
+  ];
+  return opcoes[index % opcoes.length];
+}
+
+function detectarPerfilCliente(mensagens, analise = null) {
+  const texto = normalizarTextoIA([
+    ...(Array.isArray(mensagens) ? mensagens : []).map(m => m?.texto || ''),
+    analise?.novaMemoria || '',
+    analise?.parecer || '',
+  ].join(' '));
+
+  if (/\b(mm|espessura|largura|medida|aco|inox|galvanizado|norma|desenho|projeto|tecnico)\b/.test(texto)) return 'tecnico';
+  if (/\b(preco|valor|desconto|barato|condicao|pix|parcel)\b/.test(texto)) return 'preco';
+  if (/\b(urgente|hoje|amanha|obra parada|rapido|prazo|preciso logo)\b/.test(texto)) return 'urgente';
+  if (/\b(talvez|vou ver|pensar|nao sei|duvida|opcoes|orcamentos)\b/.test(texto)) return 'indeciso';
+  if (/\b(mensal|sempre|recorrente|manutencao|compras|fornecedor|empresa)\b/.test(texto)) return 'recorrente';
+  return analise?.perfilCliente || 'nao_identificado';
+}
+
+function aplicarTomEducado(texto) {
+  let msg = String(texto || '').replace(/\bvc\b/gi, 'voce').replace(/\s+/g, ' ').trim();
+  const normal = normalizarTextoIA(msg);
+  if (msg.includes('?') && !/\b(por gentileza|por favor|obrigado|perfeito|certo|pode me|voce pode)\b/.test(normal)) {
+    msg = `Perfeito. ${msg}`;
+  }
+  return encurtarMensagem(msg);
+}
+
+function removerRepeticoesDeDados(analise, mensagens, dadosColetados, contexto = {}) {
+  if (!analise) return analise;
+  const faltantes = Array.isArray(analise?.diretorVendas?.dadosFaltantesProduto)
+    ? analise.diretorVendas.dadosFaltantesProduto
+    : [];
+  if (analise.diretorVendas) {
+    analise.diretorVendas.dadosFaltantesProduto = faltantes.filter(campo => !dadoColetado(dadosColetados, campo));
+  }
+
+  if (!Array.isArray(analise.sugestoes)) return analise;
+  const faltantesAtualizados = analise?.diretorVendas?.dadosFaltantesProduto || [];
+  const momentoVenda = momentoVendaPorEtapa(contexto.etapaAtual || '', analise, mensagens);
+  analise.momentoVenda = analise.momentoVenda || momentoVenda;
+  analise.perfilCliente = analise.perfilCliente || detectarPerfilCliente(mensagens, analise);
+  const camposSugeridos = new Set();
+  analise.sugestoes = analise.sugestoes.map((sugestao, index) => {
+    const campo = campoSolicitadoNoTexto(sugestao?.mensagem || '');
+    const repetiuDado = campo && dadoColetado(dadosColetados, campo);
+    const deveFechar = momentoVenda === 'fechamento' && campo && ['medida', 'espessura', 'uso', 'material'].includes(campo) && faltantesAtualizados.length === 0;
+    const mensagem = repetiuDado
+      ? proximaPerguntaEducada(dadosColetados, faltantesAtualizados, [...camposSugeridos])
+      : deveFechar
+        ? fraseFechamentoEducada(index)
+        : aplicarTomEducado(sugestao?.mensagem || '');
+    const novoCampo = campoSolicitadoNoTexto(mensagem);
+    if (novoCampo && !dadoColetado(dadosColetados, novoCampo)) camposSugeridos.add(novoCampo);
+    const tipoAcao = tipoAcaoPorMensagem(mensagem, momentoVenda);
+    return {
+      ...sugestao,
+      label: repetiuDado ? `Proximo dado ${index + 1}` : sugestao.label,
+      mensagem,
+      momentoVenda: sugestao.momentoVenda || momentoVenda,
+      tipoAcao: sugestao.tipoAcao || tipoAcao,
+      objetivo: sugestao.objetivo || (tipoAcao === 'fechamento' ? 'conduzir fechamento' : 'avancar conversa sem repetir dado'),
+    };
+  });
+  analise.dadosColetados = dadosColetados.map(d => d.campo);
+  return analise;
+}
+
 function pareceMedidaCurta(texto) {
   return /^\s*\d+([.,]\d+)?\s*[xX]\s*\d+([.,]\d+)?\s*$/.test(String(texto || ''));
 }
@@ -1003,6 +1211,10 @@ async function analisarConversa(mensagens, lead) {
     ? contextoConversa.map(m => `[${m.tipo === 'saida' ? 'JEAN' : m.tipo === 'sistema' ? 'SISTEMA' : 'CLIENTE'}]: ${m.texto}`).join('\n')
     : '(sem mensagens ainda)';
   const resumoLeitura = montarResumoLeitura(mensagens);
+  const dadosColetadosPreIA = detectarDadosColetados(mensagens);
+  const dadosColetadosPrompt = dadosColetadosPreIA.length
+    ? dadosColetadosPreIA.map(d => `- ${d.campo}`).join('\n')
+    : '(nenhum dado tecnico confirmado pelo cliente ainda)';
   const tecnicaAtiva = tecnicaPorEtapa(lead.etapa || '');
 
   const saudacao = obterSaudacao();
@@ -1064,6 +1276,11 @@ DIRETRIZES PARA AS MENSAGENS SUGERIDAS (Efeito Doppelgänger):
 - Evite tom de robô/consultor. Pergunte apenas o próximo dado necessário, ou responda valor/prazo se esse for o momento.
 - MANTENHA O CONTROLE: Termine a sugestão com uma pergunta ou diretriz que faça a conversa avançar no sentido estratégico do Avatar ativo.
 
+- PROIBIDO perguntar dado que ja esta em DADOS TECNICOS JA COLETADOS. Se o cliente informou espessura, largura, uso ou quantidade, valide e avance.
+- Giorno deve seguir o momento da venda: qualificacao pergunta dados faltantes; orcamento calcula/encaminha; fechamento usa frases de decisao, aprovacao, condicao e proximo passo.
+- Classifique o cliente em um dos 5 perfis comerciais: tecnico, preco, urgente, indeciso ou recorrente. Ajuste a resposta ao perfil.
+- Cada sugestao e uma decisao de RPG comercial: coloque momentoVenda e tipoAcao para Bruno medir efetividade por etapa, perfil e resultado.
+
 Analise o momento exato da conversa e retorne APENAS um JSON valido.
 
 MEMORIA GLOBAL — BRUNO COMUNICA A GIORNO (aprendizados de todos os atendimentos):
@@ -1091,6 +1308,9 @@ ${memoriaAtual ? memoriaAtual : '(Nenhuma memória anterior registrada para este
 
 LEITURA OPERACIONAL DA CONVERSA:
 ${resumoLeitura}
+
+DADOS TECNICOS JA COLETADOS (nao perguntar de novo):
+${dadosColetadosPrompt}
 
 CONVERSA ATUAL:
 ${conversaStr}
@@ -1139,6 +1359,12 @@ Sua tarefa:
 4. Decida se o funil deve avançar automaticamente. Só marque "deveAvancarEtapa": true quando houver evidencia explicita na conversa e confiança >= 80.
 5. Gere uma "novaMemoria" que seja um resumo denso de tudo que você aprendeu sobre esse contato até o momento (junte o que já sabia com o que descobriu agora na conversa atual). Foque no perfil psicológico, dores e estágio da negociação.
 
+REGRAS EXTRAS DE FUNIL E APRENDIZADO:
+- Se a etapa/momento for proposta_enviada, negociacao ou fechamento, as sugestoes devem ser de fechamento, follow-up, condicao, aprovacao ou proximo passo.
+- Nao volte para perguntas de qualificacao quando o cliente ja esta em fechamento.
+- Se um dado aparece em DADOS TECNICOS JA COLETADOS, remova esse dado de dadosFaltantesProduto e nao use sugestao perguntando ele.
+- Sugestoes devem trazer momentoVenda, tipoAcao e objetivo para Bruno medir efetividade por etapa e perfil.
+
 REGRA PARA PEDIDO DE VALOR/PRAZO:
 - Quando o cliente pedir valor e prazo de um item ja claro, responda nessa direcao.
 - Nao volte para perguntas iniciais nem troque a familia do produto.
@@ -1152,12 +1378,26 @@ REGRA DE MOMENTO:
 - Se o cliente pediu uma medida e Jean acabou de responder a medida, nao pergunte uso/peso/piso como se nada tivesse sido respondido.
 - Continue do ponto atual da conversa.
 
+REGRA DE FECHAMENTO:
+- Em proposta_enviada/negociacao/fechamento, Giorno deve usar frases de fechamento: confirmar aprovacao, condicao, PIX, prazo, pedido, sinal ou proximo passo.
+- Nao pergunte espessura, largura, uso ou quantidade se esses dados ja foram coletados.
+- Se faltar algo realmente impeditivo, pergunte apenas esse dado com tom educado e explique que e para fechar o orcamento.
+
+PERFIS DE CLIENTE PARA APRENDIZADO:
+- tecnico: fala medidas, material, especificacao e quer precisao.
+- preco: compara valor, pede desconto ou pergunta condicao.
+- urgente: fala prazo, entrega rapida, hoje, amanha ou obra parada.
+- indeciso: responde pouco, muda escopo ou pede muitas opcoes.
+- recorrente: demonstra compra frequente, empresa, manutencao ou demanda repetida.
+
 Retorne APENAS o JSON:
 {
   "dadosProposta":{"tipoCliente":"empresa|pessoa_fisica|orgao_publico|nao_identificado","nome":"","empresa":"","documento":"","email":"","endereco":"","produtos":["item c/ qtd"],"valorEstimado":"","prazo":"","observacoes":""},
   "etapaDetectada":"lead_novo|contato_feito|qualificado|proposta_enviada|negociacao|fechado_ganho|fechado_perdido|pos_venda|nao_se_aplica|funcionario|fornecedor",
   "deveAvancarEtapa": false,
   "confiancaFunil": 0,
+  "perfilCliente": "tecnico|preco|urgente|indeciso|recorrente|nao_identificado",
+  "momentoVenda": "resposta_inicial|qualificacao_tecnica|orcamento_com_dado_faltante|orcamento|fechamento|pos_venda",
   "motivoAvanco": "Explique em uma frase curta a evidencia para avancar ou manter etapa.",
   "parecer": "Sua análise estratégica focada no perfil (Venda, Funcionário ou Pessoal), tom e próximo passo lógico.",
   "tecnicaRecomendada": "Ex: SPIN (se venda) OU Gestão de Conflitos (se funcionário) OU Rapport (se amigo)",
@@ -1205,6 +1445,8 @@ ATENÇÃO: Se a conversa for PESSOAL, NÃO FALE DE PRODUTOS. Seja um amigo conve
   let analise = parseIAResponse(iaResult.content);
 
   analise = normalizarAvancoFunil(analise, lead.etapa || '', mensagens);
+  const dadosColetados = detectarDadosColetados(mensagens, analise);
+  analise = removerRepeticoesDeDados(analise, mensagens, dadosColetados, { etapaAtual: lead.etapa || '' });
   analise = normalizarSugestoes(analise, saudacao, precisaSaudacao, { ultimaMensagem });
   analise = aplicarCheckupAtendimento(analise, mensagens);
 
