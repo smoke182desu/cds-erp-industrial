@@ -60,7 +60,7 @@ export function Marketing() {
   const [filaLoading, setFilaLoading] = useState(false);
   const [previewPost, setPreviewPost] = useState<any>(null);
   const [publishing, setPublishing] = useState('');
-  const [publishResult, setPublishResult] = useState<any>(null);
+  const [filaPublishResult, setFilaPublishResult] = useState<any>(null);
 
   const fetchFilaPosts = useCallback(async () => {
     setFilaLoading(true);
@@ -77,7 +77,7 @@ export function Marketing() {
   const publishToSocial = async (post: any, platform: 'publish-facebook' | 'publish-instagram' | 'publish-all') => {
     const pubKey = `${post.id}-${platform}`;
     setPublishing(pubKey);
-    setPublishResult(null);
+    setFilaPublishResult(null);
     try {
       const firstImgUrl = (post.imagens || []).find((img: any) => img.url)?.url || '';
       const res = await fetch('/api/data?resource=social-publish', {
@@ -92,11 +92,11 @@ export function Marketing() {
         }),
       });
       const json = await res.json();
-      setPublishResult({ key: pubKey, ...json });
+      setFilaPublishResult({ key: pubKey, ...json });
       if (json.ok || json.results) fetchFilaPosts();
-      setTimeout(() => { setPublishing(''); setPublishResult(null); }, 5000);
+      setTimeout(() => { setPublishing(''); setFilaPublishResult(null); }, 5000);
     } catch (e) {
-      setPublishResult({ key: pubKey, ok: false, error: 'Erro de conexao' });
+      setFilaPublishResult({ key: pubKey, ok: false, error: 'Erro de conexao' });
       setPublishing('');
     }
   };
@@ -721,9 +721,9 @@ export function Marketing() {
                       </div>
 
                       {/* Publish result feedback */}
-                      {publishResult?.key?.startsWith(post.id) && (
-                        <div className={`mt-1.5 text-[9px] px-2 py-1 rounded ${publishResult.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {publishResult.ok ? 'Publicado com sucesso!' : publishResult.error?.slice(0, 80)}
+                      {filaPublishResult?.key?.startsWith(post.id) && (
+                        <div className={`mt-1.5 text-[9px] px-2 py-1 rounded ${filaPublishResult.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {filaPublishResult.ok ? 'Publicado com sucesso!' : filaPublishResult.error?.slice(0, 80)}
                         </div>
                       )}
 
