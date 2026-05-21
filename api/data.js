@@ -380,6 +380,61 @@ async function handleEvolutionDiag(req, res) {
     }
   }
 
+
+  // ——— QR Code (GET) — busca QR para reconectar o WhatsApp ———
+  if (String(req.query.action || '').toLowerCase() === 'qrcode') {
+    try {
+      const r = await fetch(`${EVO_URL}/instance/connect/${EVO_INSTANCE}`, { headers });
+      const data = await r.json();
+      // data pode vir como { count, base64, code, pairingCode } OU { qrcode: {...} }
+      const base64 = data?.base64 || data?.qrcode?.base64 || null;
+      const code = data?.code || data?.qrcode?.code || null;
+      const pairingCode = data?.pairingCode || data?.qrcode?.pairingCode || null;
+      return res.status(200).json({
+        ok: r.ok,
+        action: 'qrcode',
+        qrcode: { base64, code, count: data?.count ?? 0 },
+        pairingCode,
+        raw: data,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ——— Restart (POST) — reinicia conexão da instância ———
+  if (req.method === 'POST' && String(req.query.action || '').toLowerCase() === 'restart') {
+    try {
+      const r = await fetch(`${EVO_URL}/instance/restart/${EVO_INSTANCE}`, { method: 'POST', headers });
+      const data = await r.json().catch(() => ({}));
+      return res.status(200).json({ ok: r.ok, action: 'restart', response: data });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ——— Create (POST) — cria a instância caso não exista (Application not found) ———
+  if (req.method === 'POST' && String(req.query.action || '').toLowerCase() === 'create') {
+    try {
+      const body = {
+        instanceName: EVO_INSTANCE,
+        integration: 'WHATSAPP-BAILEYS',
+        qrcode: true,
+        webhook: {
+          url: EXPECTED_WEBHOOK,
+          byEvents: false,
+          base64: true,
+          events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE'],
+        },
+      };
+      const r = await fetch(`${EVO_URL}/instance/create`, { method: 'POST', headers, body: JSON.stringify(body) });
+      const data = await r.json();
+      return res.status(r.status).json({ ok: r.ok, action: 'create', response: data });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   if (req.method === 'POST' && String(req.query.action||'').toLowerCase() === 'set') {
     const webhookUrl = (req.body && req.body.url) || EXPECTED_WEBHOOK;
     const events = (req.body && req.body.events) || ['MESSAGES_UPSERT'];
