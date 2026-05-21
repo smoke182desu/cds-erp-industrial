@@ -148,6 +148,18 @@ function evolutionErroDetalhado(err) {
   return err.message || 'Erro desconhecido';
 }
 
+function payloadMediaBase({ numero, mediaType, mimetype, caption, fileName }) {
+  return {
+    number: numero,
+    mediatype: mediaType,
+    mediaType,
+    mimetype,
+    mimeType: mimetype,
+    caption: caption || '',
+    fileName,
+  };
+}
+
 async function postarMediaMultipart({ numero, mediaType, mimetype, caption, mediaInfo, fileName }) {
   if (typeof FormData === 'undefined' || typeof Blob === 'undefined') {
     throw new Error('FormData indisponivel no runtime');
@@ -156,7 +168,9 @@ async function postarMediaMultipart({ numero, mediaType, mimetype, caption, medi
   const form = new FormData();
   form.append('number', numero);
   form.append('mediatype', mediaType);
+  form.append('mediaType', mediaType);
   form.append('mimetype', mimetype);
+  form.append('mimeType', mimetype);
   form.append('caption', caption || '');
   form.append('fileName', fileName);
   form.append('media', new Blob([Buffer.from(mediaInfo.rawBase64, 'base64')], { type: mimetype }), fileName);
@@ -184,17 +198,15 @@ async function enviarMediaEvolution({ numero, mediaType, mimetype, caption, medi
   const url = `${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE}`;
   const headers = { apikey: EVOLUTION_API_KEY, 'Content-Type': 'application/json' };
   const timeout = 60000;
-  const commonV2 = {
-    number: numero,
-    mediatype: mediaType,
-    mimetype,
-    caption: caption || '',
-    fileName,
-  };
+  const commonV2 = payloadMediaBase({ numero, mediaType, mimetype, caption, fileName });
   const commonV1 = {
+    ...commonV2,
     number: numero,
     mediaMessage: {
+      mediatype: mediaType,
       mediaType,
+      mimetype,
+      mimeType: mimetype,
       fileName,
       caption: caption || '',
     },
@@ -202,26 +214,29 @@ async function enviarMediaEvolution({ numero, mediaType, mimetype, caption, medi
   };
 
   const tentativas = [
-    { nome: 'multipart-file', run: () => postarMediaMultipart({ numero, mediaType, mimetype, caption, mediaInfo, fileName }) },
     { nome: 'v2-base64', run: () => axios.post(url, { ...commonV2, media: mediaInfo.rawBase64 }, { headers, timeout }) },
     { nome: 'v2-dataurl', run: () => axios.post(url, { ...commonV2, media: mediaInfo.dataUrl }, { headers, timeout }) },
+    { nome: 'multipart-file', run: () => postarMediaMultipart({ numero, mediaType, mimetype, caption, mediaInfo, fileName }) },
     { nome: 'v1-base64', run: () => axios.post(url, { ...commonV1, mediaMessage: { ...commonV1.mediaMessage, media: mediaInfo.rawBase64 } }, { headers, timeout }) },
     { nome: 'v1-dataurl', run: () => axios.post(url, { ...commonV1, mediaMessage: { ...commonV1.mediaMessage, media: mediaInfo.dataUrl } }, { headers, timeout }) },
   ];
 
   let lastErr;
+  const erros = [];
   for (const tentativa of tentativas) {
     try {
       return await tentativa.run();
     } catch (err) {
       lastErr = err;
       const status = err.response?.status;
-      console.warn(`[mensagem] sendMedia ${tentativa.nome} falhou:`, status, evolutionErroDetalhado(err));
+      const detalhe = evolutionErroDetalhado(err);
+      erros.push(`${tentativa.nome}: ${detalhe}`);
+      console.warn(`[mensagem] sendMedia ${tentativa.nome} falhou:`, status, detalhe);
       if (status === 401 || status === 403) break;
     }
   }
 
-  const detail = evolutionErroDetalhado(lastErr || new Error('Falha desconhecida'));
+  const detail = erros.join(' | ') || evolutionErroDetalhado(lastErr || new Error('Falha desconhecida'));
   const e = new Error(`Evolution recusou a midia: ${detail}`);
   e.status = lastErr?.response?.status || 500;
   throw e;

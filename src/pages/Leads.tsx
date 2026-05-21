@@ -9,7 +9,7 @@ import {
 } from '../services/conversasService';
 import {
   PropostaDados, ItemProposta,
-  proximoNumeroProposta, abrirProposta,
+  proximoNumeroProposta, baixarPropostaPDF,
 } from '../services/propostaService';
 import { useERP } from '../contexts/ERPContext';
 import { Cliente, Proposta } from '../types';
@@ -1556,6 +1556,33 @@ function ProdutoPropostaInput({ item, onNomeChange, onSelect }: {
   );
 }
 
+type PropostaDraft = {
+  dados?: Omit<PropostaDados, 'itens'>;
+  itens?: ItemProposta[];
+  iaOk?: boolean;
+  salvoEm?: string;
+};
+
+function carregarDraftProposta(chave: string): PropostaDraft | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(chave);
+    if (!raw) return null;
+    return JSON.parse(raw) as PropostaDraft;
+  } catch {
+    return null;
+  }
+}
+
+function salvarDraftProposta(chave: string, draft: PropostaDraft) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(chave, JSON.stringify(draft));
+  } catch {
+    // Sem espaco/localStorage bloqueado: o modal continua funcionando normalmente.
+  }
+}
+
 function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
   lead: Lead;
   analisePrevia?: any;
@@ -1590,11 +1617,24 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
     ? analisePrevia.produtos.map(itemPropostaDaAnalise)
     : [{ nome: '', descricao: '', qtd: 1, valorUnitario: 0 }];
 
-  const [dados, setDados] = useState<Omit<PropostaDados,'itens'>>(initDados);
-  const [itens, setItens] = useState<ItemProposta[]>(initItens);
+  const draftKey = `crm:proposta-draft:${lead.id || lead.telefone || lead.nome || 'sem-lead'}`;
+  const draftInicialRef = useRef<PropostaDraft | null | undefined>(undefined);
+  if (draftInicialRef.current === undefined) {
+    draftInicialRef.current = carregarDraftProposta(draftKey);
+  }
+  const draftInicial = draftInicialRef.current;
+
+  const [dados, setDados] = useState<Omit<PropostaDados,'itens'>>(() =>
+    draftInicial?.dados ? { ...initDados, ...draftInicial.dados } : initDados
+  );
+  const [itens, setItens] = useState<ItemProposta[]>(() =>
+    Array.isArray(draftInicial?.itens) && draftInicial.itens.length > 0 ? draftInicial.itens : initItens
+  );
   const [gerandoIA, setGerandoIA] = useState(false);
   const [erroIA, setErroIA] = useState('');
-  const [iaOk, setIaOk] = useState(!!analisePrevia);
+  const [iaOk, setIaOk] = useState(!!analisePrevia || !!draftInicial?.iaOk);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [feedbackPdf, setFeedbackPdf] = useState(draftInicial?.salvoEm ? 'Rascunho salvo' : '');
   const cnpjConsultadoRef = useRef('');
   // atualizarCliente e adicionarPropostaDireta podem nao existir em todas versoes do contexto — lemos com fallback
   const erp = useERP() as any;
@@ -1607,6 +1647,15 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
     setItens(prev => prev.map((it, idx) => idx === i ? { ...it, [k]: v } : it));
   const addItem = () => setItens(p => [...p, { nome: '', descricao: '', qtd: 1, valorUnitario: 0 }]);
   const remItem = (i: number) => setItens(p => p.filter((_, idx) => idx !== i));
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const timer = window.setTimeout(() => {
+      salvarDraftProposta(draftKey, { dados, itens, iaOk, salvoEm: new Date().toISOString() });
+      setFeedbackPdf('Rascunho salvo');
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [draftKey, dados, itens, iaOk]);
 
   useEffect(() => {
     const cnpj = soDigitosProposta((dados as any).cnpj);
@@ -1673,7 +1722,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (!analisePrevia) gerarComIA(); }, []);
 
-  const gerar = async () => {
+  const gerarProposta = async () => {
     const documento = String((dados as any).cnpj || documentoPrev || '').trim();
     const documentoDigitos = soDigitosProposta(documento);
     const tipoCliente: Cliente['tipo'] = documentoDigitos.length === 11 ? 'PF' : 'PJ';
@@ -1782,6 +1831,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
           status: 'enviada',
           observacoes: [
             (dados as any).observacoes,
+            dados.intro ? `Introducao IA: ${dados.intro}` : '',
             documento ? `Documento: ${documento}` : '',
             dados.endereco ? `Endereco: ${dados.endereco}` : '',
             dados.cep ? `CEP: ${dados.cep}` : '',
@@ -1796,7 +1846,7 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
       console.error('Falha ao salvar proposta no banco:', e);
     }
 
-    // Abre o HTML da proposta — usa numero do banco (1000+) ou fallback
+    // Gera o PDF usando numero do banco (1000+) ou fallback
     let num = numeroBanco;
     if (!num) {
       try {
@@ -1806,23 +1856,39 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
         num = Date.now() % 10000;
       }
     }
+    baixarPropostaPDF({ ...dados, numero: num, itens } as PropostaDados);
+    setFeedbackPdf('PDF gerado e proposta salva.');
+  };
+
+  const gerar = async () => {
+    if (gerandoPdf) return;
+    setGerandoPdf(true);
+    setFeedbackPdf('Gerando PDF...');
     try {
-      abrirProposta({ ...dados, numero: num, itens } as PropostaDados);
+      await gerarProposta();
     } catch (e) {
-      console.error('Erro ao abrir proposta:', e);
-      alert('Não foi possível abrir a proposta: ' + (e as Error).message);
+      console.error('Erro ao gerar PDF:', e);
+      const mensagem = (e as Error).message || 'erro desconhecido';
+      setFeedbackPdf('Erro ao gerar PDF.');
+      alert('Não foi possível gerar o PDF: ' + mensagem);
+    } finally {
+      setGerandoPdf(false);
     }
-    onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="bg-indigo-600 text-white px-5 py-4 rounded-t-2xl flex items-center justify-between">
           <h2 className="font-bold text-lg">📄 Nova Proposta — {lead.nome}</h2>
-          <button onClick={gerarComIA} disabled={gerandoIA} className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
-            {gerandoIA ? '⏳ Analisando conversa...' : '✨ Gerar com IA'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={gerarComIA} disabled={gerandoIA} className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
+              {gerandoIA ? '⏳ Analisando conversa...' : '✨ Gerar com IA'}
+            </button>
+            <button onClick={onClose} aria-label="Fechar" className="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xl leading-none flex items-center justify-center transition-colors">
+              ×
+            </button>
+          </div>
         </div>
         {iaOk && <div className="mx-5 mt-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-3 py-2 rounded-lg">✅ Proposta gerada pela IA com base na conversa do WhatsApp. Revise os itens e valores antes de gerar o PDF.</div>}
         {erroIA && <div className="mx-5 mt-4 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">⚠️ {erroIA}</div>}
@@ -1866,9 +1932,11 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
             <div className="text-sm font-bold text-indigo-700">Total: R$ {itens.reduce((s, it) => s + (it.qtd||1)*(it.valorUnitario||0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
           </div>
         </div>
-        <div className="flex gap-2 px-5 pb-5 pt-2">
-          <button onClick={onClose} className="flex-1 border border-gray-300 rounded-xl py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancelar</button>
-          <button onClick={gerar} className="flex-1 bg-indigo-600 text-white rounded-xl py-2 text-sm font-bold hover:bg-indigo-700">📄 Gerar PDF</button>
+        <div className="flex items-center gap-3 px-5 pb-5 pt-2">
+          <div className="flex-1 text-xs text-gray-500 min-h-5">{feedbackPdf}</div>
+          <button onClick={gerar} disabled={gerandoPdf} className="min-w-[190px] bg-indigo-600 text-white rounded-xl py-2 text-sm font-bold hover:bg-indigo-700 disabled:opacity-60">
+            {gerandoPdf ? 'Gerando PDF...' : '📄 Gerar PDF'}
+          </button>
         </div>
       </div>
     </div>

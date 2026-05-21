@@ -1,3 +1,6 @@
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
 export interface ItemProposta {
   nome: string;
   descricao?: string;
@@ -71,6 +74,21 @@ function refNum(num: number, dataStr?: string): string {
 function sub(itens: ItemProposta[]): number {
   if (!itens || itens.length === 0) return 0;
   return itens.reduce((s, i) => s + (Number(i.qtd) || 0) * (Number(i.valorUnitario) || 0), 0);
+}
+function textoPdf(valor?: string): string {
+  return String(valor || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+function nomeArquivoSeguro(valor?: string): string {
+  const limpo = String(valor || 'cliente')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w.-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return limpo || 'cliente';
 }
 function il(label: string, value?: string): string {
   return '<div class="info-line"><span class="label">' + label + '</span>' +
@@ -189,6 +207,197 @@ export function abrirProposta(dados: PropostaDados): void {
   const html = gerarPropostaHTML(dados);
   const w = window.open('', '_blank');
   if (w) { w.document.write(html); w.document.close(); }
+}
+
+export function baixarPropostaPDF(dados: PropostaDados): void {
+  const d = dados || ({} as PropostaDados);
+  const dataStr = d.data || hojeStr();
+  const numStr = d.numero ? refNum(d.numero, d.data) : String(Date.now() % 10000);
+  const itensSeguros: ItemProposta[] = Array.isArray(d.itens) ? d.itens : [];
+  const subtotal = sub(itensSeguros);
+  const freteStr = d.frete || 'A combinar';
+  const descontoPix = d.formaPagamento === 'pix' ? +(subtotal * 0.07).toFixed(2) : 0;
+  const totalFinal = +(subtotal - descontoPix).toFixed(2);
+  const empresaStr = (d.empresa || '').trim();
+  const introDefault = 'Em atendimento ao contato realizado, apresentamos nossa proposta comercial' +
+    (empresaStr ? ` para ${empresaStr}` : '') + ', conforme especificacao abaixo.';
+
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pageW = doc.internal.pageSize.getWidth();
+  const margem = 14;
+
+  const header = () => {
+    doc.setFillColor(0, 59, 115);
+    doc.rect(0, 0, pageW, 30, 'F');
+    doc.setFillColor(255, 196, 0);
+    doc.rect(0, 30, pageW, 1.8, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.text('CDS INDUSTRIAL', margem, 13);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('CNPJ: 31.834.899/0001-71', pageW - margem, 10, { align: 'right' });
+    doc.text('SHIN, Trecho 3-A, Lote 18, Lago Norte', pageW - margem, 15, { align: 'right' });
+    doc.text('Brasilia - DF, CEP 71538-505', pageW - margem, 20, { align: 'right' });
+    doc.text('(61) 99308-1396 - vendas01@cdsind.com.br', pageW - margem, 25, { align: 'right' });
+    doc.setTextColor(17, 24, 39);
+  };
+
+  const footer = (pagina: number, total: number) => {
+    doc.setFillColor(241, 245, 249);
+    doc.rect(0, 285, pageW, 12, 'F');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text('CDS Industrial - Solucoes em Aco e Engenharia - www.cdsind.com.br - Brasilia/DF', pageW / 2, 292, { align: 'center' });
+    doc.text(`Pagina ${pagina}/${total}`, pageW - margem, 292, { align: 'right' });
+    doc.setTextColor(17, 24, 39);
+  };
+
+  header();
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(19);
+  doc.setTextColor(0, 59, 115);
+  doc.text('PROPOSTA COMERCIAL', margem, 47);
+  doc.setFontSize(10);
+  doc.setTextColor(75, 85, 99);
+  doc.text(`Ref: ${numStr}`, margem, 53);
+  doc.text(`Data: ${dataStr}`, pageW - margem, 47, { align: 'right' });
+  doc.setTextColor(17, 24, 39);
+
+  autoTable(doc, {
+    startY: 62,
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 2.2, lineColor: [229, 231, 235], lineWidth: 0.1 },
+    columnStyles: { 0: { fontStyle: 'bold', textColor: [75, 85, 99], cellWidth: 28 }, 2: { fontStyle: 'bold', textColor: [75, 85, 99], cellWidth: 26 } },
+    body: [
+      ['Empresa', empresaStr || '-', 'Vendedor', d.vendedor || 'Jean'],
+      ['A/C', d.ac || '-', 'Contato', d.contato || d.telefone || '-'],
+      ['CNPJ/CPF', d.cnpj || '-', 'Telefone', d.telefone || '-'],
+      ['Email', d.email || '-', 'Cidade/UF', d.cidade || '-'],
+      ['Endereco', d.endereco || '-', 'CEP', d.cep || '-'],
+      ['Local', d.local || empresaStr || '-', 'Frete', freteStr],
+      ['Validade', d.validade || '7 dias corridos', 'Pagamento', d.pagamento || 'A definir'],
+    ],
+  });
+
+  let y = ((doc as any).lastAutoTable?.finalY || 104) + 8;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(0, 59, 115);
+  doc.text('Introducao', margem, y);
+  y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(75, 85, 99);
+  const intro = doc.splitTextToSize(textoPdf(d.intro) || introDefault, pageW - margem * 2);
+  doc.text(intro, margem, y);
+  y += intro.length * 4.5 + 7;
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Item / Descricao', 'Qtd.', 'Unitario', 'Total']],
+    body: itensSeguros.length > 0
+      ? itensSeguros.map(it => {
+          const qtd = Number(it.qtd) || 0;
+          const vu = Number(it.valorUnitario) || 0;
+          return [
+            `${it.nome || 'Item'}${it.descricao ? '\n' + it.descricao : ''}`,
+            qtd || '-',
+            fmtBR(vu),
+            fmtBR(qtd * vu),
+          ];
+        })
+      : [['A definir', '-', '-', '-']],
+    theme: 'striped',
+    headStyles: { fillColor: [0, 59, 115], textColor: 255, fontStyle: 'bold' },
+    styles: { fontSize: 8, cellPadding: 2.5, valign: 'middle' },
+    columnStyles: { 1: { halign: 'center', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 32 }, 3: { halign: 'right', cellWidth: 32 } },
+  });
+
+  y = ((doc as any).lastAutoTable?.finalY || y + 30) + 8;
+  const boxX = pageW - margem - 68;
+  doc.setDrawColor(229, 231, 235);
+  doc.setFillColor(249, 250, 251);
+  doc.roundedRect(boxX, y, 68, 31, 2, 2, 'FD');
+  doc.setFontSize(9);
+  doc.setTextColor(75, 85, 99);
+  doc.text('Subtotal:', boxX + 4, y + 8);
+  doc.text(fmtBR(subtotal), boxX + 64, y + 8, { align: 'right' });
+  if (descontoPix > 0) {
+    doc.setTextColor(22, 163, 74);
+    doc.text('Desconto PIX:', boxX + 4, y + 15);
+    doc.text(`-${fmtBR(descontoPix)}`, boxX + 64, y + 15, { align: 'right' });
+    doc.setTextColor(75, 85, 99);
+  }
+  doc.text('Frete:', boxX + 4, y + 22);
+  doc.text(freteStr, boxX + 64, y + 22, { align: 'right' });
+  doc.setDrawColor(0, 59, 115);
+  doc.line(boxX + 4, y + 24.5, boxX + 64, y + 24.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(0, 59, 115);
+  doc.text('TOTAL:', boxX + 4, y + 29);
+  doc.text(fmtBR(totalFinal), boxX + 64, y + 29, { align: 'right' });
+  footer(1, 2);
+
+  doc.addPage();
+  header();
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(0, 59, 115);
+  doc.text('CONDICOES COMERCIAIS', margem, 47);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(55, 65, 81);
+  const condicoes = [
+    `Pagamento: ${d.pagamento || 'A definir em comum acordo.'}`,
+    `Prazo de Entrega: ${d.prazoEntrega || 'A confirmar apos aceite formal.'}`,
+    `Frete: ${freteStr} (conforme endereco e condicoes de descarga).`,
+    'Garantia: 90 dias contra defeitos de fabricacao.',
+    'Impostos: contemplados na Nota Fiscal emitida.',
+  ];
+  let y2 = 58;
+  condicoes.forEach(linha => {
+    const partes = doc.splitTextToSize(`- ${linha}`, pageW - margem * 2);
+    doc.text(partes, margem, y2);
+    y2 += partes.length * 5 + 2;
+  });
+
+  y2 += 8;
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 59, 115);
+  doc.text('DADOS PARA PAGAMENTO', margem, y2);
+  y2 += 7;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(55, 65, 81);
+  [
+    'Asaas I.P S.A',
+    'Banco: 461 - Asaas I.P S.A | Agencia: 0001 | Conta: 4691287-9',
+    'Tipo: Conta de Pagamento',
+    'Nome: Clark Jean Martins Genu',
+    'CPF/CNPJ: 31.834.899/0001-71',
+    'PIX (CNPJ): 31.834.899/0001-71',
+    'PIX (E-mail): vendas01@cdsind.com.br',
+  ].forEach(linha => {
+    doc.text(linha, margem, y2);
+    y2 += 5;
+  });
+
+  y2 = 238;
+  doc.setDrawColor(0, 0, 0);
+  doc.line(margem, y2, margem + 70, y2);
+  doc.line(pageW - margem - 70, y2, pageW - margem, y2);
+  doc.setFontSize(9);
+  doc.setTextColor(0, 0, 0);
+  doc.text('CDS INDUSTRIAL', margem + 35, y2 + 7, { align: 'center' });
+  doc.text('Departamento Comercial', margem + 35, y2 + 12, { align: 'center' });
+  doc.text('DE ACORDO (CLIENTE)', pageW - margem - 35, y2 + 7, { align: 'center' });
+  doc.text('Data: ____/____/________', pageW - margem - 35, y2 + 12, { align: 'center' });
+  footer(2, 2);
+
+  doc.save(`Proposta_${numStr.replace(/[^\d-]/g, '_')}_${nomeArquivoSeguro(empresaStr || d.ac)}.pdf`);
 }
 
 // ---------- CSS da proposta (extraído do template original) ----------
