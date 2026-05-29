@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, FileText, Scissors, Box, DollarSign,
   BarChart3, Building2, LucideIcon, PaintBucket, Package, Truck,
   Upload, Layers, Hammer, Sparkles, ShoppingCart, LogOut, Menu, X,
-  MessageSquare, ShoppingBag, TrendingUp, Megaphone,
+  MessageSquare, ShoppingBag, TrendingUp, Megaphone, Target,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -28,6 +28,7 @@ const sections: SidebarSection[] = [
     title: 'Marketing & Publicidade',
     items: [
       { name: 'Marketing IA', icon: Megaphone, id: 'marketing', badge: 'IA' },
+      { name: 'Tráfego Pago', icon: Target, id: 'trafego-pago', badge: 'Ads' },
     ],
   },
   {
@@ -67,7 +68,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const { user, logout } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const crmIds = ['dashboard','projetos-3d','cadastro-clientes','assistente-ia','propostas','checkout','licitacoes','locacoes','leads','produtos','cadastro-fornecedores','cadastro-governo','cadastro-funcionarios','marketing'];
+  const crmIds = ['dashboard','projetos-3d','cadastro-clientes','assistente-ia','propostas','checkout','licitacoes','locacoes','leads','produtos','cadastro-fornecedores','cadastro-governo','cadastro-funcionarios','marketing','trafego-pago'];
   const prodIds = ['corte','dobra','solda','pintura','embalagem','entrega','pcp-kanban','faturamento','estoque','entrada-inteligente'];
 
   const filteredSections = sections

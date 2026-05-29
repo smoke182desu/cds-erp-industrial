@@ -21,6 +21,18 @@
 - ✅ **Resolver quota do Firestore (free tier)**
   - Migração realizada para Supabase.
 
+- ⬜ **Módulo Tráfego Pago — Sprint 2 (Meta Ads end-to-end)**
+  - OAuth Meta (FB_APP_ID/SECRET via env vars Vercel)
+  - Tabelas `trafego_contas_ads`, `trafego_campanhas`, `trafego_metricas_diarias`
+  - Sync diário via Vercel Cron (`/api/trafego/sync-metricas`)
+  - Implementar páginas `TrafegoVisaoGeral`, `TrafegoCampanhas`, `TrafegoContas` (hoje placeholders)
+
+- ⬜ **Módulo Tráfego Pago — Sprint 3 (Google Ads + atribuição UTM/CAPI)**
+  - OAuth Google Ads + GAQL pull
+  - Tabela `trafego_leads_atribuicao` + parser UTM no `/api/leads`
+  - Pixel/CAPI básico (Meta Conversions + Google Enhanced Conversions)
+  - Implementar página `TrafegoAtribuicao` (hoje placeholder)
+
 ### 🟡 Prioridade Média
 
 - ⬜ **Formulário de cadastro de produtos (Produtos.tsx)**
@@ -50,6 +62,17 @@
 ---
 
 ## ✅ Tarefas Concluídas
+
+### 2026-05-29
+
+- ✅ **Módulo "Tráfego Pago" — Sprint 1 (Base multi-tenant)** — *Claude*
+  - Nova tab `Tráfego Pago` no sidebar (seção Marketing & Publicidade), badge `Ads`, ícone `Target`.
+  - Migration `migrations/008_trafego_clientes.sql` — tabela `trafego_clientes` (id, nome, slug, logo_url, cor_destaque, status, fee_mensal, responsavel, email_contato, telefone_contato, observacoes + timestamps + trigger atualizado_em). Seed: cliente "CDS Industrial" pré-cadastrado.
+  - Endpoint `api/trafego/clientes.js` — CRUD completo (GET listar, POST criar, PUT atualizar, DELETE arquivar). Padrão de `api/leads.js`.
+  - Service `src/services/trafegoService.ts` + Context `src/contexts/TrafegoContext.tsx` (mantém cliente ativo via localStorage).
+  - Container `src/pages/TrafegoPago.tsx` com seletor de cliente no header e 6 abas: Visão Geral, Campanhas, Atribuição, Relatórios, Contas Conectadas, Clientes.
+  - Aba Clientes (`src/pages/trafego/TrafegoClientes.tsx`) — CRUD funcional com busca, modal cadastro/edição, cores customizadas, status (ativo/pausado/arquivado).
+  - Demais abas em placeholder marcando sprint de entrega (S2 — Meta Ads, S3 — Atribuição, pós-MVP — Relatórios).
 
 ### 2026-05-07
 

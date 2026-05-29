@@ -30,6 +30,7 @@ import { PatrimonioVisual } from './pages/PatrimonioVisual';
 import { Leads } from './pages/Leads';
 import { Produtos } from './pages/Produtos';
 import { Marketing } from './pages/Marketing';
+import { TrafegoPago } from './pages/TrafegoPago';
 import { Configurador } from './components/Configurador';
 import { CheckoutPropostaModal } from './components/CheckoutPropostaModal';
 
@@ -86,6 +87,7 @@ function AppContent() {
       case 'contabilidade':     return <Contabilidade />;
       case 'patrimonio':        return <PatrimonioVisual />;
       case 'marketing':         return <Marketing />;
+      case 'trafego-pago':      return <TrafegoPago />;
       default:                  return <DashboardBI />;
     }
   };
