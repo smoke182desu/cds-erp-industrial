@@ -17,6 +17,7 @@ import ConversaInteligente from '../components/ConversaInteligente';
 import { NovoClienteModal } from '../components/NovoClienteModal';
 import WhatsAppConfigModal from '../components/WhatsAppConfigModal';
 import { searchProdutos, fmtPreco, type Produto } from '../services/produtosService';
+import { AgenciaContextoBanner } from '../components/AgenciaContextoBanner';
 
 // ─── cores por etapa ─────────────────────────────────────────────────────────
 const ETAPA_COR: Record<EtapaFunil, string> = {
@@ -2316,6 +2317,10 @@ export function Leads() {
           <button onClick={() => setWhatsappConfigOpen(true)} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 text-sm font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5" title="Configurar conexao WhatsApp"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91c0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2zm0 18.15h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18l-3.12.82l.83-3.04l-.2-.31a8.26 8.26 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24c2.2 0 4.27.86 5.82 2.42a8.183 8.183 0 0 1 2.41 5.83c-.02 4.54-3.72 8.23-8.23 8.23z"/></svg> WhatsApp</button>
           <button onClick={() => setNovoModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-xl">+ Novo Lead</button>
         </div>
+      </div>
+
+      <div className="px-4 py-2 bg-white border-b">
+        <AgenciaContextoBanner contexto="leads e conversas" />
       </div>
 
       <CheckupBrunoGeral onAbrirLead={abrirLeadPorId} />

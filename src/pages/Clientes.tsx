@@ -4,6 +4,7 @@ import { useERP } from '../contexts/ERPContext';
 import { NovoClienteModal } from '../components/NovoClienteModal';
 import { WhatsAppAnalyzerModal } from '../components/WhatsAppAnalyzerModal';
 import { Cliente } from '../types';
+import { AgenciaContextoBanner } from '../components/AgenciaContextoBanner';
 
 type ViewMode = 'list' | 'kanban';
 
@@ -316,6 +317,7 @@ export const Clientes: React.FC<{ filtroTipo?: string }> = ({ filtroTipo }) => {
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-slate-50 p-4">
+      <div className="mb-3"><AgenciaContextoBanner contexto={titulo.toLowerCase()} /></div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">{titulo}</h2>
