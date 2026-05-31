@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DashboardLayout } from './components/DashboardLayout';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -38,6 +38,8 @@ import { Conhecimento } from './pages/Conhecimento';
 import { EmpresaConfig } from './pages/EmpresaConfig';
 import { FaturasAgencia } from './pages/FaturasAgencia';
 import { CalendarioEditorial } from './pages/CalendarioEditorial';
+import { RelatoriosAgencia } from './pages/RelatoriosAgencia';
+import { TemplatesProposta } from './pages/TemplatesProposta';
 import { AprovacaoPublica } from './pages/AprovacaoPublica';
 import { Configurador } from './components/Configurador';
 import { CheckoutPropostaModal } from './components/CheckoutPropostaModal';
@@ -60,6 +62,18 @@ const defaultProject: ProjectState = {
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+
+  useEffect(() => {
+    function onHash() {
+      const tab = window.location.hash.replace('#', '');
+      if (tab) {
+        setActiveTab(tab);
+        window.location.hash = '';
+      }
+    }
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   const [project, setProject] = useState<ProjectState>(defaultProject);
   const { user } = useAuth();
 
@@ -102,6 +116,8 @@ function AppContent() {
       case 'empresa-config':    return <EmpresaConfig />;
       case 'faturas-agencia':   return <FaturasAgencia />;
       case 'calendario':        return <CalendarioEditorial />;
+      case 'relatorios':        return <RelatoriosAgencia />;
+      case 'templates-proposta':return <TemplatesProposta />;
       default:                  return <DashboardBI />;
     }
   };
