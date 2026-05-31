@@ -14,6 +14,14 @@ const SUPABASE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   '';
 
+
+// Path prefix do REST API. Supabase usa /rest/v1, PostgREST puro usa /.
+// Permite apontar para PostgREST self-hosted setando SUPABASE_PATH_PREFIX=
+const SUPABASE_PATH_PREFIX =
+  process.env.SUPABASE_PATH_PREFIX !== undefined
+    ? process.env.SUPABASE_PATH_PREFIX
+    : '/rest/v1';
+
 export const SUPABASE_OK = !!(SUPABASE_URL && SUPABASE_KEY);
 
 // Faz request HTTP a PostgREST.
@@ -22,7 +30,7 @@ export async function sb(path, opts = {}) {
   if (!SUPABASE_OK) {
     throw new Error('Supabase env vars ausentes (SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)');
   }
-  const url = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1${path}`;
+  const url = `${SUPABASE_URL.replace(/\/$/, '')}${SUPABASE_PATH_PREFIX}${path}`;
   const headers = {
     'apikey': SUPABASE_KEY,
     'Authorization': `Bearer ${SUPABASE_KEY}`,

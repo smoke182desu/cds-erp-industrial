@@ -1,6 +1,7 @@
 // ... imports ...
 import "dotenv/config";
 import express from "express";
+import { mountApiRoutes } from "./api/_loader.mjs";
 // import { createServer as createViteServer } from "vite"; // Removed static import
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -40,6 +41,7 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
   app.use(cookieParser());
 
   // --- Auth Middleware ---
@@ -405,6 +407,11 @@ async function startServer() {
       material
     };
   }
+
+  // Monta as funcoes serverless de /api/*.js como rotas Express
+  // IMPORTANT: tem que vir ANTES do static/catch-all senao o catch-all engole /api/*
+  const mountedRoutes = await mountApiRoutes(app, "api", "/api");
+  console.log("[api] Mounted " + mountedRoutes.length + " serverless routes");
 
   // --- Vite Middleware ---
   if (process.env.NODE_ENV !== "production") {
