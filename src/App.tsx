@@ -3,6 +3,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { DashboardLayout } from './components/DashboardLayout';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ERPProvider } from './contexts/ERPContext';
+import { TrafegoProvider } from './contexts/TrafegoContext';
 import { ConfigProvider } from './contexts/ConfigContext';
 import { Login } from './pages/Login';
 import { ProjectState } from './types';
@@ -105,7 +106,9 @@ function App() {
       <AuthProvider>
         <ConfigProvider>
           <ERPProvider>
-            <AppContent />
+            <TrafegoProvider>
+              <AppContent />
+            </TrafegoProvider>
           </ERPProvider>
         </ConfigProvider>
       </AuthProvider>

@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import ClienteAgenciaSelector from '../components/ClienteAgenciaSelector';
 import { Loader2, Target, Palette, TrendingUp, BarChart3, Megaphone, RefreshCw, ChevronDown, ChevronUp, Copy, CheckCircle2, AlertCircle, Sparkles, Send, HelpCircle, ArrowRight, Zap, Upload, Image, Trash2, ExternalLink, Clock, Eye, Facebook, Instagram, Globe, Bot } from 'lucide-react';
 
 function Tooltip({ text, children }: { text: string; children: React.ReactNode }) {
@@ -367,6 +368,16 @@ export function Marketing() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-200 bg-white">
+        <ClienteAgenciaSelector
+          onNovoCliente={() => {
+            window.alert('Pra criar novo cliente da agência, vá em Tráfego Pago → Clientes');
+          }}
+        />
+        <span className="text-xs text-gray-500 hidden sm:inline">
+          Tudo no Marketing é filtrado pelo cliente selecionado acima.
+        </span>
+      </div>
       {/* Header */}
       <div className="flex-shrink-0 bg-gradient-to-r from-rose-600 via-pink-600 to-violet-600 text-white px-6 py-4">
         <div className="flex items-center justify-between">
