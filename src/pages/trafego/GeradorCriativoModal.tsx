@@ -11,6 +11,7 @@ export interface Variacao {
 
 interface Props {
   contexto: {
+    clienteId?: string;
     clienteNome: string;
     objetivo: string;
     plataforma: string;
@@ -36,6 +37,7 @@ export function GeradorCriativoModal({ contexto, onClose, onUsar }: Props) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           briefing,
+          cliente_id: contexto.clienteId,
           contexto_cliente: contexto.clienteNome,
           objetivo: contexto.objetivo,
           plataforma: contexto.plataforma,

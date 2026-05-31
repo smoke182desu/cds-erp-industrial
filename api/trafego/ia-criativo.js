@@ -1,13 +1,23 @@
-// api/trafego/ia-criativo.js
-// POST { briefing, plataforma, objetivo, tipo, n_variacoes }
-// Retorna { variacoes: [{ headline, texto_principal, cta, descricao }, ...] }
-// Suporta Groq (free fast), Anthropic Claude e OpenAI — tenta a primeira disponível
+// api/trafego/ia-criativo.js — gera variações de criativos via LLM, com contexto da empresa
+import { sb } from '../_lib/supabase.js';
 
-const SYSTEM_PROMPT = `Você é um copywriter especialista em tráfego pago brasileiro. Gera anúncios persuasivos, breves e com gatilhos de conversão.
+async function buscarContextoEmpresa(clienteId) {
+  if (!clienteId) return '';
+  try {
+    const r = await fetch(`http://127.0.0.1:3000/api/conhecimento/contexto-ia?cliente_id=${clienteId}`);
+    if (!r.ok) return '';
+    const d = await r.json();
+    return d.contexto_md || '';
+  } catch { return ''; }
+}
+
+const SYSTEM_PROMPT = `Você é um copywriter especialista em tráfego pago brasileiro.
+Quando o usuário enviar contexto sobre a empresa, use ESSE contexto pra alinhar tom de voz, mensagem, palavras-chave e diferenciais nos anúncios. Respeite a personalidade da marca.
+Gera anúncios persuasivos, breves e com gatilhos de conversão.
 - Headline: 30-60 caracteres, gancho forte
 - Texto principal: 90-130 caracteres, benefício + prova social ou urgência
 - Descrição: 30-90 caracteres, reforço
-- CTA: SAIBA_MAIS, COMPRAR_AGORA, CADASTRE_SE, SOLICITAR_ORCAMENTO, FALAR_AGORA, BAIXAR_AGORA, ENVIAR_MENSAGEM
+- CTA: SAIBA_MAIS, COMPRAR_AGORA, CADASTRE_SE, SOLICITAR_ORCAMENTO, FALAR_AGORA, BAIXAR_AGORA, ENVIAR_MENSAGEM, VER_OFERTA
 Retorna JSON puro: { "variacoes": [{"headline","texto_principal","descricao","cta"}, ...] }`;
 
 async function chamarGroq(prompt, n) {
@@ -20,7 +30,7 @@ async function chamarGroq(prompt, n) {
       model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `${prompt}\n\nGere ${n} variações distintas.` },
+        { role: 'user', content: `${prompt}\n\nGere ${n} variações distintas. Retorne JSON puro com a chave 'variacoes'.` },
       ],
       temperature: 0.9,
       response_format: { type: 'json_object' },
@@ -39,9 +49,9 @@ async function chamarAnthropic(prompt, n) {
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1500,
+      max_tokens: 2000,
       system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: `${prompt}\n\nGere ${n} variações distintas. Retorna JSON puro.` }],
+      messages: [{ role: 'user', content: `${prompt}\n\nGere ${n} variações distintas. Retorna APENAS JSON puro com a chave 'variacoes'.` }],
     }),
   });
   if (!r.ok) throw new Error(`Anthropic ${r.status}: ${await r.text()}`);
@@ -75,19 +85,25 @@ async function chamarOpenAI(prompt, n) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
-    const { briefing, plataforma, objetivo, tipo, n_variacoes, contexto_cliente } = req.body || {};
+    const { briefing, plataforma, objetivo, tipo, n_variacoes, contexto_cliente, cliente_id } = req.body || {};
     if (!briefing) return res.status(400).json({ error: 'briefing obrigatório' });
 
     const n = Math.min(Math.max(parseInt(n_variacoes) || 3, 1), 6);
+
+    // Busca contexto da empresa do módulo Conhecimento
+    const contextoEmpresa = cliente_id ? await buscarContextoEmpresa(cliente_id) : '';
+
     const partes = [
+      contextoEmpresa ? `# CONTEXTO DA EMPRESA (use isso pra ajustar tom, mensagem, palavras-chave):\n${contextoEmpresa}\n\n---\n` : '',
+      `# DETALHES DA CAMPANHA:`,
       `Cliente/Empresa: ${contexto_cliente || 'não informado'}`,
       `Plataforma: ${plataforma || 'meta'} (Facebook/Instagram Ads)`,
       `Objetivo: ${objetivo || 'leads'}`,
       `Tipo de criativo: ${tipo || 'imagem'}`,
       ``,
-      `Briefing:`,
+      `# BRIEFING DA CAMPANHA:`,
       briefing,
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     let resultado = null;
     let provedor = null;
@@ -113,6 +129,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       provedor,
+      tinha_contexto_empresa: !!contextoEmpresa,
       ...resultado,
     });
   } catch (err) {

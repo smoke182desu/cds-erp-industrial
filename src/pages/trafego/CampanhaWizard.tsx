@@ -356,7 +356,7 @@ export function WizardNovaCampanha({ clienteAgenciaId, clienteNome, onClose, onC
 
       {iaAberto && (
         <GeradorCriativoModal
-          contexto={{ clienteNome, objetivo, plataforma: plataformas[0] || 'meta', briefing: nome }}
+          contexto={{ clienteId: clienteAgenciaId, clienteNome, objetivo, plataforma: plataformas[0] || 'meta', briefing: nome }}
           onClose={() => setIaAberto(false)}
           onUsar={(variacoes) => {
             const novos = variacoes.map(v => ({ ...v, fonte: 'ia' }));

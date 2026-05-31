@@ -29,6 +29,7 @@ const sections: SidebarSection[] = [
     items: [
       { name: 'Visão da Agência', icon: Building2, id: 'agencia', badge: 'NEW' },
       { name: 'WhatsApp Multi', icon: MessageSquare, id: 'whatsapp-agencia', badge: 'NEW' },
+      { name: 'Conhecimento', icon: BookOpen, id: 'conhecimento', badge: 'IA' },
     ],
   },
   {
@@ -75,7 +76,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const { user, logout } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const crmIds = ['dashboard','projetos-3d','cadastro-clientes','assistente-ia','propostas','checkout','licitacoes','locacoes','leads','produtos','cadastro-fornecedores','cadastro-governo','cadastro-funcionarios','agencia','whatsapp-agencia','marketing','trafego-pago'];
+  const crmIds = ['dashboard','projetos-3d','cadastro-clientes','assistente-ia','propostas','checkout','licitacoes','locacoes','leads','produtos','cadastro-fornecedores','cadastro-governo','cadastro-funcionarios','agencia','whatsapp-agencia','conhecimento','marketing','trafego-pago'];
   const prodIds = ['corte','dobra','solda','pintura','embalagem','entrega','pcp-kanban','faturamento','estoque','entrada-inteligente'];
 
   const filteredSections = sections

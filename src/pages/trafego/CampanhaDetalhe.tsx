@@ -212,7 +212,7 @@ export function CampanhaDetalhe({ campanha: campIn, onClose }: Props) {
 
       {iaAberto && (
         <GeradorCriativoModal
-          contexto={{ clienteNome: '', objetivo: campanha.objetivo, plataforma: campanha.plataformas?.[0] || 'meta', briefing: campanha.nome }}
+          contexto={{ clienteId: campanha.cliente_agencia_id, clienteNome: '', objetivo: campanha.objetivo, plataforma: campanha.plataformas?.[0] || 'meta', briefing: campanha.nome }}
           onClose={() => setIaAberto(false)}
           onUsar={adicionarCriativos}
         />
