@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiClient";
 // ---------- Tipos do funil CRM ----------
 export type EtapaFunil =
   | 'lead_novo'
@@ -86,7 +87,7 @@ function mapLeadFromDB(row: any): Lead {
 }
 
 async function buscarLeadsREST(): Promise<Lead[]> {
-  const res = await fetch('/api/leads');
+  const res = await apiFetch('/api/leads');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   // /api/leads returns a raw array; fall back to {leads:[]} shape for compat
@@ -126,11 +127,11 @@ export async function buscarLeadsPorEtapa(etapa: EtapaFunil): Promise<Lead[]> {
 // ---------- proximo codigo de cliente ----------
 async function proximoCodigoCliente(): Promise<number> {
   try {
-    const getRes = await fetch('/api/config?col=config&doc=cliente_counter');
+    const getRes = await apiFetch('/api/config?col=config&doc=cliente_counter');
     const getData = await getRes.json();
     const atual = getData.data?.numero || 0;
     const proximo = atual + 1;
-    await fetch('/api/config?col=config&doc=cliente_counter', {
+    await apiFetch('/api/config?col=config&doc=cliente_counter', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ numero: proximo }),
@@ -145,7 +146,7 @@ async function proximoCodigoCliente(): Promise<number> {
 export async function salvarCliente(lead: Partial<Lead>): Promise<string> {
   if (!lead.telefone) return '';
   try {
-    const res = await fetch('/api/clientes', {
+    const res = await apiFetch('/api/clientes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -167,7 +168,7 @@ export async function salvarCliente(lead: Partial<Lead>): Promise<string> {
 export async function adicionarLead(data: Omit<Lead, 'id' | 'criadoEm'>): Promise<string> {
   const clienteId = await salvarCliente(data);
   try {
-    const res = await fetch('/api/leads', {
+    const res = await apiFetch('/api/leads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...data, clienteId, erpCreate: true }),
@@ -181,7 +182,7 @@ export async function adicionarLead(data: Omit<Lead, 'id' | 'criadoEm'>): Promis
 
 // ---------- atualizar lead via REST ----------
 export async function atualizarLead(id: string, data: Partial<Omit<Lead, 'id'>>): Promise<void> {
-  await fetch(`/api/leads?id=${id}`, {
+  await apiFetch(`/api/leads?id=${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -190,7 +191,7 @@ export async function atualizarLead(id: string, data: Partial<Omit<Lead, 'id'>>)
 
 // ---------- mover etapa via REST ----------
 export async function moverEtapa(id: string, etapa: EtapaFunil): Promise<void> {
-  await fetch(`/api/leads?id=${id}`, {
+  await apiFetch(`/api/leads?id=${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ etapa }),
@@ -200,7 +201,7 @@ export async function moverEtapa(id: string, etapa: EtapaFunil): Promise<void> {
 // ---------- buscar clientes via REST ----------
 export async function buscarClientes() {
   try {
-    const res = await fetch('/api/clientes');
+    const res = await apiFetch('/api/clientes');
     const data = await res.json();
     return data.clientes || [];
   } catch {

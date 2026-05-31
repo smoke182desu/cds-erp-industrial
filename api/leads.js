@@ -233,11 +233,12 @@ function normalizar(lead) {
   };
 }
 
-async function listarLeads() {
+async function listarLeads(clienteAgenciaId) {
   try {
+    const filters = clienteAgenciaId ? { cliente_agencia_id: `eq.${clienteAgenciaId}` } : {};
     const [leads, mensagens] = await Promise.all([
-      selectAll(TABLE, { orderBy: 'atualizado_em', limit: 1000 }),
-      selectAll('mensagens', { orderBy: 'criado_em', limit: 5000 }).catch(() => []),
+      selectAll(TABLE, { orderBy: 'atualizado_em', limit: 1000, filters }),
+      selectAll('mensagens', { orderBy: 'criado_em', limit: 5000, filters }).catch(() => []),
     ]);
 
     const mensagensPorTelefone = new Map();
@@ -288,7 +289,8 @@ async function listarLeads() {
   }
 }
 
-async function inserirLead(data) {
+async function inserirLead(data, clienteAgenciaId) {
+  if (clienteAgenciaId && !data.cliente_agencia_id) data.cliente_agencia_id = clienteAgenciaId;
   const telefone = soDigitos(data.telefone || '');
   const payload = {
     nome: data.nome || '',
@@ -346,7 +348,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   try {
     if (req.method === 'GET') {
-      const raw = await listarLeads();
+      const cliAg = req.query?.cliente_agencia_id || req.headers?.["x-cliente-agencia-id"]; const raw = await listarLeads(cliAg);
       const incluirOcultos = req.query.incluirOcultos === '1';
       const leads = raw
         .map(normalizar)

@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiClient";
 // Servico de produtos WooCommerce - ERP CDS Industrial
 
 export interface Produto {
@@ -26,7 +27,7 @@ const API_BASE = '/api';
 
 // Busca todos os produtos do Supabase
 export async function buscarProdutos(): Promise<Produto[]> {
-    const res = await fetch(`${API_BASE}/produtos`);
+    const res = await apiFetch(`${API_BASE}/produtos`);
     const data = await res.json();
     return (data.produtos || []) as Produto[];
 }
@@ -35,7 +36,7 @@ export async function buscarProdutos(): Promise<Produto[]> {
 export async function searchProdutos(q: string, limit = 20): Promise<Produto[]> {
     if (!q || q.trim().length < 2) return [];
     const url = `${API_BASE}/produtos?q=${encodeURIComponent(q.trim())}&limit=${limit}`;
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     if (!res.ok) return [];
     const data = await res.json();
     return (data.produtos || []) as Produto[];
@@ -54,7 +55,7 @@ export async function sincronizarProdutos(
   try {
         do {
                 const url = `${API_BASE}/produtos?sync=batch&page=${page}&batch=${BATCH}`;
-                const res = await fetch(url);
+                const res = await apiFetch(url);
                 if (!res.ok) {
                           const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
                           return { ok: false, error: err.error || `HTTP ${res.status}` };

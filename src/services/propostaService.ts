@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiClient";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -38,11 +39,11 @@ export interface PropostaDados {
 // ---------- Contador sequencial via REST ----------
 export async function proximoNumeroProposta(): Promise<number> {
   try {
-    const r = await fetch('/api/config?col=config&doc=proposta_counter');
+    const r = await apiFetch('/api/config?col=config&doc=proposta_counter');
     const d = await r.json();
     const atual = d.data?.numero ?? 42;
     const proximo = Number(atual) + 1;
-    await fetch('/api/config?col=config&doc=proposta_counter', {
+    await apiFetch('/api/config?col=config&doc=proposta_counter', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ numero: proximo }),

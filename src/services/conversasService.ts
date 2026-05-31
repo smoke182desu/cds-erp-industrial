@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiClient";
 // Servico de conversas (historico WhatsApp <-> ERP)
 // Usa a API serverless /api/mensagem que acessa Supabase
 
@@ -32,7 +33,7 @@ function mediaTypeReal(valor?: string): boolean {
 // ---------- buscar historico de um telefone ----------
 export async function buscarMensagens(telefone: string): Promise<Mensagem[]> {
   const tel = telefone.replace(/\D/g, '');
-  const res = await fetch(`${API_BASE}/mensagem?telefone=${tel}`);
+  const res = await apiFetch(`${API_BASE}/mensagem?telefone=${tel}`);
   const data = await res.json();
   return ordenarMensagens(((Array.isArray(data) ? data : []) as Mensagem[])
     .filter(m => !!(m.texto?.trim() || m.mediaUrl || mediaTypeReal(m.mediaType))));
@@ -50,7 +51,7 @@ export async function enviarMensagem(
   // 1) Tenta Evolution API multi-tenant
   if (clienteAgenciaId) {
     try {
-      const r = await fetch(`${API_BASE}/whatsapp/send`, {
+      const r = await apiFetch(`${API_BASE}/whatsapp/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telefone, mensagem, cliente_agencia_id: clienteAgenciaId }),
@@ -70,7 +71,7 @@ export async function enviarMensagem(
   }
 
   // 2) Legado /api/mensagem
-  const res = await fetch(`${API_BASE}/mensagem`, {
+  const res = await apiFetch(`${API_BASE}/mensagem`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ telefone, mensagem, leadId }),
@@ -112,7 +113,7 @@ export async function enviarMidia(
 
   const mediaBase64 = await fileToBase64(file);
 
-  const res = await fetch(`${API_BASE}/mensagem`, {
+  const res = await apiFetch(`${API_BASE}/mensagem`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
