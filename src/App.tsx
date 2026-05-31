@@ -41,6 +41,7 @@ import { CalendarioEditorial } from './pages/CalendarioEditorial';
 import { RelatoriosAgencia } from './pages/RelatoriosAgencia';
 import { TemplatesProposta } from './pages/TemplatesProposta';
 import { WooCommerce } from './pages/WooCommerce';
+import { BuscaGlobal } from './components/BuscaGlobal';
 import { AprovacaoPublica } from './pages/AprovacaoPublica';
 import { Configurador } from './components/Configurador';
 import { CheckoutPropostaModal } from './components/CheckoutPropostaModal';
@@ -125,9 +126,12 @@ function AppContent() {
   };
 
   return (
-    <DashboardLayout activeTab={activeTab} onTabChange={setActiveTab}>
-      {renderContent()}
-    </DashboardLayout>
+    <>
+      <DashboardLayout activeTab={activeTab} onTabChange={setActiveTab}>
+        {renderContent()}
+      </DashboardLayout>
+      <BuscaGlobal />
+    </>
   );
 }
 
