@@ -206,7 +206,7 @@ function ConversaPanel({ lead, onEtapaChange, textoInjetado, onMsgsChange, onUpd
     if (!texto.trim()) return;
     setEnviando(true);
     try {
-      await enviarMensagem(lead.telefone, texto.trim(), lead.id);
+      await enviarMensagem(lead.telefone, texto.trim(), lead.id, (lead as any).cliente_agencia_id || undefined);
       setTexto('');
       await carregar();
     } finally { setEnviando(false); }

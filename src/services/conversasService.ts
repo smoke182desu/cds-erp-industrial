@@ -38,12 +38,38 @@ export async function buscarMensagens(telefone: string): Promise<Mensagem[]> {
     .filter(m => !!(m.texto?.trim() || m.mediaUrl || mediaTypeReal(m.mediaType))));
 }
 
-// ---------- enviar mensagem de texto via WhatsApp ----------
+// ---------- enviar mensagem de texto via WhatsApp (Evolution multi-tenant) ----------
+// Tenta primeiro o endpoint novo /api/whatsapp/send (Evolution API),
+// caindo no /api/mensagem antigo se a Evolution nao encontrou instancia conectada.
 export async function enviarMensagem(
   telefone: string,
   mensagem: string,
-  leadId?: string
+  leadId?: string,
+  clienteAgenciaId?: string,
 ): Promise<{ ok: boolean; id?: string; error?: string }> {
+  // 1) Tenta Evolution API multi-tenant
+  if (clienteAgenciaId) {
+    try {
+      const r = await fetch(`${API_BASE}/whatsapp/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telefone, mensagem, cliente_agencia_id: clienteAgenciaId }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        return { ok: true, id: d?.evolution?.key?.id };
+      }
+      // Se 404 (sem instancia conectada), cai pro legado
+      if (r.status !== 404) {
+        const err = await r.json().catch(() => ({}));
+        return { ok: false, error: err?.error || `HTTP ${r.status}` };
+      }
+    } catch (e: any) {
+      // segue pro legado
+    }
+  }
+
+  // 2) Legado /api/mensagem
   const res = await fetch(`${API_BASE}/mensagem`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
