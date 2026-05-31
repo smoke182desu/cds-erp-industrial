@@ -40,6 +40,7 @@ import { FaturasAgencia } from './pages/FaturasAgencia';
 import { CalendarioEditorial } from './pages/CalendarioEditorial';
 import { RelatoriosAgencia } from './pages/RelatoriosAgencia';
 import { TemplatesProposta } from './pages/TemplatesProposta';
+import { WooCommerce } from './pages/WooCommerce';
 import { AprovacaoPublica } from './pages/AprovacaoPublica';
 import { Configurador } from './components/Configurador';
 import { CheckoutPropostaModal } from './components/CheckoutPropostaModal';
@@ -118,6 +119,7 @@ function AppContent() {
       case 'calendario':        return <CalendarioEditorial />;
       case 'relatorios':        return <RelatoriosAgencia />;
       case 'templates-proposta':return <TemplatesProposta />;
+      case 'woocommerce':       return <WooCommerce />;
       default:                  return <DashboardBI />;
     }
   };

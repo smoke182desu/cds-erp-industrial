@@ -35,6 +35,7 @@ const sections: SidebarSection[] = [
       { name: 'Calendário', icon: Calendar, id: 'calendario', badge: 'NEW' },
       { name: 'Relatórios', icon: FileBarChart, id: 'relatorios', badge: 'PDF' },
       { name: 'Templates Proposta', icon: ScrollText, id: 'templates-proposta', badge: 'NEW' },
+      { name: 'WooCommerce', icon: ShoppingBag, id: 'woocommerce', badge: 'SYNC' },
     ],
   },
   {
@@ -81,7 +82,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const { user, logout } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const crmIds = ['dashboard','projetos-3d','cadastro-clientes','assistente-ia','propostas','checkout','licitacoes','locacoes','leads','produtos','cadastro-fornecedores','cadastro-governo','cadastro-funcionarios','agencia','whatsapp-agencia','conhecimento','empresa-config','faturas-agencia','calendario','relatorios','templates-proposta','marketing','trafego-pago'];
+  const crmIds = ['dashboard','projetos-3d','cadastro-clientes','assistente-ia','propostas','checkout','licitacoes','locacoes','leads','produtos','cadastro-fornecedores','cadastro-governo','cadastro-funcionarios','agencia','whatsapp-agencia','conhecimento','empresa-config','faturas-agencia','calendario','relatorios','templates-proposta','woocommerce','marketing','trafego-pago'];
   const prodIds = ['corte','dobra','solda','pintura','embalagem','entrega','pcp-kanban','faturamento','estoque','entrada-inteligente'];
 
   const filteredSections = sections
