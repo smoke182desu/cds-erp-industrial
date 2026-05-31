@@ -33,6 +33,7 @@ import { Produtos } from './pages/Produtos';
 import { Marketing } from './pages/Marketing';
 import { TrafegoPago } from './pages/TrafegoPago';
 import { Agencia } from './pages/Agencia';
+import { WhatsAppAgencia } from './pages/WhatsAppAgencia';
 import { Configurador } from './components/Configurador';
 import { CheckoutPropostaModal } from './components/CheckoutPropostaModal';
 
@@ -91,6 +92,7 @@ function AppContent() {
       case 'marketing':         return <Marketing />;
       case 'trafego-pago':      return <TrafegoPago />;
       case 'agencia':           return <Agencia />;
+      case 'whatsapp-agencia':  return <WhatsAppAgencia />;
       default:                  return <DashboardBI />;
     }
   };
