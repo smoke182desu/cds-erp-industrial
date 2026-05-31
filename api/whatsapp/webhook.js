@@ -127,9 +127,12 @@ export default async function handler(req, res) {
             });
           } else {
             // Cria novo lead
+            // pushName quando fromMe=true é seu próprio nome (não do destinatário)
+            // pushName quando fromMe=false é o nome do contato — esse sim
+            const nomeContato = !fromMe ? pushName : '';
             const nome = ehLidAnonimizado
               ? `Contato (LID ${telefone.substr(0, 6)}…)`
-              : (pushName || `+${telefone}`);
+              : (nomeContato || `+${telefone.substring(0,2)} (${telefone.substring(2,4)}) ${telefone.substring(4,9)}-${telefone.substring(9)}`);
             await sb('/leads', {
               method: 'POST',
               body: {

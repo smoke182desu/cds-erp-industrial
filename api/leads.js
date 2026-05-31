@@ -236,7 +236,7 @@ function normalizar(lead) {
 async function listarLeads() {
   try {
     const [leads, mensagens] = await Promise.all([
-      selectAll(TABLE, { orderBy: 'atualizado_em', limit: 300 }),
+      selectAll(TABLE, { orderBy: 'atualizado_em', limit: 1000 }),
       selectAll('mensagens', { orderBy: 'criado_em', limit: 5000 }).catch(() => []),
     ]);
 
