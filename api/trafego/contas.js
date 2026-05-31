@@ -4,7 +4,18 @@
 import { selectAll, insert, update, remove, sb } from "../_lib/supabase.js";
 
 const TABLE = "trafego_contas";
-const PLATAFORMAS_VALIDAS = ['meta_ads','google_ads','tiktok_ads','linkedin_ads','pinterest_ads','snapchat_ads'];
+const PLATAFORMAS_VALIDAS = [
+  // Anúncios pagos
+  'meta_ads', 'google_ads', 'tiktok_ads', 'linkedin_ads', 'pinterest_ads',
+  'snapchat_ads', 'youtube_ads', 'twitter_ads',
+  // Analytics e SEO
+  'google_analytics', 'google_search_console', 'google_tag_manager',
+  // E-commerce
+  'google_merchant', 'facebook_catalog',
+  // Páginas orgânicas (Sprint 4)
+  'facebook_page', 'instagram_business', 'linkedin_company_page',
+  'tiktok_creator', 'youtube_channel', 'twitter_x_account', 'pinterest_business',
+];
 
 function normalizar(c) {
   return {
