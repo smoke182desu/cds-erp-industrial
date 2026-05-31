@@ -35,6 +35,7 @@ import { TrafegoPago } from './pages/TrafegoPago';
 import { Agencia } from './pages/Agencia';
 import { WhatsAppAgencia } from './pages/WhatsAppAgencia';
 import { Conhecimento } from './pages/Conhecimento';
+import { EmpresaConfig } from './pages/EmpresaConfig';
 import { Configurador } from './components/Configurador';
 import { CheckoutPropostaModal } from './components/CheckoutPropostaModal';
 
@@ -95,6 +96,7 @@ function AppContent() {
       case 'agencia':           return <Agencia />;
       case 'whatsapp-agencia':  return <WhatsAppAgencia />;
       case 'conhecimento':      return <Conhecimento />;
+      case 'empresa-config':    return <EmpresaConfig />;
       default:                  return <DashboardBI />;
     }
   };

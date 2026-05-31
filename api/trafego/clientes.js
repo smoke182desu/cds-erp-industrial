@@ -17,7 +17,12 @@ function slugify(texto) {
 
 function normalizarPayload(body) {
   const out = {};
-  const campos = ['nome', 'slug', 'logo_url', 'cor_destaque', 'status', 'responsavel', 'email_contato', 'telefone_contato', 'observacoes'];
+  const campos = ['nome', 'slug', 'logo_url', 'cor_destaque', 'status', 'responsavel', 'email_contato', 'telefone_contato', 'observacoes',
+    'cnpj','cpf','tipo_pessoa','razao_social','nome_fantasia','inscricao_estadual','inscricao_municipal',
+    'regime_tributario','cnae_principal',
+    'endereco_logradouro','endereco_numero','endereco_complemento','endereco_bairro','endereco_cidade','endereco_uf','endereco_cep',
+    'emite_nfe','ambiente_nfe','certificado_a1_path','certificado_a1_validade','proxima_serie_nfe',
+    'banco_nome','banco_agencia','banco_conta','banco_pix','fiscal_metadata'];
   for (const k of campos) {
     if (body[k] !== undefined) out[k] = body[k] === null ? null : String(body[k]).trim();
   }
