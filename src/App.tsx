@@ -36,6 +36,9 @@ import { Agencia } from './pages/Agencia';
 import { WhatsAppAgencia } from './pages/WhatsAppAgencia';
 import { Conhecimento } from './pages/Conhecimento';
 import { EmpresaConfig } from './pages/EmpresaConfig';
+import { FaturasAgencia } from './pages/FaturasAgencia';
+import { CalendarioEditorial } from './pages/CalendarioEditorial';
+import { AprovacaoPublica } from './pages/AprovacaoPublica';
 import { Configurador } from './components/Configurador';
 import { CheckoutPropostaModal } from './components/CheckoutPropostaModal';
 
@@ -97,6 +100,8 @@ function AppContent() {
       case 'whatsapp-agencia':  return <WhatsAppAgencia />;
       case 'conhecimento':      return <Conhecimento />;
       case 'empresa-config':    return <EmpresaConfig />;
+      case 'faturas-agencia':   return <FaturasAgencia />;
+      case 'calendario':        return <CalendarioEditorial />;
       default:                  return <DashboardBI />;
     }
   };
@@ -109,6 +114,11 @@ function AppContent() {
 }
 
 function App() {
+  // Rota pública de aprovação (sem login)
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/aprovacao/')) {
+    const token = window.location.pathname.split('/aprovacao/')[1]?.split(/[?#]/)[0];
+    if (token) return <AprovacaoPublica token={token} />;
+  }
   return (
     <ErrorBoundary>
       <AuthProvider>

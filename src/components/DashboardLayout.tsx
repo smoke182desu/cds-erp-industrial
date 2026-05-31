@@ -31,6 +31,8 @@ const sections: SidebarSection[] = [
       { name: 'WhatsApp Multi', icon: MessageSquare, id: 'whatsapp-agencia', badge: 'NEW' },
       { name: 'Conhecimento', icon: BookOpen, id: 'conhecimento', badge: 'IA' },
       { name: 'Config. Empresa', icon: ScrollText, id: 'empresa-config', badge: 'Fiscal' },
+      { name: 'Faturas Agência', icon: Receipt, id: 'faturas-agencia', badge: '$' },
+      { name: 'Calendário', icon: Calendar, id: 'calendario', badge: 'NEW' },
     ],
   },
   {
@@ -77,7 +79,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const { user, logout } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const crmIds = ['dashboard','projetos-3d','cadastro-clientes','assistente-ia','propostas','checkout','licitacoes','locacoes','leads','produtos','cadastro-fornecedores','cadastro-governo','cadastro-funcionarios','agencia','whatsapp-agencia','conhecimento','empresa-config','marketing','trafego-pago'];
+  const crmIds = ['dashboard','projetos-3d','cadastro-clientes','assistente-ia','propostas','checkout','licitacoes','locacoes','leads','produtos','cadastro-fornecedores','cadastro-governo','cadastro-funcionarios','agencia','whatsapp-agencia','conhecimento','empresa-config','faturas-agencia','calendario','marketing','trafego-pago'];
   const prodIds = ['corte','dobra','solda','pintura','embalagem','entrega','pcp-kanban','faturamento','estoque','entrada-inteligente'];
 
   const filteredSections = sections
