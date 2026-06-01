@@ -48,7 +48,7 @@ INSERT INTO wc_lojas (cliente_agencia_id, nome, url, ativo, status_conexao,
 SELECT tc.id, 'Loja ' || tc.nome, '', FALSE, 'nao_configurada',
        TRUE, TRUE, TRUE, TRUE, TRUE, TRUE
 FROM trafego_clientes tc
-WHERE tc.ativo = TRUE
+WHERE tc.status = 'ativo'
   AND NOT EXISTS (SELECT 1 FROM wc_lojas WHERE cliente_agencia_id = tc.id);
 
 -- Atualizar lojas já existentes com webhook_token se ainda não tem
