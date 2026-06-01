@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import {
   LayoutDashboard, Users, FileText, Scissors, Box, DollarSign,
-  BarChart3, Building2, LucideIcon, PaintBucket, Package, Truck,
+  BarChart, BarChart3, Building, Building2, LucideIcon, PaintBucket, Package, Truck,
   Upload, Layers, Hammer, Sparkles, ShoppingCart, LogOut, Menu, X,
   MessageSquare, ShoppingBag, TrendingUp, Megaphone, Target,
+  BookOpen, ScrollText, Receipt, Calendar, FileBarChart,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
