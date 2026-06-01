@@ -1,6 +1,6 @@
 // api/_lib/ai-fallback.js
-// Motor de IA multi-provider com fallback automatico: Gemini -> Groq -> OpenAI
-// Extraido de assistente-vendas.js para reuso em todos os agentes.
+// Motor de IA multi-provider com fallback automatico: OpenAI -> Gemini -> Groq
+// Ordem configurada por preferencia: qualidade (OpenAI) primeiro, depois custo zero (Gemini, Groq)
 
 import axios from 'axios';
 
@@ -8,6 +8,11 @@ const GROQ_API_KEY = (process.env.GROQ_API_KEY || '').trim();
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
+
+const OPENAI_MODELS = [
+  'gpt-4o-mini',
+  'gpt-3.5-turbo'
+];
 
 const GEMINI_MODELS = [
   'gemini-2.5-flash',
@@ -20,68 +25,23 @@ const GROQ_MODELS = [
 ];
 
 export function hasAnyProvider() {
-  return !!(GROQ_API_KEY || GEMINI_API_KEY || OPENAI_API_KEY);
+  return !!(OPENAI_API_KEY || GEMINI_API_KEY || GROQ_API_KEY);
 }
 
 /**
- * Chama IA com fallback automatico entre providers.
- * Retorna { content, provider, model } em vez do formato raw de cada provider.
+ * Indica quais providers estao disponiveis (util pra UI mostrar status).
  */
-export async function chamarIA(systemPrompt, userPrompt, opts = {}) {
-  const { maxTokens = 800, temperature = 0.7 } = opts;
-  let lastError;
-  let usedProvider = '';
-  let usedModel = '';
+export function providerStatus() {
+  return {
+    openai: !!OPENAI_API_KEY,
+    gemini: !!GEMINI_API_KEY,
+    groq: !!GROQ_API_KEY,
+  };
+}
 
-  // TIER 1: Gemini
-  if (GEMINI_API_KEY) {
-    for (const model of GEMINI_MODELS) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-        const payload = {
-          contents: [{ role: 'user', parts: [{ text: `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nUSER PROMPT:\n${userPrompt}` }] }],
-          generationConfig: { temperature, maxOutputTokens: maxTokens, responseMimeType: "application/json" }
-        };
-        const resp = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 15000 });
-        const content = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        return { content, provider: 'gemini', model };
-      } catch (err) {
-        console.log(`[ai-fallback] Gemini (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
-        lastError = err;
-        continue;
-      }
-    }
-  }
-
-  // TIER 2: Groq
-  if (GROQ_API_KEY) {
-    const payload = {
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-      response_format: { type: 'json_object' },
-      temperature,
-      max_tokens: maxTokens,
-    };
-    for (const model of GROQ_MODELS) {
-      try {
-        payload.model = model;
-        const resp = await axios.post(`${GROQ_BASE_URL}/chat/completions`, payload, {
-          headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-          timeout: 15000,
-        });
-        const content = resp.data?.choices?.[0]?.message?.content || '';
-        return { content, provider: 'groq', model };
-      } catch (err) {
-        console.log(`[ai-fallback] Groq (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
-        lastError = err;
-        continue;
-      }
-    }
-  }
-
-  // TIER 3: OpenAI
-  if (OPENAI_API_KEY) {
+async function tryOpenAI(systemPrompt, userPrompt, maxTokens, temperature) {
+  for (const model of OPENAI_MODELS) {
     try {
-      const model = 'gpt-4o-mini';
       const payload = {
         model,
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
@@ -91,22 +51,93 @@ export async function chamarIA(systemPrompt, userPrompt, opts = {}) {
       };
       const resp = await axios.post('https://api.openai.com/v1/chat/completions', payload, {
         headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-        timeout: 15000,
+        timeout: 20000,
       });
       const content = resp.data?.choices?.[0]?.message?.content || '';
       return { content, provider: 'openai', model };
     } catch (err) {
-      console.log('[ai-fallback] OpenAI falhou.');
-      lastError = err;
+      console.log(`[ai-fallback] OpenAI (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
+      // 401/403 -> sem chave valida, nao adianta tentar outro modelo do mesmo provider
+      if (err.response?.status === 401 || err.response?.status === 403) break;
     }
   }
+  return null;
+}
 
-  throw lastError || new Error('Todos os motores de IA esgotaram a cota (Gemini + Groq + OpenAI).');
+async function tryGemini(systemPrompt, userPrompt, maxTokens, temperature) {
+  for (const model of GEMINI_MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      const payload = {
+        contents: [{ role: 'user', parts: [{ text: `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nUSER PROMPT:\n${userPrompt}` }] }],
+        generationConfig: { temperature, maxOutputTokens: maxTokens, responseMimeType: 'application/json' }
+      };
+      const resp = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 20000 });
+      const content = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return { content, provider: 'gemini', model };
+    } catch (err) {
+      console.log(`[ai-fallback] Gemini (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
+      if (err.response?.status === 401 || err.response?.status === 403) break;
+    }
+  }
+  return null;
+}
+
+async function tryGroq(systemPrompt, userPrompt, maxTokens, temperature) {
+  for (const model of GROQ_MODELS) {
+    try {
+      const payload = {
+        model,
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+        response_format: { type: 'json_object' },
+        temperature,
+        max_tokens: maxTokens,
+      };
+      const resp = await axios.post(`${GROQ_BASE_URL}/chat/completions`, payload, {
+        headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+        timeout: 20000,
+      });
+      const content = resp.data?.choices?.[0]?.message?.content || '';
+      return { content, provider: 'groq', model };
+    } catch (err) {
+      console.log(`[ai-fallback] Groq (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
+      if (err.response?.status === 401 || err.response?.status === 403) break;
+    }
+  }
+  return null;
+}
+
+/**
+ * Chama IA com fallback automatico entre providers.
+ * Ordem: OpenAI -> Gemini -> Groq
+ * Retorna { content, provider, model } em vez do formato raw de cada provider.
+ */
+export async function chamarIA(systemPrompt, userPrompt, opts = {}) {
+  const { maxTokens = 800, temperature = 0.7 } = opts;
+
+  // TIER 1: OpenAI (qualidade prioritaria)
+  if (OPENAI_API_KEY) {
+    const r = await tryOpenAI(systemPrompt, userPrompt, maxTokens, temperature);
+    if (r) return r;
+  }
+
+  // TIER 2: Gemini (excelente PT-BR, gratis)
+  if (GEMINI_API_KEY) {
+    const r = await tryGemini(systemPrompt, userPrompt, maxTokens, temperature);
+    if (r) return r;
+  }
+
+  // TIER 3: Groq (rapido, gratis)
+  if (GROQ_API_KEY) {
+    const r = await tryGroq(systemPrompt, userPrompt, maxTokens, temperature);
+    if (r) return r;
+  }
+
+  throw new Error('Todos os motores de IA esgotaram (OpenAI + Gemini + Groq). Verifique as chaves no .env.');
 }
 
 /**
  * Parse JSON de resposta da IA com tolerancia a erros.
- * Tenta parse direto, depois regex, depois falha.
  */
 export function parseIAResponse(raw) {
   try {
