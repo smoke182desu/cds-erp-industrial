@@ -12,6 +12,9 @@ async function sbBody(p, o) {
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
+    // express.json verify hook setou req.rawBody como Buffer dos bytes originais
+    if (req.rawBody) return resolve(Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : String(req.rawBody));
+    // Fallback (sub-ótimo): stringify de body já parseado pode diferir do enviado
     if (req.body && typeof req.body === 'string') return resolve(req.body);
     if (req.body && typeof req.body === 'object') return resolve(JSON.stringify(req.body));
     const chunks = [];

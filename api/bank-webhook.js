@@ -11,6 +11,7 @@ async function sbBody(p, o) { const r = await sb(p, o); if (!r.ok) throw new Err
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
+    if (req.rawBody) return resolve(Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : String(req.rawBody));
     if (req.body && typeof req.body === 'string') return resolve(req.body);
     if (req.body && typeof req.body === 'object') return resolve(JSON.stringify(req.body));
     const chunks = [];

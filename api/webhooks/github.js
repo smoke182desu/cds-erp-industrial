@@ -16,7 +16,9 @@ function verifySignature(body, signature) {
 
 // Captura raw body antes do JSON parse pra fazer HMAC
 function getRawBody(req) {
+  // req.rawBody é Buffer (setado pelo express.json verify no server.ts)
   if (req.rawBody) return req.rawBody;
+  // Fallback (sub-ótimo): stringify pode diferir do que o GitHub enviou
   return Buffer.from(JSON.stringify(req.body || {}));
 }
 
