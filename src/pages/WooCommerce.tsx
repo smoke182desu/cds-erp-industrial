@@ -8,6 +8,7 @@ import {
 import { useTrafego } from '../contexts/TrafegoContext';
 import { AgenciaContextoBanner } from '../components/AgenciaContextoBanner';
 import { ComprovanteArquivos } from '../components/ComprovanteArquivos';
+import { WizardConectarLoja } from '../components/WizardConectarLoja';
 
 type Aba = 'pedidos' | 'lojas' | 'comprovantes';
 
@@ -60,6 +61,7 @@ export function WooCommerce() {
   const [loading, setLoading] = useState(true);
   const [sincronizando, setSincronizando] = useState(false);
   const [editLoja, setEditLoja] = useState<Partial<Loja> | null>(null);
+  const [wizardLoja, setWizardLoja] = useState<Loja | null>(null);
   const [editCompr, setEditCompr] = useState<Partial<Comprovante> | null>(null);
   const [verPedido, setVerPedido] = useState<Pedido | null>(null);
   const [feedback, setFeedback] = useState<{tipo: 'ok'|'erro'; msg: string} | null>(null);
@@ -234,8 +236,26 @@ export function WooCommerce() {
             )
           ) : aba === 'lojas' ? (
             <>
-              <button onClick={() => setEditLoja({ nome: '', url: '', ativo: true })} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-lg flex items-center gap-2">
-                <Plus className="w-4 h-4" /> Nova loja WC
+              <button
+                onClick={async () => {
+                  if (!clienteAtivo) { showMsg('erro', 'Selecione uma empresa primeiro no banner acima'); return; }
+                  // Procura loja-stub existente; se não tem, cria uma nova
+                  let lojaExistente = lojas.find(l => l.cliente_agencia_id === clienteAtivo.id && (!l.consumer_key || !l.url || !l.ativo));
+                  if (!lojaExistente) {
+                    const r = await fetch('/api/wc-lojas', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+                      body: JSON.stringify({ cliente_agencia_id: clienteAtivo.id, nome: `Loja ${clienteAtivo.nome}`, url: '', ativo: false })
+                    });
+                    if (!r.ok) { showMsg('erro', 'Erro ao criar loja'); return; }
+                    const d = await r.json();
+                    lojaExistente = Array.isArray(d) ? d[0] : d;
+                  }
+                  setWizardLoja(lojaExistente as Loja);
+                }}
+                className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-lg flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> Conectar Loja WC
               </button>
               {lojas.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">
@@ -333,6 +353,14 @@ export function WooCommerce() {
       {editLoja && <ModalLoja loja={editLoja} onClose={() => setEditLoja(null)} onSalvar={salvarLoja} />}
       {editCompr && <ModalComprovante comprovante={editCompr} pedidos={pedidos} onClose={() => setEditCompr(null)} onSalvar={salvarComprovante} />}
       {verPedido && <ModalPedido pedido={verPedido} onClose={() => setVerPedido(null)} onCriarComprovante={() => { setEditCompr({ tipo: 'pix', status: 'recebido', pedido_wc_id: verPedido.id, valor: verPedido.total, titulo: `Pagamento pedido #${verPedido.numero_wc}` }); setVerPedido(null); }} />}
+      {wizardLoja && clienteAtivo && (
+        <WizardConectarLoja
+          loja={wizardLoja as any}
+          empresaNome={clienteAtivo.nome}
+          onClose={() => { setWizardLoja(null); carregar(); }}
+          onSucesso={() => { setWizardLoja(null); carregar(); }}
+        />
+      )}
     </div>
   );
 }

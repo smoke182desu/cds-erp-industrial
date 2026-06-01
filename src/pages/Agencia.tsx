@@ -4,12 +4,13 @@ import { useEffect, useState, useMemo } from 'react';
 import {
   Building2, Plus, TrendingUp, Plug, BarChart3, Users2, Search, AlertCircle,
   CheckCircle2, Loader2, ArrowRight, X, ChevronRight, DollarSign, MessageCircle,
-  Target, Briefcase, Calendar, Phone, Mail, ExternalLink,
+  Target, Briefcase, Calendar, Phone, Mail, ExternalLink, ShoppingBag,
 } from 'lucide-react';
 import { useTrafego } from '../contexts/TrafegoContext';
 import {
   TrafegoCliente, TrafegoClienteInput, criarCliente,
 } from '../services/trafegoService';
+import { WizardConectarLoja } from '../components/WizardConectarLoja';
 
 interface StatsEmpresa {
   id: string;
@@ -24,6 +25,18 @@ interface StatsEmpresa {
   contas_conectadas: number;
   propostas: { total: number; pendentes: number; aprovadas: number; valor_total: number };
   mensagens_7d: number;
+}
+
+interface WcLojaResumo {
+  id: string;
+  cliente_agencia_id: string;
+  nome: string;
+  url?: string;
+  consumer_key?: string;
+  consumer_secret?: string;
+  webhook_token?: string;
+  status_conexao?: string;
+  ativo?: boolean;
 }
 
 interface Stats {
@@ -57,13 +70,18 @@ export function Agencia() {
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
   const [wizardAberto, setWizardAberto] = useState(false);
+  const [lojas, setLojas] = useState<WcLojaResumo[]>([]);
+  const [lojaConectar, setLojaConectar] = useState<{ loja: WcLojaResumo; empresaNome: string } | null>(null);
 
   async function carregar() {
     try {
       setLoading(true);
-      const r = await fetch('/api/agencia/stats');
-      const d = await r.json();
-      setStats(d);
+      const [r1, r2] = await Promise.all([
+        fetch('/api/agencia/stats').then(r => r.json()),
+        fetch('/api/wc-lojas').then(r => r.ok ? r.json() : []),
+      ]);
+      setStats(r1);
+      setLojas(Array.isArray(r2) ? r2 : []);
     } finally { setLoading(false); }
   }
   useEffect(() => { carregar(); }, [clientes.length]);
@@ -139,7 +157,9 @@ export function Agencia() {
                 <CardEmpresaCompleta
                   key={e.id} stats={e}
                   ativo={clienteAtivo?.id === e.id}
+                  loja={lojas.find(l => l.cliente_agencia_id === e.id)}
                   onSelecionar={() => setClienteAtivoId(e.id)}
+                  onConectarLoja={(loja) => setLojaConectar({ loja, empresaNome: e.nome })}
                 />
               ))}
             </div>
@@ -170,6 +190,15 @@ export function Agencia() {
             setClienteAtivoId(c.id);
             carregar();
           }}
+        />
+      )}
+
+      {lojaConectar && (
+        <WizardConectarLoja
+          loja={lojaConectar.loja}
+          empresaNome={lojaConectar.empresaNome}
+          onClose={() => { setLojaConectar(null); carregar(); }}
+          onSucesso={() => { setLojaConectar(null); carregar(); }}
         />
       )}
     </div>
@@ -210,7 +239,15 @@ function KpiMini({ label, value, icon: Icon }: any) {
   );
 }
 
-function CardEmpresaCompleta({ stats, ativo, onSelecionar }: { stats: StatsEmpresa; ativo: boolean; onSelecionar: () => void }) {
+function CardEmpresaCompleta({ stats, ativo, loja, onSelecionar, onConectarLoja }: {
+  stats: StatsEmpresa;
+  ativo: boolean;
+  loja?: WcLojaResumo;
+  onSelecionar: () => void;
+  onConectarLoja: (loja: WcLojaResumo) => void;
+}) {
+  const lojaConectada = loja && loja.consumer_key && loja.url && loja.ativo;
+  const lojaStub = loja && (!loja.consumer_key || !loja.url || !loja.ativo);
   return (
     <div onClick={onSelecionar}
       className={`bg-white rounded-2xl border-2 transition cursor-pointer hover:shadow-md ${
@@ -229,6 +266,21 @@ function CardEmpresaCompleta({ stats, ativo, onSelecionar }: { stats: StatsEmpre
           <p className="text-xs text-slate-500 truncate">
             {stats.responsavel || 'sem responsável'} {stats.fee_mensal > 0 && `· ${fmtBRL(stats.fee_mensal)}/mês`}
           </p>
+          {loja && (
+            <div className="mt-1 flex items-center gap-1">
+              <ShoppingBag className="w-3 h-3 text-slate-400" />
+              {lojaConectada ? (
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">WC conectado</span>
+              ) : (
+                <button
+                  onClick={(ev) => { ev.stopPropagation(); onConectarLoja(loja!); }}
+                  className="text-[10px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 px-1.5 py-0.5 rounded"
+                >
+                  Conectar Loja WC
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <ChevronRight className="w-5 h-5 text-slate-400" />
       </div>
