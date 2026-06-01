@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useTrafego } from '../contexts/TrafegoContext';
 import { AgenciaContextoBanner } from '../components/AgenciaContextoBanner';
+import { ComprovanteArquivos } from '../components/ComprovanteArquivos';
 
 type Aba = 'pedidos' | 'lojas' | 'comprovantes';
 
@@ -441,8 +442,20 @@ function ModalComprovante({ comprovante, pedidos, onClose, onSalvar }: any) {
           <div>
             <label className="text-xs font-semibold text-slate-700">URL do anexo (comprovante/print)</label>
             <input value={f.arquivo_url || ''} onChange={e => up('arquivo_url', e.target.value)} placeholder="https://..." className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg mt-1 font-mono" />
-            <p className="text-[10px] text-slate-400 mt-1">Cole link do print/PDF (Google Drive, S3, etc). Upload direto vai pra próxima rodada.</p>
+            <p className="text-[10px] text-slate-400 mt-1">Cole link externo OU use o upload abaixo (recomendado).</p>
           </div>
+
+          {f.id && (
+            <div className="border-t border-slate-200 pt-3">
+              <label className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-2">
+                <span>📎 Anexos &amp; OCR com IA</span>
+              </label>
+              <ComprovanteArquivos comprovanteId={f.id} />
+              <p className="text-[10px] text-slate-400 mt-2">
+                Faça upload do PDF/foto do PIX e clique no botão <strong>IA</strong> pra extrair valor, data, banco e pagador automaticamente.
+              </p>
+            </div>
+          )}
           <div>
             <label className="text-xs font-semibold text-slate-700">Pedido vinculado (opcional)</label>
             <select value={f.pedido_wc_id || ''} onChange={e => up('pedido_wc_id', e.target.value || null)} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg mt-1">
