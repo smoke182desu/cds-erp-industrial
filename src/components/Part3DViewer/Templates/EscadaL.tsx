@@ -89,6 +89,10 @@ export const EscadaL: React.FC<EscadaLProps> = ({
   const c2 = comprimento2 / 1000;
   const pZ = (comprimento1 + larguraEscada / 2) / 1000;
   const p = pisada / 1000;
+  // SOB MEDIDA: centraliza o degrau na altura da longarina (sobe meio espelho)
+  const isSob = perfilSelecionado.id === 'sob_medida';
+  const cy1 = isSob ? (espelho1 / 1000) / 2 : 0;
+  const cy2 = isSob ? (espelho2 / 1000) / 2 : 0;
 
   React.useEffect(() => {
     if (onBOMCalculated) {
@@ -150,8 +154,8 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         {/* Vigas Laterais Lance 1 */}
         <group position={exp(-0.2, 0, 0)}>
           <PecaParametrica
-            pontoInicio={[-w / 2 + espessuraViga / 2, 0, 0]}
-            pontoFim={[-w / 2 + espessuraViga / 2, hPatamar, c1]}
+            pontoInicio={[-w / 2 + espessuraViga / 2, cy1, 0]}
+            pontoFim={[-w / 2 + espessuraViga / 2, hPatamar + cy1, c1]}
             perfil={perfilVigaM}
             tipoCorte="reto"
             acabamentoMetal={acabamentoMetal}
@@ -162,8 +166,8 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         </group>
         <group position={exp(0.2, 0, 0)}>
           <PecaParametrica
-            pontoInicio={[w / 2 - espessuraViga / 2, 0, 0]}
-            pontoFim={[w / 2 - espessuraViga / 2, hPatamar, c1]}
+            pontoInicio={[w / 2 - espessuraViga / 2, cy1, 0]}
+            pontoFim={[w / 2 - espessuraViga / 2, hPatamar + cy1, c1]}
             perfil={perfilVigaM}
             tipoCorte="reto"
             acabamentoMetal={acabamentoMetal}
@@ -238,8 +242,8 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         {/* Vigas Laterais Lance 2 */}
         <group position={exp(-0.2, 0, 0)}>
           <PecaParametrica
-            pontoInicio={[-w / 2 + espessuraViga / 2, 0, w / 2]}
-            pontoFim={[-w / 2 + espessuraViga / 2, hTotal - hPatamar, w / 2 + c2]}
+            pontoInicio={[-w / 2 + espessuraViga / 2, cy2, w / 2]}
+            pontoFim={[-w / 2 + espessuraViga / 2, hTotal - hPatamar + cy2, w / 2 + c2]}
             perfil={perfilVigaM}
             tipoCorte="reto"
             acabamentoMetal={acabamentoMetal}
@@ -250,8 +254,8 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         </group>
         <group position={exp(0.2, 0, 0)}>
           <PecaParametrica
-            pontoInicio={[w / 2 - espessuraViga / 2, 0, w / 2]}
-            pontoFim={[w / 2 - espessuraViga / 2, hTotal - hPatamar, w / 2 + c2]}
+            pontoInicio={[w / 2 - espessuraViga / 2, cy2, w / 2]}
+            pontoFim={[w / 2 - espessuraViga / 2, hTotal - hPatamar + cy2, w / 2 + c2]}
             perfil={perfilVigaM}
             tipoCorte="reto"
             acabamentoMetal={acabamentoMetal}
