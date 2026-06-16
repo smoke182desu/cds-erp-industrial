@@ -8,7 +8,7 @@ interface PecaParametricaProps {
   pontoInicio: [number, number, number] | THREE.Vector3;
   pontoFim: [number, number, number] | THREE.Vector3;
   perfil: PerfilData;
-  tipoCorte: 'reto' | 'meia-esquadria';
+  tipoCorte: 'reto' | 'meia-esquadria' | 'prumo';
   up?: [number, number, number] | THREE.Vector3;
   acabamentoMetal?: AcabamentoMetalKey;
   materialProps?: { color: string; metalness: number; roughness: number };
@@ -100,8 +100,24 @@ export const PecaParametrica: React.FC<PecaParametricaProps> = ({
       geo.computeVertexNormals();
     }
 
+    if (tipoCorte === 'prumo') {
+      const s = Array.isArray(pontoInicio) ? new THREE.Vector3(...pontoInicio) : pontoInicio;
+      const e = Array.isArray(pontoFim) ? new THREE.Vector3(...pontoFim) : pontoFim;
+      const dir = e.clone().sub(s);
+      const dh = Math.hypot(dir.x, dir.z);
+      const k = dh > 1e-6 ? (dir.y / dh) : 0; // cisalhamento p/ deixar as pontas no PRUMO (vertical)
+      const pa = geo.attributes.position;
+      const v = new THREE.Vector3();
+      for (let i = 0; i < pa.count; i++) {
+        v.fromBufferAttribute(pa, i);
+        v.z += k * v.y;
+        pa.setXYZ(i, v.x, v.y, v.z);
+      }
+      geo.computeVertexNormals();
+    }
+
     return geo;
-  }, [length, perfil.id, tipoCorte]);
+  }, [length, perfil.id, tipoCorte, JSON.stringify(pontoInicio), JSON.stringify(pontoFim)]);
 
   const matProps = materialProps || acabamentosMetal[acabamentoMetal];
   const edgesGeo = useMemo(() => new THREE.EdgesGeometry(geometry), [geometry]);
