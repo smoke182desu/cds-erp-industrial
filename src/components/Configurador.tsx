@@ -2533,6 +2533,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                               <button onClick={() => setNumDegrausLance1(Math.min(40, numDegrausLance1 + 1))} className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 font-bold">+</button>
                             </div>
                             <div className={"text-[10px] font-bold mt-1 " + ((altura / (numDegrausLance1 + numDegrausLance2)) >= 160 && (altura / (numDegrausLance1 + numDegrausLance2)) <= 190 ? "text-emerald-600" : "text-amber-600")}>Espelho: {Number.isFinite(altura / (numDegrausLance1 + numDegrausLance2)) ? (altura / (numDegrausLance1 + numDegrausLance2)).toFixed(0) : "--"} mm</div>
+                            <div className="text-[10px] font-bold mt-0.5 text-slate-600">Pisada: {Number.isFinite((profundidade - largura) / Math.max(1, numDegrausLance1)) ? Math.max(200, Math.round((profundidade - largura) / Math.max(1, numDegrausLance1))) : "--"} mm</div>
                           </div>
                           <div>
                             <div className="text-[9px] font-bold text-slate-500 uppercase mb-1">Lance 2 (apos o patamar)</div>
@@ -2542,6 +2543,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                               <button onClick={() => setNumDegrausLance2(Math.min(40, numDegrausLance2 + 1))} className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 font-bold">+</button>
                             </div>
                             <div className={"text-[10px] font-bold mt-1 " + ((altura / (numDegrausLance1 + numDegrausLance2)) >= 160 && (altura / (numDegrausLance1 + numDegrausLance2)) <= 190 ? "text-emerald-600" : "text-amber-600")}>Espelho: {Number.isFinite(altura / (numDegrausLance1 + numDegrausLance2)) ? (altura / (numDegrausLance1 + numDegrausLance2)).toFixed(0) : "--"} mm</div>
+                            <div className="text-[10px] font-bold mt-0.5 text-slate-600">Pisada: {Number.isFinite((profundidade - largura) / Math.max(1, numDegrausLance1)) ? Math.max(200, Math.round((profundidade - largura) / Math.max(1, numDegrausLance1))) : "--"} mm</div>
                           </div>
                         </div>
                         <div className="text-[10px] text-slate-500">Total: {numDegrausLance1 + numDegrausLance2} degraus &middot; espelho ideal 160 a 190 mm</div>
