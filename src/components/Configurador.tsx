@@ -2001,8 +2001,14 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     value={altura} 
                     onChange={(novaAltura) => {
                       setAltura(novaAltura);
-                      if (tipoProduto === 'escada_l' && alturaPatamar >= novaAltura - 100) {
-                        setAlturaPatamar(novaAltura - 100);
+                      if (tipoProduto === 'escada_l') {
+                        if (altura > 0 && Number.isFinite(alturaPatamar) && alturaPatamar > 0) {
+                          const ratio = alturaPatamar / altura;
+                          const novoPatamar = Math.min(Math.max(Math.round(novaAltura * ratio), 200), novaAltura - 100);
+                          setAlturaPatamar(novoPatamar);
+                        } else {
+                          setAlturaPatamar(Math.round(novaAltura / 2));
+                        }
                       }
                     }} 
                     min={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? 1000 : (tipoProduto === 'tesoura' ? Math.max(200, Math.round(largura * 0.10)) : (tipoProduto.startsWith('chapa_') || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'bandeja_metalica' ? 10 : 500))} 
