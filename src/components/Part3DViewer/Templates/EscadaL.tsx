@@ -324,7 +324,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         {/* Vigas Laterais Lance 2 */}
         <group position={exp(-0.2, 0, 0)}>
           {isSob ? (
-            <LongarinaPrumo a={[w / 2, cy2]} b={[w / 2 + c2, hTotal - hPatamar + cy2]} xCenter={-w / 2 + espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} clipMinY={0} clipMaxY={hTotal - hPatamar} />
+            <LongarinaPrumo a={[w / 2, cy2]} b={[w / 2 + c2, hTotal - hPatamar + cy2]} xCenter={-w / 2 + espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} clipMinY={0} />
           ) : (
             <PecaParametrica
               pontoInicio={[-w / 2 + espessuraViga / 2, cy2, w / 2]}
@@ -340,7 +340,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         </group>
         <group position={exp(0.2, 0, 0)}>
           {isSob ? (
-            <LongarinaPrumo a={[w / 2, cy2]} b={[w / 2 + c2, hTotal - hPatamar + cy2]} xCenter={w / 2 - espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} clipMinY={0} clipMaxY={hTotal - hPatamar} />
+            <LongarinaPrumo a={[w / 2, cy2]} b={[w / 2 + c2, hTotal - hPatamar + cy2]} xCenter={w / 2 - espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} clipMinY={0} />
           ) : (
             <PecaParametrica
               pontoInicio={[w / 2 - espessuraViga / 2, cy2, w / 2]}
