@@ -57,7 +57,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
     const pisadaCalculada = profundidade ? Math.max(200, (profundidade - larguraEscada) / numDegraus1) : 280;
     const pisada = pisadaCalculada;
     
-    const comprimento1 = Math.max(0, numDegraus1 - 1) * pisada;
+    const comprimento1 = numDegraus1 * pisada;
     
     // Lance 2
     const alturaRestante = alturaTotal - alturaPatamar;

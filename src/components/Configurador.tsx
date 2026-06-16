@@ -763,7 +763,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       const numDegraus1 = numDegrausLance1;
       const espelho1 = alturaPatamar / numDegraus1;
       pisada = Math.max(200, Math.round((profundidade - largura) / numDegraus1)) || 280;
-      const comprimento1 = Math.max(0, numDegraus1 - 1) * pisada;
+      const comprimento1 = numDegraus1 * pisada;
       
       const alturaRestante = altura - alturaPatamar;
       const numDegraus2 = numDegrausLance2;
@@ -1208,7 +1208,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         listaCorte.push({ item: 'Degraus', quantidade: numDegraus, medida: `Pisada: ${pisada} mm, Espelho: ${espelho.toFixed(1)} mm` });
       } else {
         const numDegraus1 = numDegrausLance1;
-        const comprimento1 = Math.max(0, numDegraus1 - 1) * pisada;
+        const comprimento1 = numDegraus1 * pisada;
         const alturaRestante = altura - alturaPatamar;
         const numDegraus2 = numDegrausLance2;
         const comprimento2 = numDegraus2 * pisada;
