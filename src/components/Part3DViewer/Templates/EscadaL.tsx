@@ -48,24 +48,18 @@ export const EscadaL: React.FC<EscadaLProps> = ({
   onBOMCalculated
 }) => {
   const exp = (x: number, y: number, z: number) => [x * explodedFactor, y * explodedFactor, z * explodedFactor] as [number, number, number];
-  const { numDegraus1, espelho1, comprimento1, numDegraus2, espelho2, comprimento2, pisada } = useMemo(() => {
-    // Lance 1
+  const { numDegraus1, espelho1, comprimento1, numDegraus2, espelho2, comprimento2, pisada, alturaPatamarCalc } = useMemo(() => {
     const numDegraus1 = (numDegraus1Prop && numDegraus1Prop > 0) ? numDegraus1Prop : Math.max(1, Math.round(alturaPatamar / 180));
-    const espelho1 = alturaPatamar / numDegraus1;
-    
-    // Calcula a pisada baseada na profundidade total (profundidade = comprimento1 + larguraEscada)
-    const pisadaCalculada = profundidade ? Math.max(200, (profundidade - larguraEscada) / numDegraus1) : 280;
-    const pisada = pisadaCalculada;
-    
+    const numDegraus2 = (numDegraus2Prop && numDegraus2Prop > 0) ? numDegraus2Prop : Math.max(1, Math.round((alturaTotal - alturaPatamar) / 180));
+    const totalDeg = Math.max(1, numDegraus1 + numDegraus2);
+    const espelho = alturaTotal / totalDeg; // espelho UNICO e igual em toda a escada
+    const espelho1 = espelho;
+    const espelho2 = espelho;
+    const alturaPatamarCalc = numDegraus1 * espelho; // patamar derivado dos degraus
+    const pisada = profundidade ? Math.max(200, (profundidade - larguraEscada) / Math.max(1, numDegraus1)) : 280;
     const comprimento1 = numDegraus1 * pisada;
-    
-    // Lance 2
-    const alturaRestante = alturaTotal - alturaPatamar;
-    const numDegraus2 = (numDegraus2Prop && numDegraus2Prop > 0) ? numDegraus2Prop : Math.max(1, Math.round(alturaRestante / 180));
-    const espelho2 = alturaRestante / numDegraus2;
     const comprimento2 = numDegraus2 * pisada;
-
-    return { numDegraus1, espelho1, comprimento1, numDegraus2, espelho2, comprimento2, pisada };
+    return { numDegraus1, espelho1, comprimento1, numDegraus2, espelho2, comprimento2, pisada, alturaPatamarCalc };
   }, [alturaTotal, alturaPatamar, profundidade, larguraEscada, numDegraus1Prop, numDegraus2Prop]);
 
   const perfilVigaM = useMemo(() => ({
@@ -90,7 +84,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
   // Converter para metros para o Three.js
   const w = larguraEscada / 1000;
   const hTotal = alturaTotal / 1000;
-  const hPatamar = alturaPatamar / 1000;
+  const hPatamar = alturaPatamarCalc / 1000;
   const c1 = comprimento1 / 1000;
   const c2 = comprimento2 / 1000;
   const pZ = (comprimento1 + larguraEscada / 2) / 1000;

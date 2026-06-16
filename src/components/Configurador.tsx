@@ -107,11 +107,13 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
   const [numDegrausLance1, setNumDegrausLance1] = useState<number>(8);
   const [numDegrausLance2, setNumDegrausLance2] = useState<number>(8);
   useEffect(() => {
-    if (tipoProduto === 'escada_l' && !(Number.isFinite(alturaPatamar) && alturaPatamar > 0)) {
+    if (tipoProduto === 'escada_l') {
+      const tot = Math.max(1, numDegrausLance1 + numDegrausLance2);
       const base = (Number.isFinite(altura) && altura > 0) ? altura : 2800;
-      setAlturaPatamar(Math.round(base / 2));
+      const novo = Math.round((numDegrausLance1 / tot) * base);
+      if (Math.abs((alturaPatamar || 0) - novo) > 0.5) setAlturaPatamar(novo);
     }
-  }, [tipoProduto, altura, alturaPatamar]);
+  }, [tipoProduto, altura, numDegrausLance1, numDegrausLance2]);
   const [fixacao, setFixacao] = useState<'chumbado' | 'sapata_parafuso'>(project.fixacao || 'sapata_parafuso');
 
   // Novos estados para o Guarda-Corpo
@@ -2001,15 +2003,6 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                     value={altura} 
                     onChange={(novaAltura) => {
                       setAltura(novaAltura);
-                      if (tipoProduto === 'escada_l') {
-                        if (altura > 0 && Number.isFinite(alturaPatamar) && alturaPatamar > 0) {
-                          const ratio = alturaPatamar / altura;
-                          const novoPatamar = Math.min(Math.max(Math.round(novaAltura * ratio), 200), novaAltura - 100);
-                          setAlturaPatamar(novoPatamar);
-                        } else {
-                          setAlturaPatamar(Math.round(novaAltura / 2));
-                        }
-                      }
                     }} 
                     min={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? 1000 : (tipoProduto === 'tesoura' ? Math.max(200, Math.round(largura * 0.10)) : (tipoProduto.startsWith('chapa_') || tipoProduto === 'perfil_u_enrijecido' || tipoProduto === 'bandeja_metalica' ? 10 : 500))} 
                     max={tipoProduto === 'escada_reta' || tipoProduto === 'escada_l' ? 4000 : (tipoProduto === 'tesoura' ? Math.max(500, Math.round(largura * 0.30)) : (isGalpao ? 12000 : 3000))} 
@@ -2519,15 +2512,13 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
 
                   {tipoProduto === 'escada_l' && (
                     <>
-                      <DimensionInput 
-                        label="Altura do Patamar" 
-                        value={alturaPatamar} 
-                        onChange={(val) => setAlturaPatamar(Math.min(val, altura - 100))} 
-                        min={500} 
-                        max={3000} 
-                        step={10}
-                        info="Altura onde a escada faz a curva."
-                      />
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
+                          Altura do Patamar (calculada)
+                          <Tooltip text="Definida automaticamente pelos degraus, para manter o espelho igual em toda a escada." />
+                        </label>
+                        <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-700">{Math.round(alturaPatamar || 0)} mm</div>
+                      </div>
                       <div className="flex flex-col gap-2 pt-1">
                         <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                           Degraus por Lance
@@ -2541,7 +2532,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                               <input type="number" min={1} max={40} value={numDegrausLance1} onChange={(e) => setNumDegrausLance1(Math.max(1, Math.round(Number(e.target.value) || 1)))} className="flex-1 w-full bg-slate-50 border border-slate-200 rounded p-1 text-center font-mono text-sm text-slate-900 outline-none" />
                               <button onClick={() => setNumDegrausLance1(Math.min(40, numDegrausLance1 + 1))} className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 font-bold">+</button>
                             </div>
-                            <div className={"text-[10px] font-bold mt-1 " + ((alturaPatamar / numDegrausLance1) >= 160 && (alturaPatamar / numDegrausLance1) <= 190 ? "text-emerald-600" : "text-amber-600")}>Espelho: {Number.isFinite(alturaPatamar / numDegrausLance1) ? (alturaPatamar / numDegrausLance1).toFixed(0) : "--"} mm</div>
+                            <div className={"text-[10px] font-bold mt-1 " + ((altura / (numDegrausLance1 + numDegrausLance2)) >= 160 && (altura / (numDegrausLance1 + numDegrausLance2)) <= 190 ? "text-emerald-600" : "text-amber-600")}>Espelho: {Number.isFinite(altura / (numDegrausLance1 + numDegrausLance2)) ? (altura / (numDegrausLance1 + numDegrausLance2)).toFixed(0) : "--"} mm</div>
                           </div>
                           <div>
                             <div className="text-[9px] font-bold text-slate-500 uppercase mb-1">Lance 2 (apos o patamar)</div>
@@ -2550,7 +2541,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                               <input type="number" min={1} max={40} value={numDegrausLance2} onChange={(e) => setNumDegrausLance2(Math.max(1, Math.round(Number(e.target.value) || 1)))} className="flex-1 w-full bg-slate-50 border border-slate-200 rounded p-1 text-center font-mono text-sm text-slate-900 outline-none" />
                               <button onClick={() => setNumDegrausLance2(Math.min(40, numDegrausLance2 + 1))} className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 font-bold">+</button>
                             </div>
-                            <div className={"text-[10px] font-bold mt-1 " + (((altura - alturaPatamar) / numDegrausLance2) >= 160 && ((altura - alturaPatamar) / numDegrausLance2) <= 190 ? "text-emerald-600" : "text-amber-600")}>Espelho: {Number.isFinite((altura - alturaPatamar) / numDegrausLance2) ? ((altura - alturaPatamar) / numDegrausLance2).toFixed(0) : "--"} mm</div>
+                            <div className={"text-[10px] font-bold mt-1 " + ((altura / (numDegrausLance1 + numDegrausLance2)) >= 160 && (altura / (numDegrausLance1 + numDegrausLance2)) <= 190 ? "text-emerald-600" : "text-amber-600")}>Espelho: {Number.isFinite(altura / (numDegrausLance1 + numDegrausLance2)) ? (altura / (numDegrausLance1 + numDegrausLance2)).toFixed(0) : "--"} mm</div>
                           </div>
                         </div>
                         <div className="text-[10px] text-slate-500">Total: {numDegrausLance1 + numDegrausLance2} degraus &middot; espelho ideal 160 a 190 mm</div>
