@@ -199,7 +199,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
       </group>
 
       {/* PATAMAR */}
-      <group position={[0, hPatamar, c1 + w / 2 + exp(0, 0.4, 0.4)[2]]}>
+      <group position={[0, hPatamar, c1 - p + w / 2 + exp(0, 0.4, 0.4)[2]]}>
         {/* Estrutura do Patamar */}
         <group position={exp(0, -0.1, 0)}>
           <PecaParametrica
@@ -239,9 +239,9 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         {/* Piso do Patamar */}
         <group position={exp(0, 0.1, 0)}>
           <PecaParametrica
-            pontoInicio={[-w / 2, 0, -p / 2]}
-            pontoFim={[w / 2, 0, -p / 2]}
-            perfil={{ ...perfilDegrauM, largura: w + p }}
+            pontoInicio={[-w / 2, 0, 0]}
+            pontoFim={[w / 2, 0, 0]}
+            perfil={{ ...perfilDegrauM, largura: w }}
             tipoCorte="reto"
             materialProps={materiaisDegrau[materialDegrau]}
             up={[0, 1, 0]}
@@ -252,7 +252,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
 
       {/* LANCE 2 */}
       <group 
-        position={[0, hPatamar, c1 + w / 2 + exp(0, 0, 0.8)[2]]} 
+        position={[0, hPatamar, c1 - p + w / 2 + exp(0, 0, 0.8)[2]]} 
         rotation={[0, direcaoCurva === 'direita' ? Math.PI / 2 : -Math.PI / 2, 0]}
       >
         {/* Vigas Laterais Lance 2 */}
