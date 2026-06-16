@@ -125,7 +125,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         {
           code: 'EL-04',
           name: 'Degraus',
-          quantity: numDegraus1 + numDegraus2,
+          quantity: (numDegraus1 - 1) + numDegraus2,
           unit: 'un',
           material: materiaisDegrau[materialDegrau]?.nome || 'Chapa Xadrez',
           weight: (numDegraus1 + numDegraus2) * (w * p * 25), // Aproximado
@@ -177,7 +177,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
 
         {/* Degraus Lance 1 */}
         <group position={exp(0, 0.2, 0)}>
-          {Array.from({ length: numDegraus1 }).map((_, i) => {
+          {Array.from({ length: numDegraus1 - 1 }).map((_, i) => {
             const zPos = (i + 0.5) * p;
             const yPos = (i + 1) * (espelho1 / 1000);
             return (
