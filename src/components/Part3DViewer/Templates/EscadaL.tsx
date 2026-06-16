@@ -225,9 +225,9 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         {/* Piso do Patamar */}
         <group position={exp(0, 0.1, 0)}>
           <PecaParametrica
-            pontoInicio={[-w / 2, 0, 0]}
-            pontoFim={[w / 2, 0, 0]}
-            perfil={{ ...perfilDegrauM, largura: w }}
+            pontoInicio={[-w / 2, 0, -p / 2]}
+            pontoFim={[w / 2, 0, -p / 2]}
+            perfil={{ ...perfilDegrauM, largura: w + p }}
             tipoCorte="reto"
             materialProps={materiaisDegrau[materialDegrau]}
             up={[0, 1, 0]}
