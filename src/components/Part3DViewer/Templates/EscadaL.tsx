@@ -12,6 +12,8 @@ interface EscadaLProps {
   profundidade?: number;
   alturaPatamar: number;
   direcaoCurva: 'esquerda' | 'direita';
+  numDegraus1Prop?: number;
+  numDegraus2Prop?: number;
   perfilSelecionado: PerfilData;
   acabamentoMetal?: AcabamentoMetalKey;
   materialDegrau?: MaterialDegrauKey;
@@ -35,6 +37,8 @@ export const EscadaL: React.FC<EscadaLProps> = ({
   profundidade,
   alturaPatamar,
   direcaoCurva,
+  numDegraus1Prop,
+  numDegraus2Prop,
   perfilSelecionado,
   acabamentoMetal = 'preto_fosco',
   materialDegrau = 'madeira_clara',
@@ -46,7 +50,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
   const exp = (x: number, y: number, z: number) => [x * explodedFactor, y * explodedFactor, z * explodedFactor] as [number, number, number];
   const { numDegraus1, espelho1, comprimento1, numDegraus2, espelho2, comprimento2, pisada } = useMemo(() => {
     // Lance 1
-    const numDegraus1 = Math.max(1, Math.round(alturaPatamar / 180));
+    const numDegraus1 = (numDegraus1Prop && numDegraus1Prop > 0) ? numDegraus1Prop : Math.max(1, Math.round(alturaPatamar / 180));
     const espelho1 = alturaPatamar / numDegraus1;
     
     // Calcula a pisada baseada na profundidade total (profundidade = comprimento1 + larguraEscada)
@@ -57,12 +61,12 @@ export const EscadaL: React.FC<EscadaLProps> = ({
     
     // Lance 2
     const alturaRestante = alturaTotal - alturaPatamar;
-    const numDegraus2 = Math.max(1, Math.round(alturaRestante / 180));
+    const numDegraus2 = (numDegraus2Prop && numDegraus2Prop > 0) ? numDegraus2Prop : Math.max(1, Math.round(alturaRestante / 180));
     const espelho2 = alturaRestante / numDegraus2;
     const comprimento2 = numDegraus2 * pisada;
 
     return { numDegraus1, espelho1, comprimento1, numDegraus2, espelho2, comprimento2, pisada };
-  }, [alturaTotal, alturaPatamar, profundidade, larguraEscada]);
+  }, [alturaTotal, alturaPatamar, profundidade, larguraEscada, numDegraus1Prop, numDegraus2Prop]);
 
   const perfilVigaM = useMemo(() => ({
     ...perfilSelecionado,

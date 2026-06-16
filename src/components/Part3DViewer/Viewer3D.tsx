@@ -45,6 +45,8 @@ interface Viewer3DProps {
   acabamentoMetal?: AcabamentoMetalKey;
   materialDegrau?: MaterialDegrauKey;
   alturaPatamar?: number;
+  numDegraus1?: number;
+  numDegraus2?: number;
   direcaoCurva?: 'esquerda' | 'direita';
   abaExtra?: number;
   espessuraChapa?: number;
@@ -110,6 +112,8 @@ const SceneContent: React.FC<Viewer3DProps & { aberto?: boolean }> = (props) => 
     materialDegrau = 'madeira_clara',
     tipoChegada = 'Abaixo',
     alturaPatamar = 1500,
+    numDegraus1 = 0,
+    numDegraus2 = 0,
     direcaoCurva = 'direita',
     mostrarCotas = false,
     explodedFactor = 0,
@@ -277,6 +281,8 @@ const SceneContent: React.FC<Viewer3DProps & { aberto?: boolean }> = (props) => 
           larguraEscada={largura} 
           profundidade={profundidade}
           alturaPatamar={alturaPatamar}
+          numDegraus1Prop={numDegraus1}
+          numDegraus2Prop={numDegraus2}
           direcaoCurva={direcaoCurva}
           perfilSelecionado={perfilData}
           acabamentoMetal={acabamentoMetal}

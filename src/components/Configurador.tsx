@@ -104,6 +104,8 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
   const [telhaSelecionadaId, setTelhaSelecionadaId] = useState<string>(project.telhaSelecionadaId || 'telha_galvanizada_trap_40');
   const [alturaPatamar, setAlturaPatamar] = useState<number>(1400);
   const [direcaoCurva, setDirecaoCurva] = useState<'esquerda' | 'direita'>('direita');
+  const [numDegrausLance1, setNumDegrausLance1] = useState<number>(8);
+  const [numDegrausLance2, setNumDegrausLance2] = useState<number>(8);
   const [fixacao, setFixacao] = useState<'chumbado' | 'sapata_parafuso'>(project.fixacao || 'sapata_parafuso');
 
   // Novos estados para o Guarda-Corpo
@@ -752,13 +754,13 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         listaCorte.push({ nome: 'Montantes Verticais', qtd: qtdMontantes * qtdLados, medida: `900 mm` });
       }
     } else if (tipoProduto === 'escada_l') {
-      const numDegraus1 = Math.max(1, Math.round(alturaPatamar / 180));
+      const numDegraus1 = numDegrausLance1;
       const espelho1 = alturaPatamar / numDegraus1;
       pisada = Math.max(200, Math.round((profundidade - largura) / numDegraus1));
       const comprimento1 = numDegraus1 * pisada;
       
       const alturaRestante = altura - alturaPatamar;
-      const numDegraus2 = Math.max(1, Math.round(alturaRestante / 180));
+      const numDegraus2 = numDegrausLance2;
       const espelho2 = alturaRestante / numDegraus2;
       const comprimento2 = numDegraus2 * pisada;
 
@@ -1140,7 +1142,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     acabamento, temGuardaCorpo, ladoGuardaCorpo, materialDegrau, 
     fixacao, qtdColunasExtras, incluirPortaoPedestre, project.name,
     espessuraChapa, abaExtra, referenciaMedida, state.inventoryItems,
-    alturaPatamar, rampaBOM, currentBOM
+    alturaPatamar, numDegrausLance1, numDegrausLance2, rampaBOM, currentBOM
   ]);
 
   const {
@@ -1199,10 +1201,10 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         listaCorte.push({ item: 'Vigas Laterais', quantidade: 2, medida: `${hipotenusa.toFixed(1)} mm (Ã‚ngulo: ${(angulo * 180 / Math.PI).toFixed(1)}Â°)` });
         listaCorte.push({ item: 'Degraus', quantidade: numDegraus, medida: `Pisada: ${pisada} mm, Espelho: ${espelho.toFixed(1)} mm` });
       } else {
-        const numDegraus1 = Math.max(1, Math.round(alturaPatamar / 180));
+        const numDegraus1 = numDegrausLance1;
         const comprimento1 = numDegraus1 * pisada;
         const alturaRestante = altura - alturaPatamar;
-        const numDegraus2 = Math.max(1, Math.round(alturaRestante / 180));
+        const numDegraus2 = numDegrausLance2;
         const comprimento2 = numDegraus2 * pisada;
         const hipotenusa1 = Math.sqrt(Math.pow(alturaPatamar, 2) + Math.pow(comprimento1, 2));
         const hipotenusa2 = Math.sqrt(Math.pow(alturaRestante, 2) + Math.pow(comprimento2, 2));
@@ -1656,6 +1658,8 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
             acabamentoMetal={acabamento}
             materialDegrau={materialDegrau}
             alturaPatamar={alturaPatamar}
+            numDegraus1={numDegrausLance1}
+            numDegraus2={numDegrausLance2}
             direcaoCurva={direcaoCurva}
             abaExtra={abaExtra}
             espessuraChapa={espessuraChapa}
@@ -2512,6 +2516,34 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                         step={10}
                         info="Altura onde a escada faz a curva."
                       />
+                      <div className="flex flex-col gap-2 pt-1">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
+                          Degraus por Lance
+                          <Tooltip text="Defina o numero de degraus de cada lance. O espelho (altura de cada degrau) e calculado: altura / numero de degraus." />
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <div className="text-[9px] font-bold text-slate-500 uppercase mb-1">Lance 1 (ate o patamar)</div>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => setNumDegrausLance1(Math.max(1, numDegrausLance1 - 1))} className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 font-bold">-</button>
+                              <input type="number" min={1} max={40} value={numDegrausLance1} onChange={(e) => setNumDegrausLance1(Math.max(1, Math.round(Number(e.target.value) || 1)))} className="flex-1 w-full bg-slate-50 border border-slate-200 rounded p-1 text-center font-mono text-sm text-slate-900 outline-none" />
+                              <button onClick={() => setNumDegrausLance1(Math.min(40, numDegrausLance1 + 1))} className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 font-bold">+</button>
+                            </div>
+                            <div className={"text-[10px] font-bold mt-1 " + ((alturaPatamar / numDegrausLance1) >= 160 && (alturaPatamar / numDegrausLance1) <= 190 ? "text-emerald-600" : "text-amber-600")}>Espelho: {(alturaPatamar / numDegrausLance1).toFixed(0)} mm</div>
+                          </div>
+                          <div>
+                            <div className="text-[9px] font-bold text-slate-500 uppercase mb-1">Lance 2 (apos o patamar)</div>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => setNumDegrausLance2(Math.max(1, numDegrausLance2 - 1))} className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 font-bold">-</button>
+                              <input type="number" min={1} max={40} value={numDegrausLance2} onChange={(e) => setNumDegrausLance2(Math.max(1, Math.round(Number(e.target.value) || 1)))} className="flex-1 w-full bg-slate-50 border border-slate-200 rounded p-1 text-center font-mono text-sm text-slate-900 outline-none" />
+                              <button onClick={() => setNumDegrausLance2(Math.min(40, numDegrausLance2 + 1))} className="w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200 font-bold">+</button>
+                            </div>
+                            <div className={"text-[10px] font-bold mt-1 " + (((altura - alturaPatamar) / numDegrausLance2) >= 160 && ((altura - alturaPatamar) / numDegrausLance2) <= 190 ? "text-emerald-600" : "text-amber-600")}>Espelho: {((altura - alturaPatamar) / numDegrausLance2).toFixed(0)} mm</div>
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-slate-500">Total: {numDegrausLance1 + numDegrausLance2} degraus &middot; espelho ideal 160 a 190 mm</div>
+                      </div>
+
                       <div className="flex flex-col gap-2">
                         <label className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center">
                           Direcao da Curva
