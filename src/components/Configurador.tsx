@@ -756,7 +756,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
     } else if (tipoProduto === 'escada_l') {
       const numDegraus1 = numDegrausLance1;
       const espelho1 = alturaPatamar / numDegraus1;
-      pisada = Math.max(200, Math.round((profundidade - largura) / numDegraus1));
+      pisada = Math.max(200, Math.round((profundidade - largura) / numDegraus1)) || 280;
       const comprimento1 = numDegraus1 * pisada;
       
       const alturaRestante = altura - alturaPatamar;
@@ -765,7 +765,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       const comprimento2 = numDegraus2 * pisada;
 
       numDegraus = numDegraus1 + numDegraus2;
-      espelho = (espelho1 + espelho2) / 2;
+      espelho = ((espelho1 + espelho2) / 2) || 180;
       comprimentoTotal = comprimento1 + comprimento2 + largura;
       
       const hipotenusa1 = Math.sqrt(Math.pow(alturaPatamar, 2) + Math.pow(comprimento1, 2));
