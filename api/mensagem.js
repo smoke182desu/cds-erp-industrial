@@ -3,7 +3,7 @@
 import axios from 'axios';
 import { sb, insert, upsertByField } from './_lib/supabase.js';
 
-const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-903e.up.railway.app';
+const EVOLUTION_API_URL = String(process.env.EVOLUTION_URL || process.env.EVOLUTION_API_URL || 'http://127.0.0.1:8080').trim().replace(/\/$/,'');
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE_NAME || 'cdsind';
 const TABLE = 'mensagens';

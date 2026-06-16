@@ -474,7 +474,11 @@ async function enriquecerClienteComCNPJ(cliente = {}, cnpj) {
   };
 }
 
-async function analisarConversaComGroq(conversa, produtosRelevantes, leadInfo, metaCatalogo = {}) {
+async function analisarConversaComGroq(conversa, produtosRelevantes, leadInfo, metaCatalogo = {}, contextoExtra, arquivos) {
+  // Include arquivos info in the prompt
+  const infoArquivos = Array.isArray(arquivos) && arquivos.length > 0
+    ? arquivos.map(a => `- ${a.nome} (${a.tipo})`).join('\n')
+    : '';
   if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) {
     throw new Error('Nenhuma API KEY (Groq, Gemini ou OpenAI) configurada no servidor');
   }
@@ -541,6 +545,8 @@ REGRAS:
 
 Conversa:
 ${conversa}
+${infoArquivos ? `\nARQUIVOS ANEXADOS (examine imagens para identificar produtos, medidas, materiais):\n${infoArquivos}` : ''}
+${leadInfo?.contextoExtra ? `\nINSTRUCOES EXTRAS DO VENDEDOR (priorize estas):\n${leadInfo.contextoExtra}` : ''}
 
 Responda APENAS com JSON valido no formato:
 {
@@ -638,7 +644,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
 
-  const { telefone, leadNome, leadEmpresa, leadCnpj } = req.body || {};
+  const { telefone, leadNome, leadEmpresa, leadCnpj, contextoExtra, arquivos } = req.body || {};
   if (!telefone) return res.status(400).json({ error: 'telefone obrigatorio' });
 
   const tel = String(telefone).replace(/\D/g, '');
@@ -699,6 +705,8 @@ export default async function handler(req, res) {
       analise = await analisarConversaComGroq(conversaFormatada, produtosRelevantes, {
         nome: leadNome || '',
         empresa: leadEmpresa || '',
+        contextoExtra,
+        arquivos,
       }, { totalCatalogo });
       
       cacheInteligencia.set(cacheKey, { data: analise, ts: Date.now() });

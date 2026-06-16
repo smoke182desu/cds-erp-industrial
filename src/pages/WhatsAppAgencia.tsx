@@ -5,7 +5,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   MessageCircle, Plus, Trash2, Phone, Wifi, WifiOff, Loader2, RefreshCw,
-  CheckCircle2, AlertCircle, QrCode, X, Smartphone, Clock,
+  CheckCircle2, AlertCircle, QrCode, X, Smartphone, Clock, LogOut, History,
 } from 'lucide-react';
 import { useTrafego } from '../contexts/TrafegoContext';
 import { AgenciaContextoBanner } from '../components/AgenciaContextoBanner';
@@ -95,6 +95,32 @@ export function WhatsAppAgencia() {
       await carregar();
     } catch (e: any) {
       setErro(e?.message || 'erro ao remover');
+    }
+  }
+
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+
+  async function sincronizarMensagens(id: string) {
+    setSyncingId(id); setErro('');
+    try {
+      const res = await fetch('/api/whatsapp/backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, dias: 30, maxChats: 200 }),
+      });
+      const data = await res.json();
+      if (data.importedMessages > 0) {
+        setErro(`✅ ${data.importedMessages} mensagens importadas de ${data.processedChats} chats`);
+      } else if (data.processedChats === 0) {
+        setErro('Nenhum chat encontrado para importar.');
+      } else {
+        setErro(`${data.importedMessages} msgs importadas de ${data.processedChats} chats`);
+      }
+    } catch (e: any) {
+      setErro('Erro ao sincronizar: ' + (e?.message || ''));
+    } finally {
+      setSyncingId(null);
+      carregar();
     }
   }
 
@@ -197,7 +223,43 @@ export function WhatsAppAgencia() {
                           onClick={() => setQrModal(inst)}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg"
                         >
-                          <QrCode className="w-3.5 h-3.5" /> Ver QR
+                          <QrCode className="w-3.5 h-3.5" /> Conectar
+                        </button>
+                      )}
+                      {inst.status === 'conectado' && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Desconectar esse WhatsApp? Depois reconecte com QR code.')) return;
+                            try {
+                              await fetch('/api/whatsapp/disconnect', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ id: inst.id }),
+                              });
+                              await carregar();
+                            } catch (e: any) {
+                              setErro(e?.message || 'erro ao desconectar');
+                            }
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg"
+                          title="Desconectar (pode reconectar depois)"
+                        >
+                          <LogOut className="w-3.5 h-3.5" /> Desconectar
+                        </button>
+                      )}
+                      {inst.status === 'conectado' && (
+                        <button
+                          onClick={() => sincronizarMensagens(inst.id)}
+                          disabled={syncingId === inst.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg"
+                          title="Importar mensagens antigas do WhatsApp"
+                        >
+                          {syncingId === inst.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <History className="w-3.5 h-3.5" />
+                          )}
+                          Sincronizar
                         </button>
                       )}
                       <button
@@ -240,16 +302,18 @@ function QRModal({ instancia, onClose }: { instancia: Instancia; onClose: () => 
   const [status, setStatus] = useState(instancia.status);
   const [refreshing, setRefreshing] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force = false) => {
     setRefreshing(true);
     try {
-      const r = await fetch(`/api/whatsapp/qr?id=${instancia.id}`);
+      const url = force
+        ? `/api/whatsapp/qr?id=${instancia.id}&force=1`
+        : `/api/whatsapp/qr?id=${instancia.id}`;
+      const r = await fetch(url);
       if (r.ok) {
         const d = await r.json();
         if (d.qr_code_base64) setQr(d.qr_code_base64);
         if (d.status) setStatus(d.status);
         if (d.status === 'conectado') {
-          // Fechou! Quando conectar, dá tempo de mostrar e fecha
           setTimeout(onClose, 1500);
         }
       }
@@ -260,7 +324,7 @@ function QRModal({ instancia, onClose }: { instancia: Instancia; onClose: () => 
 
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => {
-    const id = setInterval(refresh, 3000);
+    const id = setInterval(() => refresh(), 3000);
     return () => clearInterval(id);
   }, [refresh]);
 
@@ -300,14 +364,25 @@ function QRModal({ instancia, onClose }: { instancia: Instancia; onClose: () => 
                   <li>Escaneie o QR acima</li>
                 </ol>
               </div>
-              <button
-                onClick={refresh}
-                disabled={refreshing}
-                className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-lg"
-              >
-                {refreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                Atualizar QR
-              </button>
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={() => refresh()}
+                  disabled={refreshing}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold rounded-lg"
+                >
+                  {refreshing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Atualizar
+                </button>
+                <button
+                  onClick={() => refresh(true)}
+                  disabled={refreshing}
+                  className="flex items-center justify-center gap-2 px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-700 text-sm font-semibold rounded-lg"
+                  title="Desconectar e gerar novo QR"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Renovar QR
+                </button>
+              </div>
             </>
           ) : (
             <div className="text-center py-8">

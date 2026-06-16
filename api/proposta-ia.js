@@ -164,22 +164,56 @@ function recortarConversaAtual(mensagens) {
   return out;
 }
 
-// Chama a IA com fallback (Gemini -> Groq)
-async function chamarIA(prompt, { maxTokens = 900, temperature = 0.3 } = {}) {
-  if (!GROQ_API_KEY && !GEMINI_API_KEY) throw new Error('Nenhuma API KEY (Groq ou Gemini) configurada no servidor');
+function montarParts(prompt, images) {
+  if (!images || !images.length) return [{ text: prompt }];
+  const parts = [{ text: prompt }];
+  for (const img of images) {
+    let mimeType = img.tipo || 'image/jpeg';
+    let data = img.base64 || img.data || '';
+    if (data.startsWith('data:')) {
+      const matches = data.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+      if (matches) { mimeType = matches[1]; data = matches[2]; }
+      else { data = data.split(',')[1] || data; }
+    }
+    parts.push({ inlineData: { data, mimeType } });
+  }
+  return parts;
+}
+
+function montarContentOpenAI(prompt, images) {
+  if (!images || !images.length) return prompt;
+  const content = [{ type: 'text', text: prompt }];
+  for (const img of images) {
+    let mimeType = img.tipo || 'image/jpeg';
+    let data = img.base64 || img.data || '';
+    if (data.startsWith('data:')) {
+      const matches = data.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+      if (matches) { mimeType = matches[1]; data = matches[2]; }
+      else { data = data.split(',')[1] || data; }
+    }
+    if (mimeType !== 'application/pdf') {
+      content.push({ type: 'image_url', image_url: { url: `data:${mimeType};base64,${data}` } });
+    }
+  }
+  return content;
+}
+
+// Chama a IA com fallback (Gemini -> Groq -> OpenAI), suporta imagens
+async function chamarIA(prompt, { maxTokens = 900, temperature = 0.3, images } = {}) {
+  if (!GROQ_API_KEY && !GEMINI_API_KEY && !OPENAI_API_KEY) throw new Error('Nenhuma API KEY configurada');
 
   let lastError;
 
-  // TIER 1: Google Gemini Models
+  // TIER 1: Google Gemini Models (suporta inline_data)
   if (GEMINI_API_KEY) {
     for (const model of GEMINI_MODELS) {
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
         const payload = {
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          contents: [{ role: 'user', parts: montarParts(prompt, images) }],
           generationConfig: { temperature, maxOutputTokens: maxTokens, responseMimeType: "application/json" }
         };
-        const geminiResp = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
+        const geminiResp = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 45000 });
         return geminiResp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       } catch (err) {
         console.log(`[proposta-ia] Gemini (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
@@ -189,10 +223,10 @@ async function chamarIA(prompt, { maxTokens = 900, temperature = 0.3 } = {}) {
     }
   }
 
-  // TIER 2: Groq Fallbacks
+  // TIER 2: Groq Fallbacks (suporta image_url)
   if (GROQ_API_KEY) {
     const body = {
-      messages: [{ role: 'user', content: prompt }],
+      messages: [{ role: 'user', content: montarContentOpenAI(prompt, images) }],
       temperature,
       max_tokens: maxTokens,
       response_format: { type: 'json_object' },
@@ -205,7 +239,7 @@ async function chamarIA(prompt, { maxTokens = 900, temperature = 0.3 } = {}) {
     for (const model of FALLBACK_MODELS) {
       try {
         body.model = model;
-        const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', body, { headers, timeout: 30000 });
+        const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', body, { headers, timeout: 45000 });
         return response.data?.choices?.[0]?.message?.content || '';
       } catch (err) {
         console.log(`[proposta-ia] Groq (${model}) erro:`, err.response?.status, err.response?.data?.error?.message || err.message);
@@ -215,12 +249,12 @@ async function chamarIA(prompt, { maxTokens = 900, temperature = 0.3 } = {}) {
     }
   }
 
-  // TIER 3: OpenAI Fallback (Absolute last resort)
+  // TIER 3: OpenAI Fallback (suporta image_url)
   if (OPENAI_API_KEY) {
     try {
       const body = {
         model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: 'user', content: montarContentOpenAI(prompt, images) }],
         temperature,
         max_tokens: maxTokens,
         response_format: { type: 'json_object' },
@@ -229,7 +263,7 @@ async function chamarIA(prompt, { maxTokens = 900, temperature = 0.3 } = {}) {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       };
-      const response = await axios.post('https://api.openai.com/v1/chat/completions', body, { headers, timeout: 30000 });
+      const response = await axios.post('https://api.openai.com/v1/chat/completions', body, { headers, timeout: 45000 });
       return response.data?.choices?.[0]?.message?.content || '';
     } catch (err) {
       console.log('[proposta-ia] OpenAI esgotou/falhou.');
@@ -239,6 +273,8 @@ async function chamarIA(prompt, { maxTokens = 900, temperature = 0.3 } = {}) {
 
   throw lastError || new Error('Todos os provedores de IA falharam.');
 }
+
+async function gerarPropostaComIA(mensagens, produtosRelevantes, { nome, email, empresa, telefone }, metaCatalogo = {}, contextoExtra = '', arquivos = []) {
 
 async function gerarPropostaComIA(mensagens, produtosRelevantes, { nome, email, empresa, telefone }, metaCatalogo = {}) {
   const conversa = recortarConversaAtual(mensagens)
@@ -257,7 +293,7 @@ async function gerarPropostaComIA(mensagens, produtosRelevantes, { nome, email, 
         ? `(nenhum produto do catalogo (${metaCatalogo.totalCatalogo} cadastrados) casou com as palavras da conversa)`
         : '(catalogo vazio)');
 
-  const prompt = `Voce gera propostas comerciais da CDS Industrial (metalurgia / caldeiraria / estruturas).
+  let prompt = `Voce gera propostas comerciais da CDS Industrial (metalurgia / caldeiraria / estruturas).
 Baseie-se APENAS na conversa abaixo (ignore historico anterior). Se faltar info, use valores estimados razoaveis e marque com "(estimado)".
 
 CATALOGO DE PRODUTOS RELEVANTES (use SKU e preco destes quando o cliente mencionar o produto):
@@ -273,13 +309,26 @@ CAPACIDADES E LIMITES DA FABRICA:
 - Dobra de chapas ate 6,35mm; corte reto em guilhotina; pintura com compressor industrial em epoxi, esmalte sintetico ou PU.
 - Dobradeira e guilhotina de 3m: pecas maiores que 3m somente com emenda/solda.
 - Nao incluir plasma, oxicorte, laser, jato d'agua, cortes curvos ou recortes internos na proposta.
-- Materiais possiveis: aluminio, aco carbono, aco galvanizado, inox 430 e inox 304. Acos usuais 1010/1020; chapa acima de 14 geralmente A36.
+- Materiais possiveis: aluminio, aco carbono, aco galvanizado, inox 430 e inox 304. Acos usuais 1010/1020; chapa acima de 14 geralmente A36.`;
 
-REGRAS:
+  if (contextoExtra) {
+    prompt += `\n\nINSTRUCOES EXTRAS DO VENDEDOR (devem ser seguidas com prioridade):
+${contextoExtra}`;
+  }
+
+  if (arquivos && arquivos.length > 0) {
+    const nomesArquivos = arquivos.map(a => `- ${a.nome || 'arquivo'} (${a.tipo || 'desconhecido'})`).join('\n');
+    prompt += `\n\nARQUIVOS ANEXADOS PELO VENDEDOR (use imagens para identificar produtos, medidas, materiais):
+${nomesArquivos}`;
+  }
+
+  prompt += `\n\nREGRAS:
 1. Se o item mencionado pelo cliente corresponde a um produto do catalogo acima, USE o nome e preco exatos do catalogo e preencha "skuCatalogo". Use "nome" para o nome do produto e "valorUnitario" para o preco.
 2. Se nao houver correspondencia, deixe "skuCatalogo" null e preserve medidas, material, espessura, perfil/tubo/chapa e quantidade na descricao. O sistema vai calcular o preco por peso.
 2.1. Para sob medida, use a tabela: aco carbono R$70/kg, inox R$150/kg, aluminio R$120/kg, galvanizado R$100/kg. Se faltar espessura, base inicial chapa 14 / 2mm.
 3. Nomes de produto SEMPRE com specs (capacidade, material, dimensoes). Ex: "Container 1200L Inox 304".
+4. Se o vendedor enviou imagens, examine-as para identificar produtos, materiais, dimensoes ou detalhes tecnicos.
+5. Se o vendedor deu instrucoes extras, siga-as mesmo que contradigam a conversa.
 
 Responda SOMENTE um JSON valido, sem texto antes ou depois, no formato:
 {
@@ -289,7 +338,7 @@ Responda SOMENTE um JSON valido, sem texto antes ou depois, no formato:
   "observacoes": "string"
 }`;
 
-  const text = await chamarIA(prompt, { maxTokens: 900, temperature: 0.3 });
+  const text = await chamarIA(prompt, { maxTokens: 1200, temperature: 0.3, images: arquivos });
   const clean = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
   try {
     return JSON.parse(clean);
@@ -307,7 +356,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Metodo nao permitido' });
 
-  const { telefone, nome, email, empresa, mensagens: msgsBody } = req.body || {};
+  const { telefone, nome, email, empresa, mensagens: msgsBody, contextoExtra, arquivos } = req.body || {};
   if (!telefone) return res.status(400).json({ error: 'telefone obrigatorio' });
 
   const tel = String(telefone).replace(/\D/g, '');
@@ -340,7 +389,9 @@ export default async function handler(req, res) {
       mensagens,
       produtosRelevantes,
       { nome, email, empresa, telefone: tel },
-      { totalCatalogo }
+      { totalCatalogo },
+      contextoExtra,
+      arquivos
     );
 
     // Pos-match: aplica preco e skuCatalogo do catalogo completo quando possivel

@@ -1634,6 +1634,8 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
   const [gerandoIA, setGerandoIA] = useState(false);
   const [erroIA, setErroIA] = useState('');
   const [iaOk, setIaOk] = useState(!!analisePrevia || !!draftInicial?.iaOk);
+  const [contextoExtra, setContextoExtra] = useState('');
+  const [arquivosExtras, setArquivosExtras] = useState<{ nome: string; tipo: string; base64: string }[]>([]);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [feedbackPdf, setFeedbackPdf] = useState(draftInicial?.salvoEm ? 'Rascunho salvo' : '');
   const cnpjConsultadoRef = useRef('');
@@ -1681,13 +1683,34 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
       .catch(() => {});
   }, [dados.empresa, dados.endereco, dados.cep, (dados as any).cnpj]);
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const base64 = ev.target?.result as string;
+        setArquivosExtras(prev => [...prev, { nome: file.name, tipo: file.type, base64 }]);
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+  };
+
+  const removerArquivo = (idx: number) => setArquivosExtras(prev => prev.filter((_, i) => i !== idx));
+
   const gerarComIA = async () => {
     if (!lead.telefone) { setErroIA('Este lead não tem telefone — necessário para buscar a conversa.'); return; }
     setGerandoIA(true); setErroIA(''); setIaOk(false);
     try {
       const res = await fetch('/api/proposta-ia', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa, mensagens: (mensagens || []).map((m: any) => ({ texto: m.texto || m.conteudo || m.body || (normalizarTipoMidia(m.mediaType) ? `[${normalizarTipoMidia(m.mediaType)}]` : ''), tipo: m.tipo || m.direction || 'entrada', criadoEm: m.criadoEm || m.timestamp || '' })) }),
+        body: JSON.stringify({
+          telefone: lead.telefone, nome: lead.nome, email: lead.email, empresa: lead.empresa,
+          contextoExtra: contextoExtra || undefined,
+          arquivos: arquivosExtras.length > 0 ? arquivosExtras : undefined,
+          mensagens: (mensagens || []).map((m: any) => ({ texto: m.texto || m.conteudo || m.body || (normalizarTipoMidia(m.mediaType) ? `[${normalizarTipoMidia(m.mediaType)}]` : ''), tipo: m.tipo || m.direction || 'entrada', criadoEm: m.criadoEm || m.timestamp || '' }))
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro desconhecido');
@@ -1893,6 +1916,37 @@ function PropostaModal({ lead, analisePrevia, mensagens, onClose }: {
         </div>
         {iaOk && <div className="mx-5 mt-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-3 py-2 rounded-lg">✅ Proposta gerada pela IA com base na conversa do WhatsApp. Revise os itens e valores antes de gerar o PDF.</div>}
         {erroIA && <div className="mx-5 mt-4 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">⚠️ {erroIA}</div>}
+        <div className="mx-5 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <details>
+            <summary className="text-xs font-semibold text-amber-800 cursor-pointer select-none">📎 Informações Extras para a IA</summary>
+            <div className="mt-2 space-y-2">
+              <textarea
+                placeholder="Instruções adicionais para a IA (ex: 'o cliente pediu prazo de 30 dias', 'alterar material para inox', 'incluir frete no valor')"
+                value={contextoExtra}
+                onChange={e => setContextoExtra(e.target.value)}
+                rows={3}
+                className="w-full border border-amber-300 rounded-lg px-3 py-1.5 text-xs mt-0.5 resize-none focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              <div className="flex items-center gap-2">
+                <label className="cursor-pointer inline-flex items-center gap-1.5 bg-white border border-amber-300 hover:bg-amber-50 text-amber-800 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
+                  📷 Anexar imagem/PDF
+                  <input type="file" accept="image/*,application/pdf" multiple onChange={handleFileUpload} className="hidden" />
+                </label>
+                <span className="text-[10px] text-amber-600">Envie fotos do produto, medidas ou referências</span>
+              </div>
+              {arquivosExtras.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {arquivosExtras.map((arq, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5 bg-white border border-amber-200 rounded-lg px-2 py-1 text-[10px] text-amber-700">
+                      {arq.tipo.startsWith('image/') ? '🖼️' : '📄'} {arq.nome}
+                      <button onClick={() => removerArquivo(idx)} className="text-red-400 hover:text-red-600 ml-1">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </details>
+        </div>
         <div className="p-5 grid grid-cols-2 gap-3">
           {([['empresa','Empresa'],['ac','A/C (contato)'],['cnpj','CNPJ/CPF'],['telefone','Telefone'],['email','E-mail'],['endereco','Endereco'],['cidade','Cidade/UF'],['cep','CEP'],['local','Local de entrega'],['contato','Contato'],['vendedor','Vendedor'],['validade','Validade'],['frete','Frete'],['prazoEntrega','Prazo de Entrega'],['pagamento','Pagamento']] as [string,string][]).map(([k, label]) => (
             <div key={k} className={['pagamento', 'intro', 'endereco', 'local'].includes(k) ? 'col-span-2' : ''}>

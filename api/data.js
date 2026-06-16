@@ -250,7 +250,7 @@ async function handleRelinkLeads(req, res) {
 
 // ——— FOTOS — busca fotos de perfil via Evolution API ———
 async function handleFotos(req, res) {
-  const EVO_URL = String(process.env.EVOLUTION_API_URL || 'https://evolution-api-production-903e.up.railway.app').trim().replace(/\s+$/,'').replace(/\/$/,'');
+  const EVO_URL = String(process.env.EVOLUTION_URL || process.env.EVOLUTION_API_URL || 'http://127.0.0.1:8080').trim().replace(/\s+$/,'').replace(/\/$/,'');
   const EVO_KEY = String(process.env.EVOLUTION_API_KEY || '').trim();
   const EVO_INSTANCE = String(process.env.EVOLUTION_INSTANCE_NAME || 'cdsind').trim();
   if (!EVO_KEY) return res.status(500).json({ error: 'EVOLUTION_API_KEY nao configurada' });
@@ -321,10 +321,11 @@ async function handleFotos(req, res) {
 }
 
 async function handleEvolutionDiag(req, res) {
-  const EVO_URL = String(process.env.EVOLUTION_API_URL || 'https://evolution-api-production-903e.up.railway.app').trim().replace(/\s+$/,'').replace(/\/$/,'');
+  const EVO_URL = String(process.env.EVOLUTION_URL || process.env.EVOLUTION_API_URL || 'http://127.0.0.1:8080').trim().replace(/\s+$/,'').replace(/\/$/,'');
   const EVO_KEY = String(process.env.EVOLUTION_API_KEY || '').trim();
-  const EVO_INSTANCE = String(process.env.EVOLUTION_INSTANCE_NAME || 'cdsind').trim();
-  const EXPECTED_WEBHOOK = 'https://erp.cdsind.com.br/api/whatsapp';
+  const instanceFromQuery = String(req.query.instance || '').trim();
+  const EVO_INSTANCE = instanceFromQuery || String(process.env.EVOLUTION_INSTANCE_NAME || 'cdsind').trim();
+  const EXPECTED_WEBHOOK = process.env.WEBHOOK_GLOBAL_URL_PUBLIC || 'https://erp.cdsind.com.br/api/whatsapp/webhook';
   if (!EVO_KEY) return res.status(500).json({ error: 'EVOLUTION_API_KEY nao configurada' });
   const headers = { apikey: EVO_KEY, 'Content-Type': 'application/json' };
 
@@ -437,8 +438,11 @@ async function handleEvolutionDiag(req, res) {
 
   if (req.method === 'POST' && String(req.query.action||'').toLowerCase() === 'set') {
     const webhookUrl = (req.body && req.body.url) || EXPECTED_WEBHOOK;
-    const events = (req.body && req.body.events) || ['MESSAGES_UPSERT'];
-    const r = await fetch(`${EVO_URL}/webhook/set/${EVO_INSTANCE}`, { method: 'POST', headers, body: JSON.stringify({ url: webhookUrl, enabled: true, webhook_by_events: false, events }) });
+    const events = (req.body && req.body.events) || ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'];
+    const r = await fetch(`${EVO_URL}/webhook/set/${EVO_INSTANCE}`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ webhook: { url: webhookUrl, enabled: true, byEvents: false, events } }),
+    });
     const data = await r.json();
     return res.status(r.status).json({ ok: r.ok, action: 'set', sent: { url: webhookUrl, events }, response: data });
   }

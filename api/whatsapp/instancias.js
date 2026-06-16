@@ -50,6 +50,24 @@ export default async function handler(req, res) {
         }),
       });
 
+      // Ativa syncFullHistory pra buscar msgs antigas ao conectar
+      try {
+        await evolutionFetch(`/settings/set/${instanceName}`, {
+          method: 'POST',
+          body: JSON.stringify({
+            rejectCall: false,
+            msgCall: '',
+            groupsIgnore: false,
+            alwaysOnline: false,
+            readMessages: false,
+            readStatus: false,
+            syncFullHistory: true,
+          }),
+        });
+      } catch (e) {
+        console.error('[instancias] erro ao setar syncFullHistory:', e.message);
+      }
+
       const saved = await sbBody('/whatsapp_instancias', {
         method: 'POST',
         body: {

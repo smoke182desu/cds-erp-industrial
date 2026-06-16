@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
 import {
   Brain, User, Building2, Phone, Mail, FileText, MapPin,
   Package, ShoppingCart, AlertCircle, Loader2,
@@ -95,6 +95,25 @@ export default function ConversaInteligente({
   const [expandido, setExpandido] = useState({ cliente: true, produtos: true, faltando: true });
   const [meta, setMeta] = useState({ totalMsgs: 0, msgsUsadas: 0, produtosCatalogo: 0 });
 
+  const contextoExtraRef = useRef('');
+  const arquivosExtrasRef = useRef<{ nome: string; tipo: string; base64: string }[]>([]);
+  const [, forceUpdate] = useState(0);
+
+  const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const base64 = ev.target?.result as string;
+        arquivosExtrasRef.current = [...arquivosExtrasRef.current, { nome: file.name, tipo: file.type, base64 }];
+        forceUpdate(n => n + 1);
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+  };
+
   const analisar = useCallback(async () => {
     if (!telefone) return;
     setCarregando(true);
@@ -103,7 +122,11 @@ export default function ConversaInteligente({
       const res = await fetch('/api/conversa-inteligencia', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telefone, leadNome, leadEmpresa, leadCnpj }),
+        body: JSON.stringify({
+          telefone, leadNome, leadEmpresa, leadCnpj,
+          contextoExtra: contextoExtraRef.current || undefined,
+          arquivos: arquivosExtrasRef.current.length > 0 ? arquivosExtrasRef.current : undefined,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro ao analisar');
@@ -249,6 +272,37 @@ export default function ConversaInteligente({
           <span>{erro}</span>
         </div>
       )}
+
+      <div className="mx-3 my-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+        <details>
+          <summary className="text-[10px] font-semibold text-amber-800 cursor-pointer select-none">📎 Informacoes extras para IA</summary>
+          <div className="mt-1.5 space-y-1.5">
+            <textarea
+              placeholder="Instrucoes adicionais (ex: 'cliente pediu desconto', 'produto deve ser em inox')"
+              onChange={e => { contextoExtraRef.current = e.target.value; }}
+              rows={2}
+              className="w-full border border-amber-300 rounded-lg px-2 py-1 text-[10px] resize-none focus:outline-none focus:ring-1 focus:ring-amber-400"
+            />
+            <div className="flex items-center gap-2">
+              <label className="cursor-pointer inline-flex items-center gap-1 bg-white border border-amber-300 hover:bg-amber-50 text-amber-800 text-[10px] font-medium px-2 py-1 rounded-lg transition-colors">
+                📷 Anexar
+                <input type="file" accept="image/*,application/pdf" multiple onChange={handleFileUpload} className="hidden" />
+              </label>
+              <span className="text-[9px] text-amber-600">Imagens ou PDFs</span>
+            </div>
+            {arquivosExtrasRef.current.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {arquivosExtrasRef.current.map((arq, idx) => (
+                  <span key={idx} className="inline-flex items-center gap-1 bg-white border border-amber-200 rounded px-1.5 py-0.5 text-[9px] text-amber-700">
+                    {arq.tipo.startsWith('image/') ? '🖼️' : '📄'} {arq.nome}
+                    <button onClick={() => { arquivosExtrasRef.current = arquivosExtrasRef.current.filter((_, i) => i !== idx); forceUpdate(n => n + 1); }} className="text-red-400 hover:text-red-600">✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
+      </div>
 
       {analise && (
         <div className="text-xs">

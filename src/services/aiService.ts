@@ -3,7 +3,29 @@ import { ProjectState } from "../types";
 import { SYSTEM_INSTRUCTION } from "../constants";
 import { COMPONENT_LIBRARY } from "../constants/componentLibrary";
 
+async function analyzeViaBackend(prompt: string, currentProject?: ProjectState, imagesBase64?: string[]): Promise<Partial<ProjectState> | null> {
+  try {
+    const resp = await fetch('/api/ai-analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, currentProject, images: imagesBase64 }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data.ok || !data.data) return null;
+    return data.data;
+  } catch (e) {
+    console.warn('[aiService] Backend fallback failed, trying direct Gemini...', e);
+    return null;
+  }
+}
+
 export async function analyzeProjectInput(prompt: string, currentProject?: ProjectState, imagesBase64?: string[]): Promise<Partial<ProjectState>> {
+  // TIER 1: Try backend endpoint first (uses free models: Groq/Llama + Gemini free)
+  const backendResult = await analyzeViaBackend(prompt, currentProject, imagesBase64);
+  if (backendResult) return backendResult;
+
+  // TIER 2: Fallback to direct Gemini via browser
   try {
     // Helper for timeout
     const withTimeout = (promise: Promise<any>, ms: number, msg: string) => {
@@ -57,21 +79,13 @@ export async function analyzeProjectInput(prompt: string, currentProject?: Proje
 
     if (!apiKey) {
         console.error("API Key not found in process.env or import.meta.env");
-        // If still no key, try to prompt again (if not already prompted) or fail
         throw new Error("Chave de API não encontrada. Por favor, verifique se a chave está configurada no ambiente ou selecione uma nas configurações.");
     }
 
-    // Log (masked) key for debugging
     console.log(`API Key found: ${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`);
 
-    // 3. Initialize Client
-    // Create a new instance right before making the call to ensure it uses the latest key
     const ai = new GoogleGenAI({ apiKey });
 
-    // 4. Prepare Request
-    // Using gemini-3.1-pro-preview para melhor raciocínio estrutural e complexidade
-    const model = "gemini-3.1-pro-preview"; 
-    
     const fabricationReadinessInstruction = `
 FABRICATION READINESS (CRÍTICO - PROIBIDO "PALITOS"):
 1. NUNCA gere estruturas que pareçam "palitos" ou esqueletos simplificados.
@@ -412,114 +426,111 @@ IMPORTANTE: Verifique rigorosamente a lógica de montagem 3D.
     }
 
     // 5. Call API
-    console.log(`Sending request to Gemini model: ${model}...`);
-    
-    // Use a simple timeout wrapper for the generateContent call
-    const generateContentWithTimeout = async () => {
-        const response = await ai.models.generateContent({
-            model: model,
-            contents: { parts },
-            config: {
-                systemInstruction: SYSTEM_INSTRUCTION,
-                responseMimeType: "application/json",
-                thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        name: { type: Type.STRING },
-                        message: { type: Type.STRING, description: "Resumo técnico curto." },
-                        dimensions: {
-                            type: Type.OBJECT,
-                            properties: {
-                                width: { type: Type.NUMBER },
-                                height: { type: Type.NUMBER },
-                                depth: { type: Type.NUMBER }
-                            }
-                        },
-                        material: { type: Type.STRING },
-                        components: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    id: { type: Type.STRING },
-                                    name: { type: Type.STRING },
-                                    material: { type: Type.STRING },
-                                    width: { type: Type.NUMBER },
-                                    height: { type: Type.NUMBER },
-                                    quantity: { type: Type.NUMBER },
-                                    thickness: { type: Type.NUMBER },
-                                    description: { type: Type.STRING },
-                                    type: { 
-                                        type: Type.STRING, 
-                                        enum: ["L-Shape", "U-Profile", "Flat", "Trapezoid", "Bent", "RoundTube", "SquareTube", "RectangularTube", "Profile", "Hinge", "Parametric"]
-                                    },
-                                    cutType: {
-                                        type: Type.STRING,
-                                        enum: ["straight", "miter-start", "miter-end", "miter-both"]
-                                    },
-                                    miterAxis: {
-                                        type: Type.STRING,
-                                        enum: ["x", "y"]
-                                    },
-                                    position: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            x: { type: Type.NUMBER },
-                                            y: { type: Type.NUMBER },
-                                            z: { type: Type.NUMBER }
-                                        }
-                                    },
-                                    rotation: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            x: { type: Type.NUMBER },
-                                            y: { type: Type.NUMBER },
-                                            z: { type: Type.NUMBER }
-                                        }
-                                    },
-                                    details: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            angle: { type: Type.NUMBER },
-                                            top: { type: Type.NUMBER },
-                                            bottom: { type: Type.NUMBER },
-                                            flange2: { type: Type.NUMBER },
-                                            depth: { type: Type.NUMBER }
-                                        }
-                                    }
-                                },
-                                required: ["id", "name", "width", "height", "quantity", "type", "position", "rotation"]
-                            }
-                        }
-                    },
-                    required: ["name", "dimensions", "message", "components"]
-                }
-            }
-        });
-        return response;
-    };
-
+    const models = ["gemini-2.5-flash", "gemini-2.0-flash-lite"];
     const MAX_RETRIES = 2;
     let lastError: any = null;
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    for (let modelIndex = 0; modelIndex < models.length; modelIndex++) {
+      const currentModel = models[modelIndex];
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
-            if (attempt > 0) {
-                console.log(`Retrying AI analysis (attempt ${attempt})...`);
+            if (attempt > 0 || modelIndex > 0) {
+                console.log(`Tentativa Gemini com ${currentModel} (modelo ${modelIndex + 1}/${models.length}, tentativa ${attempt + 1})...`);
             }
 
             const response: any = await withTimeout(
-                generateContentWithTimeout(),
-                300000, // 300 seconds timeout
+                (async () => {
+                    const resp = await ai.models.generateContent({
+                        model: currentModel,
+                        contents: { parts },
+                        config: {
+                            systemInstruction: SYSTEM_INSTRUCTION,
+                            responseMimeType: "application/json",
+                            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+                            responseSchema: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    name: { type: Type.STRING },
+                                    message: { type: Type.STRING, description: "Resumo técnico curto." },
+                                    dimensions: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            width: { type: Type.NUMBER },
+                                            height: { type: Type.NUMBER },
+                                            depth: { type: Type.NUMBER }
+                                        }
+                                    },
+                                    material: { type: Type.STRING },
+                                    components: {
+                                        type: Type.ARRAY,
+                                        items: {
+                                            type: Type.OBJECT,
+                                            properties: {
+                                                id: { type: Type.STRING },
+                                                name: { type: Type.STRING },
+                                                material: { type: Type.STRING },
+                                                width: { type: Type.NUMBER },
+                                                height: { type: Type.NUMBER },
+                                                quantity: { type: Type.NUMBER },
+                                                thickness: { type: Type.NUMBER },
+                                                description: { type: Type.STRING },
+                                                type: { 
+                                                    type: Type.STRING, 
+                                                    enum: ["L-Shape", "U-Profile", "Flat", "Trapezoid", "Bent", "RoundTube", "SquareTube", "RectangularTube", "Profile", "Hinge", "Parametric"]
+                                                },
+                                                cutType: {
+                                                    type: Type.STRING,
+                                                    enum: ["straight", "miter-start", "miter-end", "miter-both"]
+                                                },
+                                                miterAxis: {
+                                                    type: Type.STRING,
+                                                    enum: ["x", "y"]
+                                                },
+                                                position: {
+                                                    type: Type.OBJECT,
+                                                    properties: {
+                                                        x: { type: Type.NUMBER },
+                                                        y: { type: Type.NUMBER },
+                                                        z: { type: Type.NUMBER }
+                                                    }
+                                                },
+                                                rotation: {
+                                                    type: Type.OBJECT,
+                                                    properties: {
+                                                        x: { type: Type.NUMBER },
+                                                        y: { type: Type.NUMBER },
+                                                        z: { type: Type.NUMBER }
+                                                    }
+                                                },
+                                                details: {
+                                                    type: Type.OBJECT,
+                                                    properties: {
+                                                        angle: { type: Type.NUMBER },
+                                                        top: { type: Type.NUMBER },
+                                                        bottom: { type: Type.NUMBER },
+                                                        flange2: { type: Type.NUMBER },
+                                                        depth: { type: Type.NUMBER }
+                                                    }
+                                                }
+                                            },
+                                            required: ["id", "name", "width", "height", "quantity", "type", "position", "rotation"]
+                                        }
+                                    }
+                                },
+                                required: ["name", "dimensions", "message", "components"]
+                            }
+                        }
+                    });
+                    return resp;
+                })(),
+                300000,
                 "A análise demorou mais que o esperado. Por favor, tente novamente."
             );
 
-            // 6. Parse Response
-            console.log("Gemini response received.");
+            console.log(`Gemini (${currentModel}) response received.`);
             let text = response.text || "{}";
             
-            // Clean up markdown code blocks if present (though responseMimeType should prevent this)
             if (text.startsWith("```json")) {
                 text = text.replace(/^```json\n/, "").replace(/\n```$/, "");
             } else if (text.startsWith("```")) {
@@ -529,7 +540,6 @@ IMPORTANTE: Verifique rigorosamente a lógica de montagem 3D.
             const parsedData = JSON.parse(text);
             const validatedData = validateAndEnforceGrid(parsedData);
 
-            // 7. Semantic Validation (Completeness Check)
             const promptLower = prompt.toLowerCase();
             const isTable = promptLower.includes('mesa') || promptLower.includes('table') || promptLower.includes('bancada') || promptLower.includes('desk');
             const isShelf = promptLower.includes('estante') || promptLower.includes('prateleira') || promptLower.includes('shelf') || promptLower.includes('rack');
@@ -538,7 +548,6 @@ IMPORTANTE: Verifique rigorosamente a lógica de montagem 3D.
             if (isTable || isShelf || isShed) {
                 const hasFlat = validatedData.components.some((c: any) => c.type === 'Flat' || (c.name || '').toLowerCase().includes('tampo') || (c.name || '').toLowerCase().includes('prateleira') || (c.name || '').toLowerCase().includes('telha') || (c.name || '').toLowerCase().includes('cobertura') || (c.name || '').toLowerCase().includes('mdf') || (c.name || '').toLowerCase().includes('madeira'));
                 if (!hasFlat) {
-                    // Throw error to trigger retry
                     throw new Error("O projeto gerado está incompleto: Falta o Tampo, Prateleiras ou Cobertura (Telha/MDF/Madeira). O modelo deve incluir todas as partes.");
                 }
             }
@@ -547,33 +556,29 @@ IMPORTANTE: Verifique rigorosamente a lógica de montagem 3D.
 
         } catch (error: any) {
             lastError = error;
-            console.warn(`Attempt ${attempt + 1} failed:`, error.message);
+            console.warn(`Gemini ${currentModel} tentativa ${attempt + 1} falhou:`, error.message);
             
-            // Only retry on timeout, network errors, or 503 (Service Unavailable)
             const isTimeout = error.message && error.message.includes("demorou mais que o esperado");
             const isNetwork = error.message && (error.message.includes("fetch") || error.message.includes("network"));
             const isServiceUnavailable = error.message && (error.message.includes("503") || error.message.includes("UNAVAILABLE") || error.message.includes("high demand"));
+            const isModelError = error.message && (error.message.includes("not found") || error.message.includes("not supported") || error.message.includes("not available") || error.message.includes("404"));
             
             if (attempt < MAX_RETRIES && (isTimeout || isNetwork || isServiceUnavailable)) {
-                // Wait a bit before retrying (longer wait for 503)
                 const retryDelay = isServiceUnavailable ? 5000 : 2000;
-                console.log(`Waiting ${retryDelay}ms before retry due to ${isServiceUnavailable ? 'high demand' : 'timeout/network'}...`);
                 await new Promise(resolve => setTimeout(resolve, retryDelay));
                 continue;
             }
             
-            // If we're here, we've exhausted retries or it's a non-retryable error
-            if (isTimeout) {
-                throw new Error("A análise demorou mais que o esperado após várias tentativas. Por favor, tente simplificar sua descrição ou tente novamente mais tarde.");
+            // If model error or exhausted retries, try next model
+            if (isModelError || (!isTimeout && !isNetwork && !isServiceUnavailable) || attempt >= MAX_RETRIES) {
+                if (modelIndex < models.length - 1) {
+                    console.log(`Trocando para proximo modelo Gemini: ${models[modelIndex + 1]}`);
+                    break;
+                }
+                throw error;
             }
-
-            if (isServiceUnavailable) {
-                throw new Error("O serviço de IA está com alta demanda no momento. Por favor, aguarde alguns instantes e tente novamente.");
-            }
-            
-            console.error("Gemini API Error:", error);
-            throw new Error(`Erro na IA: ${error.message || "Falha desconhecida"}`);
         }
+      }
     }
 
     throw lastError || new Error("Falha ao analisar o projeto.");

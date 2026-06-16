@@ -115,8 +115,8 @@ function extractJSON(text) {
 }
 
 async function tentarOCR(buf, mime) {
-  // tenta Anthropic → Groq → OpenAI
-  for (const fn of [ocrAnthropic, ocrGroq, ocrOpenAI]) {
+  // tenta Groq (gratis) → Anthropic → OpenAI (pago)
+  for (const fn of [ocrGroq, ocrAnthropic, ocrOpenAI]) {
     try {
       const r = await fn(buf, mime);
       if (r) return r;

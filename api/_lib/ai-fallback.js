@@ -109,31 +109,31 @@ async function tryGroq(systemPrompt, userPrompt, maxTokens, temperature) {
 
 /**
  * Chama IA com fallback automatico entre providers.
- * Ordem: OpenAI -> Gemini -> Groq
+ * Ordem: Gemini (gratis) -> Groq (gratis) -> OpenAI (pago)
  * Retorna { content, provider, model } em vez do formato raw de cada provider.
  */
 export async function chamarIA(systemPrompt, userPrompt, opts = {}) {
   const { maxTokens = 800, temperature = 0.7 } = opts;
 
-  // TIER 1: OpenAI (qualidade prioritaria)
-  if (OPENAI_API_KEY) {
-    const r = await tryOpenAI(systemPrompt, userPrompt, maxTokens, temperature);
-    if (r) return r;
-  }
-
-  // TIER 2: Gemini (excelente PT-BR, gratis)
+  // TIER 1: Gemini (gratis, excelente PT-BR)
   if (GEMINI_API_KEY) {
     const r = await tryGemini(systemPrompt, userPrompt, maxTokens, temperature);
     if (r) return r;
   }
 
-  // TIER 3: Groq (rapido, gratis)
+  // TIER 2: Groq (gratis, rapido)
   if (GROQ_API_KEY) {
     const r = await tryGroq(systemPrompt, userPrompt, maxTokens, temperature);
     if (r) return r;
   }
 
-  throw new Error('Todos os motores de IA esgotaram (OpenAI + Gemini + Groq). Verifique as chaves no .env.');
+  // TIER 3: OpenAI (pago, fallback final)
+  if (OPENAI_API_KEY) {
+    const r = await tryOpenAI(systemPrompt, userPrompt, maxTokens, temperature);
+    if (r) return r;
+  }
+
+  throw new Error('Todos os motores de IA esgotaram (Gemini + Groq + OpenAI). Verifique as chaves no .env.');
 }
 
 /**
