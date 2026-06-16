@@ -4,7 +4,7 @@ import { Html } from '@react-three/drei';
 import { PecaParametrica } from '../PecaParametrica';
 import { PerfilData } from '../../../data/perfisDB';
 import { Cota3D } from '../Cota3D';
-import { AcabamentoMetalKey, MaterialDegrauKey, materiaisDegrau } from '../../../data/materiaisDB';
+import { AcabamentoMetalKey, MaterialDegrauKey, materiaisDegrau, acabamentosMetal } from '../../../data/materiaisDB';
 
 interface EscadaLProps {
   alturaTotal: number;
@@ -30,6 +30,39 @@ const Label = ({ text, position }: { text: string, position: [number, number, nu
     </div>
   </Html>
 );
+
+// Longarina (chapa lateral) com pontas cortadas no PRUMO (vertical), paralelas a face do patamar.
+const LongarinaPrumo: React.FC<{
+  a: [number, number]; b: [number, number];
+  xCenter: number; thickness: number; halfH: number;
+  color: string; metalness?: number; roughness?: number;
+}> = ({ a, b, xCenter, thickness, halfH, color, metalness = 0.6, roughness = 0.4 }) => {
+  const geom = React.useMemo(() => {
+    const [zA, yA] = a; const [zB, yB] = b;
+    const dz0 = zB - zA; const dy0 = yB - yA;
+    const len = Math.hypot(dz0, dy0) || 1;
+    const cos = Math.abs(dz0 / len);
+    const off = cos > 1e-4 ? halfH / cos : halfH; // meia-altura vertical da chapa (corte a prumo)
+    const P: [number, number][] = [
+      [zA, yA - off], [zB, yB - off], [zB, yB + off], [zA, yA + off],
+    ];
+    const hx = thickness / 2;
+    const vp: number[][] = [];
+    for (const x of [xCenter - hx, xCenter + hx]) for (const pt of P) vp.push([x, pt[1], pt[0]]);
+    const tris = [[0,1,2],[0,2,3],[4,6,5],[4,7,6],[0,4,5],[0,5,1],[3,2,6],[3,6,7],[0,3,7],[0,7,4],[1,5,6],[1,6,2]];
+    const pos: number[] = [];
+    for (const t of tris) for (const i of t) pos.push(vp[i][0], vp[i][1], vp[i][2]);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return g;
+  }, [a[0], a[1], b[0], b[1], xCenter, thickness, halfH]);
+  return (
+    <mesh geometry={geom}>
+      <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} side={THREE.DoubleSide} />
+    </mesh>
+  );
+};
 
 export const EscadaL: React.FC<EscadaLProps> = ({
   alturaTotal,
@@ -92,6 +125,9 @@ export const EscadaL: React.FC<EscadaLProps> = ({
   // SOB MEDIDA: centraliza o degrau na altura da longarina (sobe meio espelho)
   const isSob = perfilSelecionado.id === 'sob_medida';
   const cy1 = isSob ? (espelho1 / 1000) / 2 : 0;
+  const _vigaMat = (acabamentosMetal as any)[acabamentoMetal] || { color: '#777', metalness: 0.6, roughness: 0.4 };
+  const _vigaColor = colorViga || _vigaMat.color;
+  const _halfHViga = (perfilSelecionado.altura || 100) / 1000 / 2;
   const cy2 = isSob ? (espelho2 / 1000) / 2 : 0;
 
   React.useEffect(() => {
@@ -153,27 +189,35 @@ export const EscadaL: React.FC<EscadaLProps> = ({
       <group position={exp(0, 0, -0.4)}>
         {/* Vigas Laterais Lance 1 */}
         <group position={exp(-0.2, 0, 0)}>
-          <PecaParametrica
-            pontoInicio={[-w / 2 + espessuraViga / 2, cy1, 0]}
-            pontoFim={[-w / 2 + espessuraViga / 2, hPatamar + cy1, c1]}
-            perfil={perfilVigaM}
-            tipoCorte="reto"
-            acabamentoMetal={acabamentoMetal}
-            up={[0, 1, 0]}
-            colorOverride={colorViga}
-          />
+          {isSob ? (
+            <LongarinaPrumo a={[0, cy1]} b={[c1, hPatamar + cy1]} xCenter={-w / 2 + espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} />
+          ) : (
+            <PecaParametrica
+              pontoInicio={[-w / 2 + espessuraViga / 2, cy1, 0]}
+              pontoFim={[-w / 2 + espessuraViga / 2, hPatamar + cy1, c1]}
+              perfil={perfilVigaM}
+              tipoCorte="reto"
+              acabamentoMetal={acabamentoMetal}
+              up={[0, 1, 0]}
+              colorOverride={colorViga}
+            />
+          )}
           {explodedFactor > 0.5 && <Label text="Viga Lance 1 Esq." position={[-w/2 - 0.2, hPatamar/2, c1/2]} />}
         </group>
         <group position={exp(0.2, 0, 0)}>
-          <PecaParametrica
-            pontoInicio={[w / 2 - espessuraViga / 2, cy1, 0]}
-            pontoFim={[w / 2 - espessuraViga / 2, hPatamar + cy1, c1]}
-            perfil={perfilVigaM}
-            tipoCorte="reto"
-            acabamentoMetal={acabamentoMetal}
-            up={[0, 1, 0]}
-            colorOverride={colorViga}
-          />
+          {isSob ? (
+            <LongarinaPrumo a={[0, cy1]} b={[c1, hPatamar + cy1]} xCenter={w / 2 - espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} />
+          ) : (
+            <PecaParametrica
+              pontoInicio={[w / 2 - espessuraViga / 2, cy1, 0]}
+              pontoFim={[w / 2 - espessuraViga / 2, hPatamar + cy1, c1]}
+              perfil={perfilVigaM}
+              tipoCorte="reto"
+              acabamentoMetal={acabamentoMetal}
+              up={[0, 1, 0]}
+              colorOverride={colorViga}
+            />
+          )}
           {explodedFactor > 0.5 && <Label text="Viga Lance 1 Dir." position={[w/2 + 0.2, hPatamar/2, c1/2]} />}
         </group>
 
@@ -257,27 +301,35 @@ export const EscadaL: React.FC<EscadaLProps> = ({
       >
         {/* Vigas Laterais Lance 2 */}
         <group position={exp(-0.2, 0, 0)}>
-          <PecaParametrica
-            pontoInicio={[-w / 2 + espessuraViga / 2, cy2, w / 2]}
-            pontoFim={[-w / 2 + espessuraViga / 2, hTotal - hPatamar + cy2, w / 2 + c2]}
-            perfil={perfilVigaM}
-            tipoCorte="reto"
-            acabamentoMetal={acabamentoMetal}
-            up={[0, 1, 0]}
-            colorOverride={colorViga}
-          />
+          {isSob ? (
+            <LongarinaPrumo a={[w / 2, cy2]} b={[w / 2 + c2, hTotal - hPatamar + cy2]} xCenter={-w / 2 + espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} />
+          ) : (
+            <PecaParametrica
+              pontoInicio={[-w / 2 + espessuraViga / 2, cy2, w / 2]}
+              pontoFim={[-w / 2 + espessuraViga / 2, hTotal - hPatamar + cy2, w / 2 + c2]}
+              perfil={perfilVigaM}
+              tipoCorte="reto"
+              acabamentoMetal={acabamentoMetal}
+              up={[0, 1, 0]}
+              colorOverride={colorViga}
+            />
+          )}
           {explodedFactor > 0.5 && <Label text="Viga Lance 2 Esq." position={[-w/2 - 0.2, (hTotal-hPatamar)/2, w/2 + c2/2]} />}
         </group>
         <group position={exp(0.2, 0, 0)}>
-          <PecaParametrica
-            pontoInicio={[w / 2 - espessuraViga / 2, cy2, w / 2]}
-            pontoFim={[w / 2 - espessuraViga / 2, hTotal - hPatamar + cy2, w / 2 + c2]}
-            perfil={perfilVigaM}
-            tipoCorte="reto"
-            acabamentoMetal={acabamentoMetal}
-            up={[0, 1, 0]}
-            colorOverride={colorViga}
-          />
+          {isSob ? (
+            <LongarinaPrumo a={[w / 2, cy2]} b={[w / 2 + c2, hTotal - hPatamar + cy2]} xCenter={w / 2 - espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} />
+          ) : (
+            <PecaParametrica
+              pontoInicio={[w / 2 - espessuraViga / 2, cy2, w / 2]}
+              pontoFim={[w / 2 - espessuraViga / 2, hTotal - hPatamar + cy2, w / 2 + c2]}
+              perfil={perfilVigaM}
+              tipoCorte="reto"
+              acabamentoMetal={acabamentoMetal}
+              up={[0, 1, 0]}
+              colorOverride={colorViga}
+            />
+          )}
           {explodedFactor > 0.5 && <Label text="Viga Lance 2 Dir." position={[w/2 + 0.2, (hTotal-hPatamar)/2, w/2 + c2/2]} />}
         </group>
 
