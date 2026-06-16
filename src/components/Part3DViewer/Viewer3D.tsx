@@ -284,6 +284,8 @@ const SceneContent: React.FC<Viewer3DProps & { aberto?: boolean }> = (props) => 
           numDegraus1Prop={numDegraus1}
           numDegraus2Prop={numDegraus2}
           direcaoCurva={direcaoCurva}
+          temGuardaCorpo={temGuardaCorpo}
+          ladoGuardaCorpo={ladoGuardaCorpo}
           perfilSelecionado={perfilData}
           acabamentoMetal={acabamentoMetal}
           materialDegrau={materialDegrau}

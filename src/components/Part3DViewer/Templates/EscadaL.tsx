@@ -12,6 +12,8 @@ interface EscadaLProps {
   profundidade?: number;
   alturaPatamar: number;
   direcaoCurva: 'esquerda' | 'direita';
+  temGuardaCorpo?: boolean;
+  ladoGuardaCorpo?: 'esquerdo' | 'direito' | 'ambos';
   numDegraus1Prop?: number;
   numDegraus2Prop?: number;
   perfilSelecionado: PerfilData;
@@ -92,6 +94,8 @@ export const EscadaL: React.FC<EscadaLProps> = ({
   profundidade,
   alturaPatamar,
   direcaoCurva,
+  temGuardaCorpo = false,
+  ladoGuardaCorpo = 'ambos',
   numDegraus1Prop,
   numDegraus2Prop,
   perfilSelecionado,
@@ -375,6 +379,45 @@ export const EscadaL: React.FC<EscadaLProps> = ({
           {explodedFactor > 0.5 && <Label text="Degraus Lance 2" position={[0, (hTotal-hPatamar)/2, w/2 + c2/2]} />}
         </group>
       </group>
+
+      {/* GUARDA-CORPO / CORRIMAO */}
+      {temGuardaCorpo && (() => {
+        const gcH = 0.9;
+        const sides: number[] = ladoGuardaCorpo === 'ambos' ? [-1, 1] : (ladoGuardaCorpo === 'esquerdo' ? [-1] : [1]);
+        const perfilGC: any = { id: 'gc', nome: 'Corrimao', tipoShape: 'quadrado_oco', largura: 0.04, altura: 0.04, espessura: 0.002 };
+        const pts1: [number, number][] = [];
+        for (let i = 0; i < numDegraus1 - 1; i++) pts1.push([(i + 0.5) * p, (i + 1) * (espelho1 / 1000)]);
+        pts1.push([c1, hPatamar]);
+        const pts2: [number, number][] = [];
+        for (let i = 0; i < numDegraus2; i++) pts2.push([w / 2 + (i + 0.5) * p, (i + 1) * (espelho2 / 1000)]);
+        const montante = (x: number, z: number, yb: number, key: string) => (
+          <PecaParametrica key={key} pontoInicio={[x, yb, z]} pontoFim={[x, yb + gcH, z]} perfil={perfilGC} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
+        );
+        const corrimao = (x: number, a: [number, number], b: [number, number], key: string) => (
+          <PecaParametrica key={key} pontoInicio={[x, a[1] + gcH, a[0]]} pontoFim={[x, b[1] + gcH, b[0]]} perfil={perfilGC} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
+        );
+        const keep = (arr: [number, number][]) => arr.filter((_, i) => i % 2 === 0 || i === arr.length - 1);
+        return (
+          <>
+            <group position={exp(0, 0, -0.4)}>
+              {sides.map((sgn) => { const x = sgn * (w / 2 - 0.03); return (
+                <group key={'gc1' + sgn}>
+                  {keep(pts1).map((pt, i) => montante(x, pt[0], pt[1], 'm1' + sgn + '-' + i))}
+                  {corrimao(x, pts1[0], pts1[pts1.length - 1], 'c1' + sgn)}
+                </group>
+              ); })}
+            </group>
+            <group position={[0, hPatamar, c1 - p + w / 2 + exp(0, 0, 0.8)[2]]} rotation={[0, direcaoCurva === 'direita' ? Math.PI / 2 : -Math.PI / 2, 0]}>
+              {sides.map((sgn) => { const x = sgn * (w / 2 - 0.03); return (
+                <group key={'gc2' + sgn}>
+                  {keep(pts2).map((pt, i) => montante(x, pt[0], pt[1], 'm2' + sgn + '-' + i))}
+                  {corrimao(x, pts2[0], pts2[pts2.length - 1], 'c2' + sgn)}
+                </group>
+              ); })}
+            </group>
+          </>
+        );
+      })()}
 
       {/* Cotas Dimensionais */}
       {mostrarCotas && explodedFactor === 0 && (
