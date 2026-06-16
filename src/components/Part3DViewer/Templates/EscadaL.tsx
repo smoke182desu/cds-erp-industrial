@@ -218,6 +218,22 @@ export const EscadaL: React.FC<EscadaLProps> = ({
             acabamentoMetal={acabamentoMetal}
             colorOverride={colorViga}
           />
+          <PecaParametrica
+            pontoInicio={[-w / 2, -0.05, -w / 2]}
+            pontoFim={[-w / 2, -0.05, w / 2]}
+            perfil={perfilVigaM}
+            tipoCorte="reto"
+            acabamentoMetal={acabamentoMetal}
+            colorOverride={colorViga}
+          />
+          <PecaParametrica
+            pontoInicio={[w / 2, -0.05, -w / 2]}
+            pontoFim={[w / 2, -0.05, w / 2]}
+            perfil={perfilVigaM}
+            tipoCorte="reto"
+            acabamentoMetal={acabamentoMetal}
+            colorOverride={colorViga}
+          />
           {explodedFactor > 0.5 && <Label text="Estrutura Patamar" position={[0, -0.1, 0]} />}
         </group>
         {/* Piso do Patamar */}
