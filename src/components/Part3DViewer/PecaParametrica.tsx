@@ -105,9 +105,9 @@ export const PecaParametrica: React.FC<PecaParametricaProps> = ({
       const vtx = new THREE.Vector3();
       for (let i = 0; i < pa.count; i++) {
         vtx.fromBufferAttribute(pa, i);
-        if (vtx.y > 0) {
-          if (vtx.z > 0) vtx.z -= vtx.y;        // apara a orelha superior na ponta de cima
-          else if (vtx.z < 0) vtx.z += vtx.y;   // apara a orelha superior na ponta de baixo
+        // apara o canto AGUDO (orelha): topo na ponta de cima, base na ponta de baixo
+        if ((vtx.z > 0 && vtx.y > 0) || (vtx.z < 0 && vtx.y < 0)) {
+          vtx.z -= vtx.y;
         }
         pa.setXYZ(i, vtx.x, vtx.y, vtx.z);
       }
