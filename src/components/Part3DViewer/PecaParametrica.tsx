@@ -8,7 +8,7 @@ interface PecaParametricaProps {
   pontoInicio: [number, number, number] | THREE.Vector3;
   pontoFim: [number, number, number] | THREE.Vector3;
   perfil: PerfilData;
-  tipoCorte: 'reto' | 'meia-esquadria' | 'chanfro';
+  tipoCorte: 'reto' | 'meia-esquadria';
   up?: [number, number, number] | THREE.Vector3;
   acabamentoMetal?: AcabamentoMetalKey;
   materialProps?: { color: string; metalness: number; roughness: number };
@@ -97,20 +97,6 @@ export const PecaParametrica: React.FC<PecaParametricaProps> = ({
         positionAttribute.setXYZ(i, vertex.x, vertex.y, vertex.z);
       }
       
-      geo.computeVertexNormals();
-    }
-
-    if (tipoCorte === 'chanfro') {
-      const pa = geo.attributes.position;
-      const vtx = new THREE.Vector3();
-      for (let i = 0; i < pa.count; i++) {
-        vtx.fromBufferAttribute(pa, i);
-        // apara o canto AGUDO (orelha): topo na ponta de cima, base na ponta de baixo
-        if ((vtx.z > 0 && vtx.y > 0) || (vtx.z < 0 && vtx.y < 0)) {
-          vtx.z -= vtx.y;
-        }
-        pa.setXYZ(i, vtx.x, vtx.y, vtx.z);
-      }
       geo.computeVertexNormals();
     }
 
