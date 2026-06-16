@@ -80,7 +80,7 @@ const LongarinaPrumo: React.FC<{
     return g;
   }, [a[0], a[1], b[0], b[1], xCenter, thickness, halfH, clipMinY, clipMaxY]);
   return (
-    <mesh geometry={geom}>
+    <mesh key={`${a[0]}_${a[1]}_${b[0]}_${b[1]}_${thickness}_${halfH}_${clipMinY}_${clipMaxY}`} geometry={geom}>
       <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} side={THREE.DoubleSide} />
     </mesh>
   );
