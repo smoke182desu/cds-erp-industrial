@@ -600,9 +600,13 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
   const perfisTerca = perfisCompativeis.filter(p => p.componentesCompativeis?.includes('terca'));
   const perfisQuadro = perfisCompativeis.filter(p => p.componentesCompativeis?.includes('quadro'));
 
-  const perfilSelecionado = (tipoProduto === 'tesoura' || tipoProduto === 'galpao' || tipoProduto === 'galpao_tesoura_personalizada')
+  const _perfilBase = (tipoProduto === 'tesoura' || tipoProduto === 'galpao' || tipoProduto === 'galpao_tesoura_personalizada')
     ? (perfisViga.find(p => p.id === perfilSelecionadoId) || perfisViga[0] || perfisCompativeis[0] || perfisDB[0])
     : (perfisQuadro.find(p => p.id === perfilSelecionadoId) || perfisQuadro[0] || perfisCompativeis[0] || perfisDB[0]);
+  const _pisadaSobMedida = Math.max(200, Math.round(((profundidade || 3000) - largura) / Math.max(1, numDegrausLance1)));
+  const perfilSelecionado = (perfilSelecionadoId === 'sob_medida' && tipoProduto === 'escada_l')
+    ? ({ id: 'sob_medida', nome: 'Sob medida ' + _pisadaSobMedida + 'mm', tipoShape: 'quadrado_oco', largura: 50, altura: _pisadaSobMedida, espessura: 3, pesoPorMetro: (_perfilBase as any)?.pesoPorMetro || 12, componentesCompativeis: ['quadro'] } as any)
+    : _perfilBase;
   const perfilTercaSelecionado = perfisTerca.find(p => p.id === perfilTercaId) || perfisTerca[0] || perfisCompativeis[0] || perfisDB[0];
   const perfilColunaSelecionado = perfisColuna.find(p => p.id === perfilColunaId) || perfisColuna[0] || perfisCompativeis[0] || perfisDB[0];
   const perfilVigaSelecionado = perfisViga.find(p => p.id === perfilVigaId) || perfisViga[0] || perfisCompativeis[0] || perfisDB[0];
@@ -2591,9 +2595,14 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                         <option key={p.id} value={p.id} className="text-slate-950">{p.nome}</option>
                       ))
                     ) : (
-                      perfisQuadro.map(p => (
-                        <option key={p.id} value={p.id} className="text-slate-950">{p.nome}</option>
-                      ))
+                      <>
+                        {tipoProduto === 'escada_l' && (
+                          <option value="sob_medida" className="text-slate-950">Sob medida (perfil envolve o degrau)</option>
+                        )}
+                        {perfisQuadro.map(p => (
+                          <option key={p.id} value={p.id} className="text-slate-950">{p.nome}</option>
+                        ))}
+                      </>
                     )}
                   </select>
                 </div>

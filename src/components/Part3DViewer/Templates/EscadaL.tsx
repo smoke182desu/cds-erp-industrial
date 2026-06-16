@@ -79,7 +79,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
     espessura: 4.75 / 1000,
   } as any;
 
-  const espessuraViga = (perfilSelecionado.tipoShape === 'redondo_oco' ? (perfilSelecionado.diametro || 50) : (perfilSelecionado.altura || perfilSelecionado.abas || 50)) / 1000;
+  const espessuraViga = ((perfilSelecionado.id === 'sob_medida') ? (perfilSelecionado.largura || 50) : (perfilSelecionado.tipoShape === 'redondo_oco' ? (perfilSelecionado.diametro || 50) : (perfilSelecionado.altura || perfilSelecionado.abas || 50))) / 1000;
 
   // Converter para metros para o Three.js
   const w = larguraEscada / 1000;
