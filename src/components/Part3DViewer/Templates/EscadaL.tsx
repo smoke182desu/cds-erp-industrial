@@ -36,27 +36,49 @@ const LongarinaPrumo: React.FC<{
   a: [number, number]; b: [number, number];
   xCenter: number; thickness: number; halfH: number;
   color: string; metalness?: number; roughness?: number;
-}> = ({ a, b, xCenter, thickness, halfH, color, metalness = 0.6, roughness = 0.4 }) => {
+  clipMinY?: number; clipMaxY?: number;
+}> = ({ a, b, xCenter, thickness, halfH, color, metalness = 0.6, roughness = 0.4, clipMinY = -1e9, clipMaxY = 1e9 }) => {
   const geom = React.useMemo(() => {
     const [zA, yA] = a; const [zB, yB] = b;
-    const dz0 = zB - zA; const dy0 = yB - yA;
-    const len = Math.hypot(dz0, dy0) || 1;
+    const dz0 = zB - zA;
+    const len = Math.hypot(dz0, yB - yA) || 1;
     const cos = Math.abs(dz0 / len);
-    const off = cos > 1e-4 ? halfH / cos : halfH; // meia-altura vertical da chapa (corte a prumo)
-    const P: [number, number][] = [
+    const off = cos > 1e-4 ? halfH / cos : halfH; // meia-altura vertical (corte a prumo)
+    let poly: [number, number][] = [
       [zA, yA - off], [zB, yB - off], [zB, yB + off], [zA, yA + off],
     ];
-    const hx = thickness / 2;
-    const vp: number[][] = [];
-    for (const x of [xCenter - hx, xCenter + hx]) for (const pt of P) vp.push([x, pt[1], pt[0]]);
-    const tris = [[0,1,2],[0,2,3],[4,6,5],[4,7,6],[0,4,5],[0,5,1],[3,2,6],[3,6,7],[0,3,7],[0,7,4],[1,5,6],[1,6,2]];
-    const pos: number[] = [];
-    for (const t of tris) for (const i of t) pos.push(vp[i][0], vp[i][1], vp[i][2]);
+    const clip = (p: [number, number][], keepBelow: boolean, lim: number): [number, number][] => {
+      const out: [number, number][] = [];
+      for (let i = 0; i < p.length; i++) {
+        const c = p[i], n = p[(i + 1) % p.length];
+        const ci = keepBelow ? c[1] <= lim : c[1] >= lim;
+        const ni = keepBelow ? n[1] <= lim : n[1] >= lim;
+        if (ci) out.push(c);
+        if (ci !== ni) { const t = (lim - c[1]) / (n[1] - c[1]); out.push([c[0] + t * (n[0] - c[0]), lim]); }
+      }
+      return out;
+    };
+    poly = clip(poly, true, clipMaxY);
+    poly = clip(poly, false, clipMinY);
     const g = new THREE.BufferGeometry();
+    if (poly.length < 3) return g;
+    const hx = thickness / 2;
+    const L = xCenter - hx, R = xCenter + hx;
+    const pt = (x: number, q: [number, number]) => [x, q[1], q[0]];
+    const pos: number[] = [];
+    for (let i = 1; i < poly.length - 1; i++) {
+      pos.push(...pt(L, poly[0]), ...pt(L, poly[i]), ...pt(L, poly[i + 1]));
+      pos.push(...pt(R, poly[0]), ...pt(R, poly[i + 1]), ...pt(R, poly[i]));
+    }
+    for (let i = 0; i < poly.length; i++) {
+      const c = poly[i], n = poly[(i + 1) % poly.length];
+      pos.push(...pt(L, c), ...pt(L, n), ...pt(R, n));
+      pos.push(...pt(L, c), ...pt(R, n), ...pt(R, c));
+    }
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.computeVertexNormals();
     return g;
-  }, [a[0], a[1], b[0], b[1], xCenter, thickness, halfH]);
+  }, [a[0], a[1], b[0], b[1], xCenter, thickness, halfH, clipMinY, clipMaxY]);
   return (
     <mesh geometry={geom}>
       <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} side={THREE.DoubleSide} />
@@ -190,7 +212,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         {/* Vigas Laterais Lance 1 */}
         <group position={exp(-0.2, 0, 0)}>
           {isSob ? (
-            <LongarinaPrumo a={[0, cy1]} b={[c1, hPatamar + cy1]} xCenter={-w / 2 + espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} />
+            <LongarinaPrumo a={[0, cy1]} b={[c1, hPatamar + cy1]} xCenter={-w / 2 + espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} clipMinY={0} clipMaxY={hPatamar} />
           ) : (
             <PecaParametrica
               pontoInicio={[-w / 2 + espessuraViga / 2, cy1, 0]}
@@ -206,7 +228,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         </group>
         <group position={exp(0.2, 0, 0)}>
           {isSob ? (
-            <LongarinaPrumo a={[0, cy1]} b={[c1, hPatamar + cy1]} xCenter={w / 2 - espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} />
+            <LongarinaPrumo a={[0, cy1]} b={[c1, hPatamar + cy1]} xCenter={w / 2 - espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} clipMinY={0} clipMaxY={hPatamar} />
           ) : (
             <PecaParametrica
               pontoInicio={[w / 2 - espessuraViga / 2, cy1, 0]}
@@ -302,7 +324,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         {/* Vigas Laterais Lance 2 */}
         <group position={exp(-0.2, 0, 0)}>
           {isSob ? (
-            <LongarinaPrumo a={[w / 2, cy2]} b={[w / 2 + c2, hTotal - hPatamar + cy2]} xCenter={-w / 2 + espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} />
+            <LongarinaPrumo a={[w / 2, cy2]} b={[w / 2 + c2, hTotal - hPatamar + cy2]} xCenter={-w / 2 + espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} clipMinY={0} clipMaxY={hTotal - hPatamar} />
           ) : (
             <PecaParametrica
               pontoInicio={[-w / 2 + espessuraViga / 2, cy2, w / 2]}
@@ -318,7 +340,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         </group>
         <group position={exp(0.2, 0, 0)}>
           {isSob ? (
-            <LongarinaPrumo a={[w / 2, cy2]} b={[w / 2 + c2, hTotal - hPatamar + cy2]} xCenter={w / 2 - espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} />
+            <LongarinaPrumo a={[w / 2, cy2]} b={[w / 2 + c2, hTotal - hPatamar + cy2]} xCenter={w / 2 - espessuraViga / 2} thickness={espessuraViga} halfH={_halfHViga} color={_vigaColor} metalness={_vigaMat.metalness} roughness={_vigaMat.roughness} clipMinY={0} clipMaxY={hTotal - hPatamar} />
           ) : (
             <PecaParametrica
               pontoInicio={[w / 2 - espessuraViga / 2, cy2, w / 2]}
