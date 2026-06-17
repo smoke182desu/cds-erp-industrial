@@ -289,6 +289,7 @@ const SceneContent: React.FC<Viewer3DProps & { aberto?: boolean }> = (props) => 
           direcaoCurva={direcaoCurva}
           temGuardaCorpo={temGuardaCorpo}
           ladoGuardaCorpo={ladoGuardaCorpo}
+          temCobertura={temCobertura}
           perfilSelecionado={perfilData}
           acabamentoMetal={acabamentoMetal}
           materialDegrau={materialDegrau}
