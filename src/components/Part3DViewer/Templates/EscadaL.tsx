@@ -387,7 +387,6 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         const perfilGC: any = { id: 'gc', nome: 'Corrimao', tipoShape: 'redondo_oco', diametro: 0.042, espessura: 0.002 };
         const pts1: [number, number][] = [];
         for (let i = 0; i < numDegraus1 - 1; i++) pts1.push([(i + 1) * p, (i + 1) * (espelho1 / 1000)]);
-        pts1.push([c1, hPatamar]);
         const pts2: [number, number][] = [];
         for (let i = 0; i < numDegraus2; i++) pts2.push([w / 2 + (i + 1) * p, (i + 1) * (espelho2 / 1000)]);
         const montante = (x: number, z: number, yb: number, key: string) => (
