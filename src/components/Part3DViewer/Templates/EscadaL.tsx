@@ -14,6 +14,7 @@ interface EscadaLProps {
   direcaoCurva: 'esquerda' | 'direita';
   temGuardaCorpo?: boolean;
   ladoGuardaCorpo?: 'esquerdo' | 'direito' | 'ambos';
+  temCobertura?: boolean;
   numDegraus1Prop?: number;
   numDegraus2Prop?: number;
   perfilSelecionado: PerfilData;
@@ -96,6 +97,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
   direcaoCurva,
   temGuardaCorpo = false,
   ladoGuardaCorpo = 'ambos',
+  temCobertura = false,
   numDegraus1Prop,
   numDegraus2Prop,
   perfilSelecionado,

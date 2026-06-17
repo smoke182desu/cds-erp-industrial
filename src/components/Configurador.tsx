@@ -118,6 +118,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
 
   // Novos estados para o Guarda-Corpo
   const [temGuardaCorpo, setTemGuardaCorpo] = useState<boolean>(false);
+  const [temCobertura, setTemCobertura] = useState<boolean>(false);
   const [ladoGuardaCorpo, setLadoGuardaCorpo] = useState<'esquerdo' | 'direito' | 'ambos'>('ambos');
   const [capturas, setCapturas] = useState<string[]>([]);
   const capturarPrint = () => {
@@ -1722,6 +1723,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
             anguloAbertura={(anguloAberturaGraus * Math.PI) / 180}
             temGuardaCorpo={temGuardaCorpo}
             ladoGuardaCorpo={ladoGuardaCorpo}
+            temCobertura={temCobertura}
             acabamentoMetal={acabamento}
             materialDegrau={materialDegrau}
             alturaPatamar={alturaPatamar}
@@ -2548,6 +2550,14 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                       />
                       <span className="text-sm font-bold text-slate-700">Adicionar Guarda-Corpo</span>
                       <Tooltip text="Inclui corrimao e montantes de seguranca na escada." />
+                    </label>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    <label className="flex items-center gap-3 cursor-pointer p-3 bg-slate-50 rounded-xl border border-slate-200 hover:bg-white transition-colors">
+                      <input type="checkbox" checked={temCobertura} onChange={(e) => setTemCobertura(e.target.checked)} className="w-5 h-5 text-indigo-600 rounded-lg border-slate-300 focus:ring-indigo-500" />
+                      <span className="text-sm font-bold text-slate-700">Adicionar Cobertura (telhado)</span>
+                      <Tooltip text="Estrutura de metalon (colunas + banzos + ripas) com telha sobre a escada." />
                     </label>
                   </div>
 

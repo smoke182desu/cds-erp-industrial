@@ -41,6 +41,7 @@ interface Viewer3DProps {
   tipoProduto?: string;
   anguloAbertura?: number;
   temGuardaCorpo?: boolean;
+  temCobertura?: boolean;
   ladoGuardaCorpo?: 'esquerdo' | 'direito' | 'ambos';
   acabamentoMetal?: AcabamentoMetalKey;
   materialDegrau?: MaterialDegrauKey;
@@ -107,6 +108,7 @@ const SceneContent: React.FC<Viewer3DProps & { aberto?: boolean }> = (props) => 
     anguloAbertura = 0,
     aberto = false,
     temGuardaCorpo = false,
+    temCobertura = false,
     ladoGuardaCorpo = 'ambos',
     acabamentoMetal = 'preto_fosco',
     materialDegrau = 'madeira_clara',
@@ -271,6 +273,7 @@ const SceneContent: React.FC<Viewer3DProps & { aberto?: boolean }> = (props) => 
           materialDegrau={materialDegrau}
           temGuardaCorpo={temGuardaCorpo}
           ladoGuardaCorpo={ladoGuardaCorpo}
+          temCobertura={temCobertura}
           mostrarCotas={mostrarCotas}
           onBOMCalculated={props.onBOMCalculated}
         />
