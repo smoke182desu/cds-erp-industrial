@@ -413,6 +413,20 @@ export const EscadaL: React.FC<EscadaLProps> = ({
                 </group>
               ); })}
             </group>
+            {sides.map((sgn) => {
+              const x = sgn * (w / 2 - 0.03);
+              const zP0 = c1 - p;
+              const espac = 0.30;
+              const nP = Math.max(1, Math.round(w / espac));
+              const postsZ: number[] = [];
+              for (let k = 0; k <= nP; k++) postsZ.push(zP0 + Math.min(w, k * espac));
+              return (
+                <group key={'gcpat' + sgn}>
+                  {postsZ.map((z, i) => montante(x, z, hPatamar, 'mp' + sgn + '-' + i))}
+                  {corrimao(x, [zP0, hPatamar], [zP0 + w, hPatamar], 'cp' + sgn)}
+                </group>
+              );
+            })}
           </>
         );
       })()}
