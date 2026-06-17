@@ -382,13 +382,13 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         </group>
       </group>
 
-      {/* COBERTURA: 2 telhados metalon (1 por lance), colunas ate o chao */}
+      {/* COBERTURA: 2 telhados metalon (1 por lance) */}
       {temCobertura && (() => {
         const beiral = 0.12;
         const clr = 2.1;
         const met = (sz: number): any => ({ id: 'met' + sz, nome: 'Metalon', tipoShape: 'quadrado_oco', largura: sz, altura: sz, espessura: 0.0019 });
         const colP = met(0.08), banzoP = met(0.06), ripaP = met(0.04);
-        const roof = (kp: string, zS: number, zE: number, yS: number, yE: number, yBase: number) => {
+        const roof = (kp: string, zS: number, zE: number, yS: number, yE: number, baseFront: number, baseBack: number) => {
           const xL = -w / 2 - beiral, xR = w / 2 + beiral;
           const zF = zS - beiral, zB = zE + beiral;
           const yF = yS + clr, yB = yE + clr;
@@ -398,10 +398,10 @@ export const EscadaL: React.FC<EscadaLProps> = ({
           for (let k = 0; k <= nR; k++) { const t = k / nR; ripas.push({ z: zF + t * (zB - zF), y: yF + t * (yB - yF) }); }
           return (
             <group key={kp}>
-              <PecaParametrica pontoInicio={[xL, yBase, zF]} pontoFim={[xL, yF, zF]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
-              <PecaParametrica pontoInicio={[xR, yBase, zF]} pontoFim={[xR, yF, zF]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
-              <PecaParametrica pontoInicio={[xL, yBase, zB]} pontoFim={[xL, yB, zB]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
-              <PecaParametrica pontoInicio={[xR, yBase, zB]} pontoFim={[xR, yB, zB]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
+              <PecaParametrica pontoInicio={[xL, baseFront, zF]} pontoFim={[xL, yF, zF]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
+              <PecaParametrica pontoInicio={[xR, baseFront, zF]} pontoFim={[xR, yF, zF]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
+              <PecaParametrica pontoInicio={[xL, baseBack, zB]} pontoFim={[xL, yB, zB]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
+              <PecaParametrica pontoInicio={[xR, baseBack, zB]} pontoFim={[xR, yB, zB]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
               <PecaParametrica pontoInicio={[xL, yF, zF]} pontoFim={[xL, yB, zB]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
               <PecaParametrica pontoInicio={[xR, yF, zF]} pontoFim={[xR, yB, zB]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
               <PecaParametrica pontoInicio={[xL, yF, zF]} pontoFim={[xR, yF, zF]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
@@ -412,9 +412,9 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         };
         return (
           <>
-            {roof('cobL1', 0, c1 - p, 0, hPatamar, 0)}
+            {roof('cobL1', 0, c1 - p, 0, hPatamar, 0, 0)}
             <group position={[0, hPatamar, c1 - p + w / 2 + exp(0, 0, 0.8)[2]]} rotation={[0, direcaoCurva === 'direita' ? Math.PI / 2 : -Math.PI / 2, 0]}>
-              {roof('cobL2', -w / 2, w / 2 + c2, 0, hTotal - hPatamar, -hPatamar)}
+              {roof('cobL2', -w / 2, w / 2 + c2, 0, hTotal - hPatamar, 0, -hPatamar)}
             </group>
           </>
         );
