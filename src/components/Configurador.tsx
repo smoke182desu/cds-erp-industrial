@@ -823,25 +823,52 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         }
       }
 
+      // ===== ORCAMENTO DETALHADO ESCADA L (peso real por peca) =====
+      const DENS = 7.85;       // kg por m2 por mm de chapa
+      const ESP_DEGRAU = 3.0;  // chapa 11
+      const ESP_LONG = 1.90;   // chapa 14
+      const TUBO_KG_M = 1.16;  // tubo redondo 1.1/4" ch16 (~kg/m)
+      const pesoChapa = (wmm: number, lmm: number, esp: number) => (wmm / 1000) * (lmm / 1000) * esp * DENS;
+
+      // Degraus: dobrado U enrijecido (25 + 15 para dentro em cada lado) -> blank (pisada + 80) x largura
+      const qtdDegraus = (numDegraus1 - 1) + numDegraus2;
+      const blankDegrau = pisada + 80;
+      const pesoUmDegrau = pesoChapa(blankDegrau, largura, ESP_DEGRAU);
+      const pesoDegraus = qtdDegraus * pesoUmDegrau;
+      // Piso do patamar (chapa 11)
+      const pesoPatamar = pesoChapa(largura, largura, ESP_DEGRAU);
+      // Longarinas laterais: dobrado U ch14, perfil 50mm (blank 50 + 80 = 130mm), comprimento = hipotenusa
+      const blankLong = 50 + 80;
+      const pesoLong = pesoChapa(blankLong, hipotenusa1, ESP_LONG) * 2 + pesoChapa(blankLong, hipotenusa2, ESP_LONG) * 2;
+
+      let pesoGC = 0;
+      let tuboCorrimaoMM = 0, tuboMontantesMM = 0, qtdPalitos = 0;
       if (temGuardaCorpo) {
         const qtdLados = ladoGuardaCorpo === 'ambos' ? 2 : 1;
-        const alturaGuardaCorpoMM = 900;
-        qtdMontantes = Math.floor(numDegraus / 2) + 2;
-        const materialCorrimao = hipotenusa * qtdLados;
-        const materialMontantes = alturaGuardaCorpoMM * qtdMontantes * qtdLados;
-        materialGuardaCorpoMM = materialCorrimao + materialMontantes;
-        materialTotalMM += materialGuardaCorpoMM;
+        const palitosLance = (numDegraus1 + numDegraus2);
+        const palitosPatamar = (Math.ceil(largura / 300) + 1) * 2;
+        qtdPalitos = palitosLance * qtdLados + palitosPatamar;
+        tuboMontantesMM = qtdPalitos * 900;
+        tuboCorrimaoMM = (hipotenusa1 + hipotenusa2) * qtdLados + (2 * largura);
+        pesoGC = ((tuboCorrimaoMM + tuboMontantesMM) / 1000) * TUBO_KG_M;
       }
 
-      listaCorte.push({ nome: 'Vigas Lance 1', qtd: 2, medida: `${hipotenusa1.toFixed(1)} mm` });
-      listaCorte.push({ nome: 'Vigas Lance 2', qtd: 2, medida: `${hipotenusa2.toFixed(1)} mm` });
-      listaCorte.push({ nome: 'Degraus', qtd: numDegraus, medida: `Pisada: ${pisada} mm, Espelho Medio: ${espelho.toFixed(1)} mm` });
-      listaCorte.push({ nome: 'Patamar', qtd: 1, medida: `${largura} x ${largura} mm` });
-      
+      const pesoFixacaoEsc = (fixacao === 'sapata_parafuso' ? 3.0 : 1.6);
+      pesoFinal = pesoDegraus + pesoPatamar + pesoLong + pesoGC + pesoFixacaoEsc;
+      const _precoKgEsc = (acabamentosMetal as any)[acabamento]?.precoKg || 20.0;
+      const _custoFixEsc = (fixacao === 'sapata_parafuso' ? 90 : 30);
+      custoFinal = pesoFinal * _precoKgEsc + _custoFixEsc;
+      materialTotalMM = (2 * hipotenusa1) + (2 * hipotenusa2) + (temGuardaCorpo ? (tuboCorrimaoMM + tuboMontantesMM) : 0);
+      qtdMontantes = qtdPalitos;
+
+      listaCorte.push({ nome: 'Degraus (dobrado U enrij. ch11 3mm)', qtd: qtdDegraus, medida: `${blankDegrau.toFixed(0)} x ${largura} mm/un - ${pesoDegraus.toFixed(1)} kg`, peso: pesoDegraus });
+      listaCorte.push({ nome: 'Piso do Patamar (ch11 3mm)', qtd: 1, medida: `${largura} x ${largura} mm - ${pesoPatamar.toFixed(1)} kg`, peso: pesoPatamar });
+      listaCorte.push({ nome: 'Longarinas laterais (dobrado U ch14, perfil 50mm)', qtd: 4, medida: `2x ${hipotenusa1.toFixed(0)}mm + 2x ${hipotenusa2.toFixed(0)}mm (blank 130mm) - ${pesoLong.toFixed(1)} kg`, peso: pesoLong });
       if (temGuardaCorpo) {
-        const qtdLados = ladoGuardaCorpo === 'ambos' ? 2 : 1;
-        listaCorte.push({ nome: 'Corrimao', qtd: qtdLados, medida: `${hipotenusa.toFixed(1)} mm` });
-        listaCorte.push({ nome: 'Montantes Verticais', qtd: qtdMontantes * qtdLados, medida: `900 mm` });
+        const pesoCorr = (tuboCorrimaoMM / 1000) * TUBO_KG_M;
+        const pesoMont = (tuboMontantesMM / 1000) * TUBO_KG_M;
+        listaCorte.push({ nome: 'Corrimao (tubo redondo 1.1/4 pol ch16)', qtd: 1, medida: `${(tuboCorrimaoMM / 1000).toFixed(2)} m - ${pesoCorr.toFixed(1)} kg`, peso: pesoCorr });
+        listaCorte.push({ nome: 'Montantes guarda-corpo (tubo redondo 1.1/4 pol ch16)', qtd: qtdPalitos, medida: `900 mm/un (${(tuboMontantesMM / 1000).toFixed(2)} m) - ${pesoMont.toFixed(1)} kg`, peso: pesoMont });
       }
     } else if (isCobertura || isGalpao || isTesoura) {
       const inclinacaoReal = isNaN(inclinacaoPercentual) ? 0 : inclinacaoPercentual;
