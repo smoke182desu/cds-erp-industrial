@@ -346,7 +346,7 @@ export const CheckoutPropostaModal: React.FC<CheckoutPropostaModalProps> = ({ is
       
       {isPropostaOpen && cliente && (
         <div className="fixed inset-0 z-[10002] bg-white overflow-y-auto">
-          <style>{"@media print { body * { visibility: hidden !important; } #proposta-print, #proposta-print * { visibility: visible !important; } #proposta-print { position: absolute !important; left: 0; top: 0; width: 100%; box-shadow: none !important; border: 0 !important; } .no-print { display: none !important; } @page { size: A4 portrait; margin: 6mm; } }"}</style>
+          <style>{"@media print { body * { visibility: hidden !important; } #proposta-print, #proposta-print * { visibility: visible !important; } #proposta-print { position: absolute !important; left: 0; top: 0; zoom: 0.92; box-shadow: none !important; border: 0 !important; } #proposta-print > div { width: 794px !important; } .no-print { display: none !important; } @page { size: A4 portrait; margin: 6mm; } }"}</style>
           <div className="no-print flex justify-between p-4 sticky top-0 bg-white z-10 border-b border-slate-200">
             <button onClick={() => setIsPropostaOpen(false)} className="bg-slate-100 text-slate-900 px-4 py-2 rounded-lg font-bold">Fechar</button>
             <div className="flex gap-2">
