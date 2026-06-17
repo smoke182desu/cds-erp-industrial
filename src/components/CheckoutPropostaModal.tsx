@@ -4,6 +4,8 @@ import { X, CheckCircle, Save, UserPlus, ShoppingCart, Tag, FileText, Search } f
 import { useERP } from '../contexts/ERPContext';
 import { NovoClienteModal } from './NovoClienteModal';
 import { PropostaDocumento } from './PropostaDocumento';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface CheckoutPropostaModalProps {
   isOpen: boolean;
@@ -93,6 +95,30 @@ export const CheckoutPropostaModal: React.FC<CheckoutPropostaModalProps> = ({ is
       return;
     }
     setIsPropostaOpen(true);
+  };
+
+  const handleBaixarPDF = async () => {
+    const el = document.getElementById('proposta-print');
+    if (!el) return;
+    try {
+      const canvas = await html2canvas(el as HTMLElement, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageW = 210, pageH = 297;
+      const imgH = (canvas.height * pageW) / canvas.width;
+      let heightLeft = imgH;
+      let position = 0;
+      pdf.addImage(imgData, 'PNG', 0, position, pageW, imgH);
+      heightLeft -= pageH;
+      while (heightLeft > 0) {
+        position -= pageH;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pageW, imgH);
+        heightLeft -= pageH;
+      }
+      const nomeCli = (cliente && cliente.nome ? cliente.nome : 'Cliente').replace(/\s+/g, '_');
+      pdf.save('Proposta_' + nomeCli + '.pdf');
+    } catch (e) { console.error('PDF falhou', e); alert('Falha ao gerar PDF. Use Imprimir > Salvar como PDF.'); }
   };
 
   const cliente = state.clientes.find(c => c.id === selectedClienteId) || (clienteSearch.trim() ? ({ id: 'avulso', nome: clienteSearch.trim(), tipo: 'PF', documento: '', logradouro: '', numero: '', bairro: '', cidade: '', uf: '', cep: '' } as any) : null);
@@ -319,17 +345,19 @@ export const CheckoutPropostaModal: React.FC<CheckoutPropostaModalProps> = ({ is
       {isNovoClienteModalOpen && <NovoClienteModal onClose={() => setIsNovoClienteModalOpen(false)} />}
       
       {isPropostaOpen && cliente && (
-        <div className="fixed inset-0 z-[10002] bg-white p-8 overflow-y-auto">
-          <div className="flex justify-between mb-4">
-            <button onClick={() => setIsPropostaOpen(false)} className="bg-slate-100 text-slate-900 px-4 py-2 rounded-lg">Fechar</button>
-            <button onClick={() => {
-              if (selectedClienteId) aprovarVenda(selectedClienteId);
-              window.print();
-              setIsPropostaOpen(false);
-              onClose();
-            }} className="bg-emerald-600 text-white px-4 py-2 rounded-lg">Imprimir/Finalizar</button>
+        <div className="fixed inset-0 z-[10002] bg-white overflow-y-auto">
+          <style>{"@media print { body * { visibility: hidden !important; } #proposta-print, #proposta-print * { visibility: visible !important; } #proposta-print { position: absolute !important; left: 0; top: 0; width: 100%; box-shadow: none !important; border: 0 !important; } .no-print { display: none !important; } @page { size: A4 portrait; margin: 6mm; } }"}</style>
+          <div className="no-print flex justify-between p-4 sticky top-0 bg-white z-10 border-b border-slate-200">
+            <button onClick={() => setIsPropostaOpen(false)} className="bg-slate-100 text-slate-900 px-4 py-2 rounded-lg font-bold">Fechar</button>
+            <div className="flex gap-2">
+              <button onClick={handleBaixarPDF} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold">Baixar PDF</button>
+              <button onClick={() => window.print()} className="bg-slate-700 text-white px-4 py-2 rounded-lg font-bold">Imprimir</button>
+              <button onClick={() => { if (selectedClienteId) aprovarVenda(selectedClienteId); setIsPropostaOpen(false); onClose(); }} className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold">Finalizar Venda</button>
+            </div>
           </div>
-          <PropostaDocumento cliente={cliente} proposta={{ id: proposalId, clienteId: selectedClienteId, items: state.carrinhoAtual, total: totalCarrinho, formaPagamento: 'outros', descontoPix: 0, totalComDesconto: totalCarrinho, status: 'Aprovada/Produção', data: new Date().toISOString() }} />
+          <div id="proposta-print">
+            <PropostaDocumento cliente={cliente} proposta={{ id: proposalId, clienteId: selectedClienteId, items: state.carrinhoAtual, total: totalCarrinho, formaPagamento: 'outros', descontoPix: 0, totalComDesconto: totalCarrinho, status: 'Aprovada/Produção', data: new Date().toISOString() }} />
+          </div>
         </div>
       )}
     </>
