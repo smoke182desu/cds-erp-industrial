@@ -88,14 +88,14 @@ export const CheckoutPropostaModal: React.FC<CheckoutPropostaModalProps> = ({ is
   };
 
   const handleAprovarVenda = () => {
-    if (!selectedClienteId) {
-      alert('Selecione um cliente!');
+    if (!selectedClienteId && !clienteSearch.trim()) {
+      alert('Informe o nome do cliente!');
       return;
     }
     setIsPropostaOpen(true);
   };
 
-  const cliente = state.clientes.find(c => c.id === selectedClienteId);
+  const cliente = state.clientes.find(c => c.id === selectedClienteId) || (clienteSearch.trim() ? ({ id: 'avulso', nome: clienteSearch.trim(), tipo: 'PF', documento: '', logradouro: '', numero: '', bairro: '', cidade: '', uf: '', cep: '' } as any) : null);
 
   const formatPrice = (item: any) => {
     const val = Number(item.preco ?? item.price ?? 0);
@@ -307,7 +307,7 @@ export const CheckoutPropostaModal: React.FC<CheckoutPropostaModalProps> = ({ is
             </button>
             <button 
               onClick={handleAprovarVenda} 
-              disabled={state.carrinhoAtual.length === 0 || !selectedClienteId}
+              disabled={state.carrinhoAtual.length === 0 || (!selectedClienteId && !clienteSearch.trim())}
               className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 hover:bg-emerald-500 shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               <FileText size={18} /> GERAR PROPOSTA
@@ -323,7 +323,7 @@ export const CheckoutPropostaModal: React.FC<CheckoutPropostaModalProps> = ({ is
           <div className="flex justify-between mb-4">
             <button onClick={() => setIsPropostaOpen(false)} className="bg-slate-100 text-slate-900 px-4 py-2 rounded-lg">Fechar</button>
             <button onClick={() => {
-              aprovarVenda(selectedClienteId);
+              if (selectedClienteId) aprovarVenda(selectedClienteId);
               window.print();
               setIsPropostaOpen(false);
               onClose();
