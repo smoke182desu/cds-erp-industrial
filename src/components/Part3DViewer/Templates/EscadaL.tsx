@@ -413,20 +413,29 @@ export const EscadaL: React.FC<EscadaLProps> = ({
                 </group>
               ); })}
             </group>
-            {sides.map((sgn) => {
-              const x = sgn * (w / 2 - 0.03);
+            {(() => {
               const zP0 = c1 - p;
+              const zBack = zP0 + w;
               const espac = 0.30;
-              const nP = Math.max(1, Math.round(w / espac));
+              const yb = hPatamar;
+              const outerX = (direcaoCurva === 'direita' ? -1 : 1) * (w / 2 - 0.03);
               const postsZ: number[] = [];
-              for (let k = 0; k <= nP; k++) postsZ.push(zP0 + Math.min(w, k * espac));
+              const nZ = Math.max(1, Math.round(w / espac));
+              for (let k = 0; k <= nZ; k++) postsZ.push(zP0 + Math.min(w, k * espac));
+              const postsX: number[] = [];
+              const nX = Math.max(1, Math.round(w / espac));
+              for (let k = 0; k <= nX; k++) postsX.push(-w / 2 + Math.min(w, k * espac));
               return (
-                <group key={'gcpat' + sgn}>
-                  {postsZ.map((z, i) => montante(x, z, hPatamar, 'mp' + sgn + '-' + i))}
-                  {corrimao(x, [zP0, hPatamar], [zP0 + w, hPatamar], 'cp' + sgn)}
+                <group key="gcpat">
+                  {postsZ.map((z, i) => montante(outerX, z, yb, 'mpz-' + i))}
+                  {corrimao(outerX, [zP0, yb], [zBack, yb], 'cpz')}
+                  {postsX.map((xx, i) => (
+                    <PecaParametrica key={'mpx-' + i} pontoInicio={[xx, yb, zBack]} pontoFim={[xx, yb + gcH, zBack]} perfil={perfilGC} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
+                  ))}
+                  <PecaParametrica pontoInicio={[-w / 2, yb + gcH, zBack]} pontoFim={[w / 2, yb + gcH, zBack]} perfil={perfilGC} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
                 </group>
               );
-            })}
+            })()}
           </>
         );
       })()}
