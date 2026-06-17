@@ -386,10 +386,10 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         const sides: number[] = ladoGuardaCorpo === 'ambos' ? [-1, 1] : (ladoGuardaCorpo === 'esquerdo' ? [-1] : [1]);
         const perfilGC: any = { id: 'gc', nome: 'Corrimao', tipoShape: 'redondo_oco', diametro: 0.042, espessura: 0.002 };
         const pts1: [number, number][] = [];
-        for (let i = 0; i < numDegraus1 - 1; i++) pts1.push([(i + 0.5) * p, (i + 1) * (espelho1 / 1000)]);
+        for (let i = 0; i < numDegraus1 - 1; i++) pts1.push([(i + 1) * p, (i + 1) * (espelho1 / 1000)]);
         pts1.push([c1, hPatamar]);
         const pts2: [number, number][] = [];
-        for (let i = 0; i < numDegraus2; i++) pts2.push([w / 2 + (i + 0.5) * p, (i + 1) * (espelho2 / 1000)]);
+        for (let i = 0; i < numDegraus2; i++) pts2.push([w / 2 + (i + 1) * p, (i + 1) * (espelho2 / 1000)]);
         const montante = (x: number, z: number, yb: number, key: string) => (
           <PecaParametrica key={key} pontoInicio={[x, yb, z]} pontoFim={[x, yb + gcH, z]} perfil={perfilGC} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
         );
