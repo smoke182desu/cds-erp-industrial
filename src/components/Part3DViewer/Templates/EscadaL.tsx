@@ -412,9 +412,9 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         };
         return (
           <>
-            {roof('cobL1', 0, c1 - p, 0, hPatamar, 0, 0)}
+            {roof('cobL1', 0, c1 - p, 0, hPatamar, 0, hPatamar)}
             <group position={[0, hPatamar, c1 - p + w / 2 + exp(0, 0, 0.8)[2]]} rotation={[0, direcaoCurva === 'direita' ? Math.PI / 2 : -Math.PI / 2, 0]}>
-              {roof('cobL2', -w / 2, w / 2 + c2, 0, hTotal - hPatamar, 0, -hPatamar)}
+              {roof('cobL2', -w / 2, w / 2 + c2, 0, hTotal - hPatamar, 0, hTotal - hPatamar)}
             </group>
           </>
         );
