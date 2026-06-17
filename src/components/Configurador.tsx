@@ -119,6 +119,14 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
   // Novos estados para o Guarda-Corpo
   const [temGuardaCorpo, setTemGuardaCorpo] = useState<boolean>(false);
   const [ladoGuardaCorpo, setLadoGuardaCorpo] = useState<'esquerdo' | 'direito' | 'ambos'>('ambos');
+  const [capturas, setCapturas] = useState<string[]>([]);
+  const capturarPrint = () => {
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+      try { const url = (canvas as HTMLCanvasElement).toDataURL('image/png'); setCapturas(prev => [...prev, url]); } catch (e) { console.error('captura falhou', e); }
+    }
+  };
+  const removerCaptura = (idx: number) => setCapturas(prev => prev.filter((_, i) => i !== idx));
 
   // Novos estados para Materiais PBR
   const [acabamento, setAcabamento] = useState<AcabamentoMetalKey>((project.acabamento as AcabamentoMetalKey) || 'preto_fosco');
@@ -1304,7 +1312,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       listaCorte
     };
 
-    gerarPropostaPDF(dadosProjeto, imagem3D, config, canvasWidth, canvasHeight);
+    gerarPropostaPDF(dadosProjeto, imagem3D, config, canvasWidth, canvasHeight, capturas);
   };
 
   const handleCompartilhar = async () => {
@@ -1588,6 +1596,22 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
 
       {/* Right Column: 3D Viewer - First on mobile */}
       <div className="w-full lg:w-2/3 h-[400px] sm:h-[500px] lg:h-auto order-1 lg:order-2 relative bg-slate-50 border-b lg:border-b-0 lg:border-l border-slate-100">
+        {/* Capturar print do 3D + miniaturas */}
+        <div className="absolute top-2 left-2 z-30 flex flex-col gap-1.5 max-w-[150px]">
+          <button onClick={capturarPrint} title="Capturar imagem do 3D para a proposta" className="flex items-center justify-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-lg">
+            <span>📷</span> Capturar
+          </button>
+          {capturas.length > 0 && (
+            <div className="flex flex-wrap gap-1 bg-white/85 p-1 rounded-lg shadow">
+              {capturas.map((src, i) => (
+                <div key={i} className="relative w-11 h-11 rounded overflow-hidden border border-slate-300">
+                  <img src={src} alt={'print ' + (i + 1)} className="w-full h-full object-cover" />
+                  <button onClick={() => removerCaptura(i)} title="Remover" className="absolute top-0 right-0 bg-red-600 text-white text-[9px] leading-none w-3.5 h-3.5 flex items-center justify-center">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {/* Mini-Cart Icon - CAD Style */}
         <button 
           onClick={() => setIsCheckoutOpen(true)}
