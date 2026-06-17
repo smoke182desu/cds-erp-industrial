@@ -401,12 +401,6 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         const nRip = Math.max(2, Math.ceil((zBack - zFront) / ripaEsp));
         const ripas: { z: number, y: number }[] = [];
         for (let k = 0; k <= nRip; k++) { const t = k / nRip; ripas.push({ z: zFront + t * (zBack - zFront), y: yFront + t * (yBack - yFront) }); }
-        const telhaGeo = (() => {
-          const g = new THREE.BufferGeometry();
-          const v = [xLeft, yFront, zFront, xRight, yFront, zFront, xRight, yBack, zBack, xLeft, yBack, zBack];
-          g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
-          g.setIndex([0, 1, 2, 0, 2, 3]); g.computeVertexNormals(); return g;
-        })();
         return (
           <group>
             {cols.map((c, i) => (<PecaParametrica key={'cob-col-' + i} pontoInicio={[c.x, 0, c.z]} pontoFim={[c.x, c.y, c.z]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />))}
@@ -415,7 +409,6 @@ export const EscadaL: React.FC<EscadaLProps> = ({
             <PecaParametrica pontoInicio={[xLeft, yFront, zFront]} pontoFim={[xRight, yFront, zFront]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
             <PecaParametrica pontoInicio={[xLeft, yBack, zBack]} pontoFim={[xRight, yBack, zBack]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
             {ripas.map((r, i) => (<PecaParametrica key={'cob-rip-' + i} pontoInicio={[xLeft, r.y, r.z]} pontoFim={[xRight, r.y, r.z]} perfil={ripaP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />))}
-            <mesh geometry={telhaGeo}><meshStandardMaterial color="#b5532a" metalness={0.05} roughness={0.9} side={THREE.DoubleSide} /></mesh>
           </group>
         );
       })()}
