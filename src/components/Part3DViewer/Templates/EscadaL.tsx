@@ -384,7 +384,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
 
       {/* COBERTURA: 2 telhados metalon (1 por lance) */}
       {temCobertura && (() => {
-        const beiral = 0.18;
+        const beiral = 0.30;
         const clr = 2.1;
         const met = (sz: number): any => ({ id: 'met' + sz, nome: 'Metalon', tipoShape: 'quadrado_oco', largura: sz, altura: sz, espessura: 0.0019 });
         const colP = met(0.08), banzoP = met(0.06), ripaP = met(0.04);
@@ -414,7 +414,7 @@ export const EscadaL: React.FC<EscadaLProps> = ({
           <>
             {roof('cobL1', 0, c1 - p, 0, hPatamar, 0, 0)}
             <group position={[0, hPatamar, c1 - p + w / 2 + exp(0, 0, 0.8)[2]]} rotation={[0, direcaoCurva === 'direita' ? Math.PI / 2 : -Math.PI / 2, 0]}>
-              {roof('cobL2', -w / 2, w / 2 + c2, 0, hTotal - hPatamar, 0, -hPatamar)}
+              {roof('cobL2', -w / 2, w / 2 + c2, 0, hTotal - hPatamar, -hPatamar, -hPatamar)}
             </group>
           </>
         );
