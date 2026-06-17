@@ -384,13 +384,14 @@ export const EscadaL: React.FC<EscadaLProps> = ({
 
       {/* COBERTURA: 2 telhados metalon (1 por lance) */}
       {temCobertura && (() => {
-        const beiral = 0.30;
+        const beiralX = 0.05;
+        const beiralZ = 0.08;
         const clr = 2.1;
         const met = (sz: number): any => ({ id: 'met' + sz, nome: 'Metalon', tipoShape: 'quadrado_oco', largura: sz, altura: sz, espessura: 0.0019 });
         const colP = met(0.08), banzoP = met(0.06), ripaP = met(0.04);
         const roof = (kp: string, zS: number, zE: number, yS: number, yE: number, baseFront: number, baseBack: number) => {
-          const xL = -w / 2 - beiral, xR = w / 2 + beiral;
-          const zF = zS - beiral, zB = zE + beiral;
+          const xL = -w / 2 - beiralX, xR = w / 2 + beiralX;
+          const zF = zS - beiralZ, zB = zE + beiralZ;
           const yF = yS + clr, yB = yE + clr;
           const ripaEsp = 0.35;
           const nR = Math.max(2, Math.ceil((zB - zF) / ripaEsp));
