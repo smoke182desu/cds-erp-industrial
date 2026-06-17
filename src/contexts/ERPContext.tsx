@@ -409,7 +409,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ncm: '7308.90.10',
         impostos: 0,
         cfop: prev.configFiscal.cfopPadrao,
-        custos: { material, insumos, maoDeObra, frete },
+        custos: produto.custos || { material, insumos, maoDeObra, frete },
+        capturas: produto.capturas || [],
         preco: precoFinal
       }]
     }));
