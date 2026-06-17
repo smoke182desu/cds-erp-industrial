@@ -380,6 +380,22 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         </group>
       </group>
 
+      {/* COLUNAS DE APOIO DO PATAMAR (100x100 ch14) */}
+      {(() => {
+        const zP0c = c1 - p;
+        const ins = 0.05;
+        const perfilCol: any = { id: 'col_patamar', nome: 'Coluna Patamar', tipoShape: 'quadrado_oco', largura: 0.1, altura: 0.1, espessura: 0.0019 };
+        const corners: [number, number][] = [
+          [-w / 2 + ins, zP0c + ins],
+          [w / 2 - ins, zP0c + ins],
+          [-w / 2 + ins, zP0c + w - ins],
+          [w / 2 - ins, zP0c + w - ins],
+        ];
+        return corners.map((cc, i) => (
+          <PecaParametrica key={'colpat-' + i} pontoInicio={[cc[0], 0, cc[1]]} pontoFim={[cc[0], hPatamar, cc[1]]} perfil={perfilCol} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
+        ));
+      })()}
+
       {/* GUARDA-CORPO / CORRIMAO */}
       {temGuardaCorpo && (() => {
         const gcH = 0.9;

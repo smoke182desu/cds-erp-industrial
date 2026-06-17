@@ -840,6 +840,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       // Longarinas laterais: dobrado U ch14, perfil 50mm (blank 50 + 80 = 130mm), comprimento = hipotenusa
       const blankLong = 50 + 80;
       const pesoLong = pesoChapa(blankLong, hipotenusa1, ESP_LONG) * 2 + pesoChapa(blankLong, hipotenusa2, ESP_LONG) * 2;
+      const pesoColunas = 4 * ((4 * 0.1) * (alturaPatamar / 1000) * ESP_LONG * DENS); // 4 colunas 100x100 ch14 do chao ao patamar
 
       let pesoGC = 0;
       let tuboCorrimaoMM = 0, tuboMontantesMM = 0, qtdPalitos = 0;
@@ -854,7 +855,8 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       }
 
       const pesoFixacaoEsc = (fixacao === 'sapata_parafuso' ? 3.0 : 1.6);
-      pesoFinal = pesoDegraus + pesoPatamar + pesoLong + pesoGC + pesoFixacaoEsc;
+      pesoFinal = pesoDegraus + pesoPatamar + pesoLong + pesoColunas + pesoGC + pesoFixacaoEsc;
+      listaCorte.push({ nome: 'Colunas de apoio do patamar (100x100 ch14)', qtd: 4, medida: alturaPatamar.toFixed(0) + ' mm/un - ' + pesoColunas.toFixed(1) + ' kg', peso: pesoColunas });
       const _precoKgEsc = (acabamentosMetal as any)[acabamento]?.precoKg || 20.0;
       const _custoFixEsc = (fixacao === 'sapata_parafuso' ? 90 : 30);
       custoFinal = pesoFinal * _precoKgEsc + _custoFixEsc;
