@@ -362,6 +362,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       horasTrabalhadas: productSummary.horasTrabalhadas,
       pesoFinal: productSummary.pesoFinal,
       materiaisNecessarios: productSummary.materiaisNecessarios,
+      capturas: capturas,
       custos: productSummary.custos,
       preco: productSummary.precoTotal,
       bom: currentBOM // Adicionando o Ãndice de Pecas (Regra de Ouro)
@@ -1155,15 +1156,20 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       ],
       horasTrabalhadas,
       materiaisNecessarios,
-      custos: {
-        material: custoFinal * 0.6, // Estimativa 60% material
-        insumos: custoFinal * 0.1, // Estimativa 10% insumos
-        maoDeObra: horasTrabalhadas * 45, // R$ 45/h
+      custos: (tipoProduto === 'escada_l' || tipoProduto === 'escada_reta') ? {
+        material: pesoFinal * 15,
+        maoDeObra: pesoFinal * 8,
+        pintura: pesoFinal * 3.5,
+        frete: 0
+      } : {
+        material: custoFinal * 0.6,
+        insumos: custoFinal * 0.1,
+        maoDeObra: horasTrabalhadas * 45,
         frete: 120
       },
       pesoFinal,
       custoFinal,
-      precoTotal: custoFinal + (custoFinal * config.multiplicadorLucro),
+      precoTotal: (tipoProduto === 'escada_l' || tipoProduto === 'escada_reta') ? (pesoFinal * 26.5) : (custoFinal + (custoFinal * config.multiplicadorLucro)),
       materialTotalMetros,
       vaoLivreCalculadoEmMM,
       numDegraus,

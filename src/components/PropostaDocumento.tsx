@@ -76,11 +76,11 @@ export const PropostaDocumento: React.FC<PropostaDocumentoProps> = ({ cliente, p
                           📋 Lista de Materiais (BOM)
                         </p>
                         <ul className="space-y-1">
-                          {item.materiaisNecessarios && item.materiaisNecessarios.length > 0 ? (
-                            item.materiaisNecessarios.map((m: any, i: number) => (
+                          {item.pecas && item.pecas.length > 0 ? (
+                            item.pecas.map((p: any, i: number) => (
                               <li key={i} className="flex justify-between border-b border-slate-50 pb-0.5">
-                                <span>{m.qtd} {m.unidade} - {m.nome}</span>
-                                <span className="text-slate-400 italic text-[9px] uppercase tracking-wider text-right ml-2">(Estoque)</span>
+                                <span><strong>{p.qtd}x</strong> {p.nome}</span>
+                                <span className="text-slate-400 italic text-right ml-2">{p.medida}</span>
                               </li>
                             ))
                           ) : item.bom && item.bom.length > 0 ? (
@@ -111,6 +111,14 @@ export const PropostaDocumento: React.FC<PropostaDocumentoProps> = ({ cliente, p
                           <p><strong>Horas Trab.:</strong> {item.horasTrabalhadas || 0}h</p>
                           <p><strong>Peso Est.:</strong> {item.pesoFinal?.toFixed(1) || 0}kg</p>
                         </div>
+                        {item.custos && (item.custos.pintura != null) && (
+                          <div className="mb-3">
+                            <p className="font-bold text-slate-900 uppercase mb-1 text-[9px]">Composicao</p>
+                            <p className="flex justify-between"><span>Material (R$ 15,00/kg)</span><span>R$ {(item.custos.material||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</span></p>
+                            <p className="flex justify-between"><span>Mao de obra (R$ 8,00/kg)</span><span>R$ {(item.custos.maoDeObra||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</span></p>
+                            <p className="flex justify-between"><span>Pintura (R$ 3,50/kg)</span><span>R$ {(item.custos.pintura||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}</span></p>
+                          </div>
+                        )}
                         <ul className="space-y-1">
                           {item.insumos?.map((ins: any, i: number) => (
                             <li key={i} className="flex justify-between border-b border-slate-50 pb-0.5">
@@ -128,6 +136,19 @@ export const PropostaDocumento: React.FC<PropostaDocumentoProps> = ({ cliente, p
           })}
         </tbody>
       </table>
+
+      {(() => {
+        const prints = (proposta.items as any[]).flatMap((it: any) => it.capturas || []);
+        if (!prints.length) return null;
+        return (
+          <div className="mb-8">
+            <h3 className="font-bold border-b border-slate-300 mb-3 uppercase text-sm">Imagens do Projeto</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {prints.map((src: string, i: number) => (<img key={i} src={src} alt={"Projeto " + (i + 1)} className="w-full border border-slate-200 rounded" />))}
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="mb-8">
         <h3 className="font-bold border-b border-slate-300 mb-4 uppercase text-sm">Normas Técnicas e Segurança Aplicáveis</h3>
