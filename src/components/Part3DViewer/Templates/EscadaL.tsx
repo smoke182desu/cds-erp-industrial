@@ -382,34 +382,41 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         </group>
       </group>
 
-      {/* COBERTURA (telhado metalon + telha) */}
+      {/* COBERTURA: 2 telhados metalon (1 por lance), seguindo a inclinacao */}
       {temCobertura && (() => {
         const beiral = 0.15;
-        const zFront = -beiral;
-        const zBack = (c1 - p) + w + beiral;
-        const xLeft = -w / 2 - beiral;
-        const xRight = w / 2 + beiral;
-        const yFront = 2.3;
-        const yBack = hPatamar + 2.1;
+        const clr = 2.1; // pe-direito acima do degrau
         const met = (sz: number): any => ({ id: 'met' + sz, nome: 'Metalon', tipoShape: 'quadrado_oco', largura: sz, altura: sz, espessura: 0.0019 });
         const colP = met(0.08), banzoP = met(0.06), ripaP = met(0.04);
-        const cols = [
-          { x: xLeft, z: zFront, y: yFront }, { x: xRight, z: zFront, y: yFront },
-          { x: xLeft, z: zBack, y: yBack }, { x: xRight, z: zBack, y: yBack },
-        ];
-        const ripaEsp = 0.35;
-        const nRip = Math.max(2, Math.ceil((zBack - zFront) / ripaEsp));
-        const ripas: { z: number, y: number }[] = [];
-        for (let k = 0; k <= nRip; k++) { const t = k / nRip; ripas.push({ z: zFront + t * (zBack - zFront), y: yFront + t * (yBack - yFront) }); }
+        const roof = (kp: string, zS: number, zE: number, yS: number, yE: number, yBase: number) => {
+          const xL = -w / 2 - beiral, xR = w / 2 + beiral;
+          const zF = zS - beiral, zB = zE + beiral;
+          const yF = yS + clr, yB = yE + clr;
+          const ripaEsp = 0.35;
+          const nR = Math.max(2, Math.ceil((zB - zF) / ripaEsp));
+          const ripas: { z: number, y: number }[] = [];
+          for (let k = 0; k <= nR; k++) { const t = k / nR; ripas.push({ z: zF + t * (zB - zF), y: yF + t * (yB - yF) }); }
+          return (
+            <group key={kp}>
+              <PecaParametrica pontoInicio={[xL, yBase, zF]} pontoFim={[xL, yF, zF]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
+              <PecaParametrica pontoInicio={[xR, yBase, zF]} pontoFim={[xR, yF, zF]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
+              <PecaParametrica pontoInicio={[xL, yBase, zB]} pontoFim={[xL, yB, zB]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
+              <PecaParametrica pontoInicio={[xR, yBase, zB]} pontoFim={[xR, yB, zB]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />
+              <PecaParametrica pontoInicio={[xL, yF, zF]} pontoFim={[xL, yB, zB]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
+              <PecaParametrica pontoInicio={[xR, yF, zF]} pontoFim={[xR, yB, zB]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
+              <PecaParametrica pontoInicio={[xL, yF, zF]} pontoFim={[xR, yF, zF]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
+              <PecaParametrica pontoInicio={[xL, yB, zB]} pontoFim={[xR, yB, zB]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
+              {ripas.map((r, i) => (<PecaParametrica key={kp + 'r' + i} pontoInicio={[xL, r.y, r.z]} pontoFim={[xR, r.y, r.z]} perfil={ripaP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />))}
+            </group>
+          );
+        };
         return (
-          <group>
-            {cols.map((c, i) => (<PecaParametrica key={'cob-col-' + i} pontoInicio={[c.x, 0, c.z]} pontoFim={[c.x, c.y, c.z]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />))}
-            <PecaParametrica pontoInicio={[xLeft, yFront, zFront]} pontoFim={[xLeft, yBack, zBack]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
-            <PecaParametrica pontoInicio={[xRight, yFront, zFront]} pontoFim={[xRight, yBack, zBack]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
-            <PecaParametrica pontoInicio={[xLeft, yFront, zFront]} pontoFim={[xRight, yFront, zFront]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
-            <PecaParametrica pontoInicio={[xLeft, yBack, zBack]} pontoFim={[xRight, yBack, zBack]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
-            {ripas.map((r, i) => (<PecaParametrica key={'cob-rip-' + i} pontoInicio={[xLeft, r.y, r.z]} pontoFim={[xRight, r.y, r.z]} perfil={ripaP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />))}
-          </group>
+          <>
+            {roof('cobL1', 0, c1, 0, hPatamar, 0)}
+            <group position={[0, hPatamar, c1 - p + w / 2 + exp(0, 0, 0.8)[2]]} rotation={[0, direcaoCurva === 'direita' ? Math.PI / 2 : -Math.PI / 2, 0]}>
+              {roof('cobL2', -w / 2, w / 2 + c2, 0, hTotal - hPatamar, -hPatamar)}
+            </group>
+          </>
         );
       })()}
 
