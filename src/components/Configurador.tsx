@@ -1061,7 +1061,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
       const custoColunas = (materialColunas / 1000) * ((perfilColunaPortaoSelecionado.pesoPorMetro || 0) * precoKgMetal);
       const custoPedestre = (materialPedestre / 1000) * ((perfilSelecionado.pesoPorMetro || 0) * precoKgMetal);
       custoFinal = (custoFolha + custoBatente + custoTrilho + custoGuia + custoColunas + custoPedestre) + custoFixacao;
-    } else if (['rampa_acessibilidade', 'carrinho_plataforma', 'gaiola_roll_container', 'carrinho_cilindros', 'reboque_industrial', 'abrigo_onibus', 'escada_reta', 'escada_l', 'cobertura_pergolado', 'galpao', 'galpao_tesoura_personalizada', 'tesoura'].includes(tipoProduto || '')) {
+    } else if (['rampa_acessibilidade', 'carrinho_plataforma', 'gaiola_roll_container', 'carrinho_cilindros', 'reboque_industrial', 'abrigo_onibus', 'escada_reta', 'cobertura_pergolado', 'galpao', 'galpao_tesoura_personalizada', 'tesoura'].includes(tipoProduto || '')) {
       if (currentBOM && currentBOM.length > 0) {
         custoFinal = currentBOM.reduce((acc, item) => acc + (item.cost || 0), 0);
         pesoFinal = currentBOM.reduce((acc, item) => acc + (item.weight || 0), 0);
@@ -3314,7 +3314,7 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
               </>
             )}
 
-            {['rampa_acessibilidade', 'carrinho_plataforma', 'gaiola_roll_container', 'carrinho_cilindros', 'reboque_industrial', 'abrigo_onibus', 'escada_reta', 'escada_l', 'cobertura_pergolado', 'galpao', 'galpao_tesoura_personalizada', 'tesoura'].includes(tipoProduto || '') && currentBOM.length > 0 && (
+            {['rampa_acessibilidade', 'carrinho_plataforma', 'gaiola_roll_container', 'carrinho_cilindros', 'reboque_industrial', 'abrigo_onibus', 'escada_reta', 'cobertura_pergolado', 'galpao', 'galpao_tesoura_personalizada', 'tesoura'].includes(tipoProduto || '') && currentBOM.length > 0 && (
               <>
                 {currentBOM.map((item, index) => (
                   <li key={index} className="flex justify-between items-center">
@@ -3325,6 +3325,25 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
                 <li className="flex justify-between items-center pt-2 border-t border-slate-100 text-emerald-400">
                   <span className="font-bold uppercase text-[9px]">Custo Estimado Materiais:</span>
                   <span className="font-mono font-bold">R$ {custoFinal.toFixed(2)}</span>
+                </li>
+              </>
+            )}
+
+            {tipoProduto === 'escada_l' && productSummary.pecas && productSummary.pecas.length > 0 && (
+              <>
+                {productSummary.pecas.map((item: any, index: number) => (
+                  <li key={'pc' + index} className="flex justify-between items-start gap-2">
+                    <span className="text-slate-600">{item.qtd}x {item.nome}</span>
+                    <span className="font-mono text-slate-500 text-right text-[9px]">{item.medida}</span>
+                  </li>
+                ))}
+                <li className="flex justify-between items-center pt-2 border-t border-slate-100">
+                  <span className="font-bold uppercase text-[9px]">Peso Total:</span>
+                  <span className="font-mono font-bold text-slate-900">{pesoFinal.toFixed(1)} kg</span>
+                </li>
+                <li className="flex justify-between items-center text-emerald-500">
+                  <span className="font-bold uppercase text-[9px]">Valor (R$ 26,50/kg):</span>
+                  <span className="font-mono font-bold">R$ {precoTotal.toFixed(2)}</span>
                 </li>
               </>
             )}
