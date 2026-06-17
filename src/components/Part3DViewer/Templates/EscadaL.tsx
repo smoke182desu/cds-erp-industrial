@@ -382,6 +382,44 @@ export const EscadaL: React.FC<EscadaLProps> = ({
         </group>
       </group>
 
+      {/* COBERTURA (telhado metalon + telha) */}
+      {temCobertura && (() => {
+        const beiral = 0.15;
+        const zFront = -beiral;
+        const zBack = (c1 - p) + w + beiral;
+        const xLeft = -w / 2 - beiral;
+        const xRight = w / 2 + beiral;
+        const yFront = 2.3;
+        const yBack = hPatamar + 2.1;
+        const met = (sz: number): any => ({ id: 'met' + sz, nome: 'Metalon', tipoShape: 'quadrado_oco', largura: sz, altura: sz, espessura: 0.0019 });
+        const colP = met(0.08), banzoP = met(0.06), ripaP = met(0.04);
+        const cols = [
+          { x: xLeft, z: zFront, y: yFront }, { x: xRight, z: zFront, y: yFront },
+          { x: xLeft, z: zBack, y: yBack }, { x: xRight, z: zBack, y: yBack },
+        ];
+        const ripaEsp = 0.35;
+        const nRip = Math.max(2, Math.ceil((zBack - zFront) / ripaEsp));
+        const ripas: { z: number, y: number }[] = [];
+        for (let k = 0; k <= nRip; k++) { const t = k / nRip; ripas.push({ z: zFront + t * (zBack - zFront), y: yFront + t * (yBack - yFront) }); }
+        const telhaGeo = (() => {
+          const g = new THREE.BufferGeometry();
+          const v = [xLeft, yFront, zFront, xRight, yFront, zFront, xRight, yBack, zBack, xLeft, yBack, zBack];
+          g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+          g.setIndex([0, 1, 2, 0, 2, 3]); g.computeVertexNormals(); return g;
+        })();
+        return (
+          <group>
+            {cols.map((c, i) => (<PecaParametrica key={'cob-col-' + i} pontoInicio={[c.x, 0, c.z]} pontoFim={[c.x, c.y, c.z]} perfil={colP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 0, 1]} colorOverride={colorViga} />))}
+            <PecaParametrica pontoInicio={[xLeft, yFront, zFront]} pontoFim={[xLeft, yBack, zBack]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
+            <PecaParametrica pontoInicio={[xRight, yFront, zFront]} pontoFim={[xRight, yBack, zBack]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
+            <PecaParametrica pontoInicio={[xLeft, yFront, zFront]} pontoFim={[xRight, yFront, zFront]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
+            <PecaParametrica pontoInicio={[xLeft, yBack, zBack]} pontoFim={[xRight, yBack, zBack]} perfil={banzoP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />
+            {ripas.map((r, i) => (<PecaParametrica key={'cob-rip-' + i} pontoInicio={[xLeft, r.y, r.z]} pontoFim={[xRight, r.y, r.z]} perfil={ripaP} tipoCorte="reto" acabamentoMetal={acabamentoMetal} up={[0, 1, 0]} colorOverride={colorViga} />))}
+            <mesh geometry={telhaGeo}><meshStandardMaterial color="#b5532a" metalness={0.05} roughness={0.9} side={THREE.DoubleSide} /></mesh>
+          </group>
+        );
+      })()}
+
       {/* COLUNAS DE APOIO DO PATAMAR (100x100 ch14) */}
       {(() => {
         const zP0c = c1 - p;
