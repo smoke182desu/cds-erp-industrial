@@ -614,9 +614,9 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
   const _pSob = Math.max(200, Math.round(((profundidade || 3000) - largura) / Math.max(1, numDegrausLance1)));
   const _eSob = (Number.isFinite(altura) && altura > 0) ? (altura / Math.max(1, (numDegrausLance1 + numDegrausLance2))) : 180;
   const _hSob = Math.max(40, Math.round((_eSob * _pSob) / Math.sqrt(_eSob*_eSob + _pSob*_pSob))); // altura do perfil = encontro espelho x pisada na rampa
-  const perfilSelecionado = (perfilSelecionadoId === 'sob_medida' && tipoProduto === 'escada_l')
-    ? ({ id: 'sob_medida', nome: 'Sob medida (' + _hSob + 'mm)', tipoShape: 'quadrado_oco', largura: 50, altura: _hSob, espessura: 3, pesoPorMetro: (_perfilBase as any)?.pesoPorMetro || 12, componentesCompativeis: ['quadro'] } as any)
-    : _perfilBase;
+  const _pesoBaseSob = (_perfilBase as any)?.pesoPorMetro || 12;
+  const _perfilSobMedida = React.useMemo(() => ({ id: 'sob_medida', nome: 'Sob medida (' + _hSob + 'mm)', tipoShape: 'quadrado_oco', largura: 50, altura: _hSob, espessura: 3, pesoPorMetro: _pesoBaseSob, componentesCompativeis: ['quadro'] } as any), [_hSob, _pesoBaseSob]);
+  const perfilSelecionado = (perfilSelecionadoId === 'sob_medida' && tipoProduto === 'escada_l') ? _perfilSobMedida : _perfilBase;
   const perfilTercaSelecionado = perfisTerca.find(p => p.id === perfilTercaId) || perfisTerca[0] || perfisCompativeis[0] || perfisDB[0];
   const perfilColunaSelecionado = perfisColuna.find(p => p.id === perfilColunaId) || perfisColuna[0] || perfisCompativeis[0] || perfisDB[0];
   const perfilVigaSelecionado = perfisViga.find(p => p.id === perfilVigaId) || perfisViga[0] || perfisCompativeis[0] || perfisDB[0];
