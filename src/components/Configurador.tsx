@@ -856,8 +856,37 @@ export const Configurador: React.FC<ConfiguradorProps> = ({ project, onUpdate })
         pesoGC = ((tuboCorrimaoMM + tuboMontantesMM) / 1000) * TUBO_KG_M;
       }
 
+      // Cobertura (2 telhados metalon ch14): colunas 80x80, banzos 60x60, ripas 40x40
+      let pesoCobertura = 0;
+      if (temCobertura) {
+        const KGM = (smm: number) => (4 * smm / 1000) * ESP_LONG * DENS;
+        const beiralC = 120, clrC = 2100;
+        const widthC = largura + 2 * beiralC;
+        const depth1 = (numDegraus1 - 1) * pisada + 2 * beiralC;
+        const slope1 = Math.sqrt(depth1 * depth1 + alturaPatamar * alturaPatamar);
+        const col1 = 2 * clrC + 2 * (alturaPatamar + clrC);
+        const banzo1 = 2 * slope1 + 2 * widthC;
+        const nR1 = Math.max(2, Math.ceil(slope1 / 350)) + 1;
+        const depth2 = largura + comprimento2 + 2 * beiralC;
+        const rise2 = altura - alturaPatamar;
+        const slope2 = Math.sqrt(depth2 * depth2 + rise2 * rise2);
+        const col2 = 2 * clrC + 2 * (altura + clrC);
+        const banzo2 = 2 * slope2 + 2 * widthC;
+        const nR2 = Math.max(2, Math.ceil(slope2 / 350)) + 1;
+        const colMM = col1 + col2;
+        const banzoMM = banzo1 + banzo2;
+        const ripaMM = (nR1 + nR2) * widthC;
+        const pCol = (colMM / 1000) * KGM(80);
+        const pBan = (banzoMM / 1000) * KGM(60);
+        const pRip = (ripaMM / 1000) * KGM(40);
+        pesoCobertura = pCol + pBan + pRip;
+        listaCorte.push({ nome: 'Cobertura - Colunas (metalon 80x80 ch14)', qtd: 8, medida: (colMM / 1000).toFixed(2) + ' m - ' + pCol.toFixed(1) + ' kg', peso: pCol });
+        listaCorte.push({ nome: 'Cobertura - Banzos (metalon 60x60 ch14)', qtd: 8, medida: (banzoMM / 1000).toFixed(2) + ' m - ' + pBan.toFixed(1) + ' kg', peso: pBan });
+        listaCorte.push({ nome: 'Cobertura - Ripas p/ telha (metalon 40x40 ch14)', qtd: (nR1 + nR2), medida: (ripaMM / 1000).toFixed(2) + ' m - ' + pRip.toFixed(1) + ' kg', peso: pRip });
+      }
+
       const pesoFixacaoEsc = (fixacao === 'sapata_parafuso' ? 3.0 : 1.6);
-      pesoFinal = pesoDegraus + pesoPatamar + pesoLong + pesoColunas + pesoGC + pesoFixacaoEsc;
+      pesoFinal = pesoDegraus + pesoPatamar + pesoLong + pesoColunas + pesoGC + pesoCobertura + pesoFixacaoEsc;
       listaCorte.push({ nome: 'Colunas de apoio do patamar (100x100 ch14)', qtd: 4, medida: alturaPatamar.toFixed(0) + ' mm/un - ' + pesoColunas.toFixed(1) + ' kg', peso: pesoColunas });
       const _precoKgEsc = (acabamentosMetal as any)[acabamento]?.precoKg || 20.0;
       const _custoFixEsc = (fixacao === 'sapata_parafuso' ? 90 : 30);
